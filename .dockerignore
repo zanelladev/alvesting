@@ -1,0 +1,27 @@
+# Contexto de build das duas imagens = raiz do monorepo (docker build -f apps/<app>/Dockerfile .).
+# É a primeira barreira contra segredo na imagem (CLAUDE.md, regra 4): nenhum .env* entra, em nenhuma pasta.
+# Prompt e chaves de LLM ficam no .env.local (dev) e no Key Vault (produção), nunca aqui.
+**/.env
+**/.env.*
+
+# O que o build gera ou baixa ele mesmo dentro da imagem
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+apps/api/src/generated
+
+# Nada disto roda dentro das imagens
+.git
+.github
+docs
+infra
+docker
+docker-compose.yml
+scripts
+# Arquivos de terceiros baixados à mão (os da B3 que o dev ainda guarda, uns 200 MB; .gitignore: nunca entram no repositório
+# nem na imagem). Sem esta linha, todo docker build os enviaria no contexto.
+.data
+**/playwright-report
+**/test-results

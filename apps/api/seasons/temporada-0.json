@@ -1,0 +1,71 @@
+{
+  "slug": "temporada-0",
+  "name": "Temporada 0 (ensaio com provedores fake)",
+  "params": {
+    "capitalCents": 10000000,
+    "sessions": 5,
+    "maxPositions": 10,
+    "maxOrdersPerCycle": 5,
+    "buyPercentOfEquity": [5, 25],
+    "sellPercentOfPosition": [1, 100],
+    "tradeCostBps": 3,
+    "decisionTimeBrt": "08:00",
+    "deadlineTimeBrt": "09:30",
+    "randomSeed": "alvesting-t0-sorteio",
+    "monteCarloSeed": "alvesting-t0-monte-carlo",
+    "monteCarloRuns": 1000
+  },
+  "competitors": [
+    {
+      "kind": "MODEL",
+      "slug": "fake-anthropic",
+      "name": "Fake Anthropic",
+      "provider": "fake",
+      "modelId": "fake/anthropic"
+    },
+    {
+      "kind": "MODEL",
+      "slug": "fake-openai",
+      "name": "Fake OpenAI",
+      "provider": "fake",
+      "modelId": "fake/openai"
+    },
+    {
+      "kind": "MODEL",
+      "slug": "fake-google",
+      "name": "Fake Google",
+      "provider": "fake",
+      "modelId": "fake/google"
+    },
+    {
+      "kind": "MODEL",
+      "slug": "fake-xai",
+      "name": "Fake xAI",
+      "provider": "fake",
+      "modelId": "fake/xai"
+    },
+    {
+      "kind": "MODEL",
+      "slug": "fake-deepseek",
+      "name": "Fake DeepSeek",
+      "provider": "fake",
+      "modelId": "fake/deepseek"
+    },
+    {
+      "kind": "MODEL",
+      "slug": "fake-alibaba",
+      "name": "Fake Alibaba",
+      "provider": "fake",
+      "modelId": "fake/alibaba"
+    },
+    { "kind": "RANDOM", "slug": "sorteio", "name": "Sorteio" },
+    {
+      "kind": "BENCHMARK",
+      "slug": "igual-peso",
+      "name": "Igual-peso do universo (só preço)",
+      "benchmark": "EQUAL_WEIGHT"
+    },
+    { "kind": "BENCHMARK", "slug": "cdi", "name": "CDI", "benchmark": "CDI" },
+    { "kind": "BENCHMARK", "slug": "bova11", "name": "BOVA11 (contexto)", "benchmark": "BOVA11" }
+  ]
+}

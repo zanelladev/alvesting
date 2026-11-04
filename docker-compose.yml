@@ -1,0 +1,66 @@
+# Infra local da Alvesting. Portas de host altas (25xxx), só em 127.0.0.1, para não colidir com outros projetos.
+#
+#   docker compose up -d                          Postgres 17 e Azurite (Blob)
+#   ACCEPT_EULA=Y docker compose --profile servicebus up -d
+#                                                 + emulador do Service Bus (e o SQL Server dele)
+#
+# O emulador do Service Bus exige SQL Server, que pede pelo menos 2 GB de RAM livres para o Docker.
+# Por isso ele fica no profile "servicebus" e não sobe junto com o resto. Ver docs/adr/0001.
+name: alvesting
+
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: alvesting
+      POSTGRES_PASSWORD: alvesting # só local
+      POSTGRES_DB: alvesting_dev # o banco de teste (alvesting_test) é criado pelos próprios testes
+    ports:
+      - '127.0.0.1:25432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U alvesting -d alvesting_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Só o Blob (briefings, IO bruto das LLMs, backups). Fila e tabela não são usadas.
+  # --skipApiVersionCheck: o @azure/storage-blob 12.34.0 pede a versão de API 2026-10-06 e o Azurite 3.37.0 recusa
+  # versão que não conhece ("The API version 2026-10-06 is not supported by Azurite"). A flag é a saída documentada.
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.37.0
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data --skipApiVersionCheck
+    ports:
+      - '127.0.0.1:25100:10000'
+    volumes:
+      - azurite-data:/data
+
+  sqlserver:
+    profiles: [servicebus]
+    image: mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
+    environment:
+      # Aceitar o EULA é decisão de quem roda: sem ACCEPT_EULA=Y o contêiner se recusa a subir.
+      ACCEPT_EULA: ${ACCEPT_EULA:-N}
+      MSSQL_SA_PASSWORD: ${SERVICEBUS_SQL_PASSWORD:-Alvesting!Dev2026} # só local, sem porta publicada
+
+  servicebus-emulator:
+    profiles: [servicebus]
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:2.0.1
+    depends_on:
+      - sqlserver
+    environment:
+      ACCEPT_EULA: ${ACCEPT_EULA:-N}
+      SQL_SERVER: sqlserver
+      MSSQL_SA_PASSWORD: ${SERVICEBUS_SQL_PASSWORD:-Alvesting!Dev2026}
+      SQL_WAIT_INTERVAL: 30 # segundos esperando o SQL Server ficar pronto
+      EMULATOR_HTTP_PORT: 5300
+    ports:
+      - '127.0.0.1:25672:5672' # AMQP (a connection string do .env.example usa esta porta)
+      - '127.0.0.1:25300:5300' # saúde: curl http://127.0.0.1:25300/health
+    volumes:
+      - ./docker/servicebus/Config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
+
+volumes:
+  postgres-data:
+  azurite-data:

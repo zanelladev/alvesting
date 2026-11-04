@@ -1,0 +1,45 @@
+{
+  "fonte": "B3, Calendário de negociação, Feriados (dias sem sessão de negociação na renda variável)",
+  "url": "https://www.b3.com.br/pt_br/solucoes/plataformas/puma-trading-system/para-participantes-e-traders/calendario-de-negociacao/feriados/",
+  "conferidoEm": "2026-11-01",
+  "anos": {
+    "2026": {
+      "situacao": "oficial",
+      "nota": "Copiado da página da B3. A Quarta-feira de Cinzas (18/02) abre às 13h e conta como pregão. Conferido em 01/11/2026 contra o histórico de cotações: 208 pregões de 02/01 a 30/10, todos os dias úteis fora desta lista.",
+      "feriados": [
+        { "data": "2026-01-01", "nome": "Confraternização Universal" },
+        { "data": "2026-02-16", "nome": "Carnaval" },
+        { "data": "2026-02-17", "nome": "Carnaval" },
+        { "data": "2026-04-03", "nome": "Sexta-feira Santa" },
+        { "data": "2026-04-21", "nome": "Tiradentes" },
+        { "data": "2026-05-01", "nome": "Dia do Trabalho" },
+        { "data": "2026-06-04", "nome": "Corpus Christi" },
+        { "data": "2026-09-07", "nome": "Independência do Brasil" },
+        { "data": "2026-10-12", "nome": "Nossa Senhora Aparecida" },
+        { "data": "2026-11-02", "nome": "Finados" },
+        { "data": "2026-11-20", "nome": "Dia Nacional de Zumbi e Consciência Negra" },
+        { "data": "2026-12-24", "nome": "Véspera de Natal (sem sessão de negociação)" },
+        { "data": "2026-12-25", "nome": "Natal" },
+        { "data": "2026-12-31", "nome": "Expediente interno nos bancos (sem sessão de negociação)" }
+      ]
+    },
+    "2027": {
+      "situacao": "provisório",
+      "nota": "A página da B3 ainda não publica 2027 (lista até 2026). Estes dias são os feriados nacionais que caem em dia útil, mais a véspera de Natal e o último dia do ano, que a B3 fechou em 2025 e 2026. Pela mesma regra se reproduz a lista oficial de 2024, 2025 e 2026. Trocar pela lista da B3 quando ela sair. A Quarta-feira de Cinzas (10/02) abre às 13h. Sem 01/05, 20/11 e 25/12, que caem no sábado.",
+      "feriados": [
+        { "data": "2027-01-01", "nome": "Confraternização Universal" },
+        { "data": "2027-02-08", "nome": "Carnaval" },
+        { "data": "2027-02-09", "nome": "Carnaval" },
+        { "data": "2027-03-26", "nome": "Sexta-feira Santa" },
+        { "data": "2027-04-21", "nome": "Tiradentes" },
+        { "data": "2027-05-27", "nome": "Corpus Christi" },
+        { "data": "2027-09-07", "nome": "Independência do Brasil" },
+        { "data": "2027-10-12", "nome": "Nossa Senhora Aparecida" },
+        { "data": "2027-11-02", "nome": "Finados" },
+        { "data": "2027-11-15", "nome": "Proclamação da República" },
+        { "data": "2027-12-24", "nome": "Véspera de Natal (sem sessão de negociação)" },
+        { "data": "2027-12-31", "nome": "Expediente interno nos bancos (sem sessão de negociação)" }
+      ]
+    }
+  }
+}

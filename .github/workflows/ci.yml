@@ -1,0 +1,393 @@
+name: CI
+
+# Plano §5.10. Os mesmos comandos do dev local (README, "Testar"), cada um num passo com nome, para a falha
+# apontar o que quebrou. Em PR e em push na main; quem publica é o deploy.yml.
+#
+#   check   lint, tipos, unidade e integração (Postgres, Azurite e emulador do Service Bus), o ensaio da Temporada 0, docs:check e o
+#           check da infra
+#   web     build, Playwright (pixel-7, iphone-15 e desktop, com a api sobre um banco semeado com uma temporada sintética) e
+#           Lighthouse CI mobile na home
+#   images  as duas imagens Docker constroem e sobem respondendo /health, sem segredo e sem root
+#   whatif  what-if do Bicep contra a Azure, só quando o repositório tem as variáveis de OIDC (DEPLOY.md)
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      # Postgres do CI. O teste de integração cria e migra o banco de teste (alvesting_test) sozinho.
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_USER: alvesting
+          POSTGRES_PASSWORD: alvesting
+          POSTGRES_DB: alvesting_dev
+        ports:
+          - 25432:5432
+        options: >-
+          --health-cmd "pg_isready -U alvesting -d alvesting_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://alvesting:alvesting@localhost:25432/alvesting_test
+      # O Azurite sobe no passo abaixo (docker compose, na porta 25100): com esta variável os testes de Blob (briefing, IO
+      # bruto das LLMs e o ensaio da Temporada 0) deixam de ser pulados.
+      STORAGE_CONNECTION_STRING: UseDevelopmentStorage=true;DevelopmentStorageProxyUri=http://127.0.0.1:25100
+      SERVICEBUS_EMULATOR: '1'
+      SERVICEBUS_CONNECTION_STRING: Endpoint=sb://localhost:25672;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
+      # Aceita os termos (EULA) do SQL Server e do emulador do Service Bus, necessários para o profile
+      # servicebus do docker-compose. Os links estão em docs/DEPENDENCIAS.md.
+      ACCEPT_EULA: 'Y'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # A versão do pnpm vem do campo packageManager do package.json (pnpm 12).
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # O Azurite do compose já sobe com --skipApiVersionCheck: o @azure/storage-blob 12.34.0 pede a versão de API 2026-10-06, que o
+      # Azurite 3.37.0 só aceita com a flag (o `services:` do GitHub não passa argumentos ao contêiner, por isso o compose).
+      # Qualquer resposta HTTP, até o 400 da raiz, quer dizer que ele está de pé; conexão recusada, não.
+      - name: Azurite (Blob)
+        run: |
+          docker compose up -d azurite
+          for _ in $(seq 1 30); do
+            curl -s -o /dev/null http://127.0.0.1:25100/ && exit 0
+            sleep 1
+          done
+          docker compose logs azurite
+          exit 1
+
+      - name: Emulador do Service Bus (profile servicebus)
+        run: |
+          docker compose --profile servicebus up -d sqlserver servicebus-emulator
+          for _ in $(seq 1 90); do
+            curl -sf http://127.0.0.1:25300/health && exit 0
+            sleep 2
+          done
+          docker compose --profile servicebus logs
+          exit 1
+
+      # O backup-verify chama pg_dump e pg_restore pelo PATH, e o código recusa binário de outro major que o do servidor (17). O runner traz o
+      # cliente 16, então o repositório oficial PGDG (o script que o próprio PostgreSQL mantém no postgresql-common) liga o 17 e o
+      # `postgresql-client-17` entra. Com ele o teste de integração do backup-verify roda com o binário nativo em vez de pulado
+      # (apps/api/src/modules/maintenance/testing/pg-tools.fixture.ts, que no CI falha se faltar). Documentado em docs/DEPENDENCIAS.md.
+      # Instalar não basta: o /usr/bin/pg_dump do Debian é o `pg_wrapper`, que SEM --host nem PGHOST escolhe a versão do cluster LOCAL, e o
+      # runner traz o servidor 16 (cluster 16/main). O `pg_dump --version` do fixture e do `assertTools` (sem host) cairiam no 16 mesmo com o
+      # cliente 17 instalado. A pasta do 17 vai na frente do PATH (deste passo e dos seguintes), por cima do wrapper, e o passo confere o major.
+      - name: Cliente do PostgreSQL 17 (pg_dump e pg_restore do backup-verify)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
+          pg_dump --version
+          pg_restore --version
+          pg_dump --version | grep -q '(PostgreSQL) 17\.'
+          pg_restore --version | grep -q '(PostgreSQL) 17\.'
+
+      - name: Lint (ESLint e Prettier)
+        run: pnpm lint
+
+      - name: Tipos
+        run: pnpm typecheck
+
+      # Unidade e integração no mesmo comando: com TEST_DATABASE_URL, STORAGE_CONNECTION_STRING e SERVICEBUS_EMULATOR no
+      # ambiente, os testes de integração (Postgres, Azurite e emulador) deixam de ser pulados. Inclui o ensaio da Temporada 0
+      # (apps/api/src/ensaio, 3 pregões), o backup-verify com o pg_dump 17 do passo acima e os testes dos scripts.
+      - name: Testes de unidade e de integração
+        run: pnpm test
+
+      - name: Dependências documentadas (docs:check)
+        run: pnpm docs:check
+
+      # O Bicep CLI na versão que o projeto usa (docs/DEPENDENCIAS.md). O check compila a infra e afirma os
+      # invariantes do plano, sem Azure e sem assinatura.
+      - name: Check da infra (Bicep)
+        run: |
+          az bicep install --version v0.48.1
+          node infra/tests/check.mjs
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    # O e2e sobe a api contra o banco alvesting_e2e_test (apps/web/e2e/api-server.ts): o Playwright o recria e o semeia a cada
+    # subida da api com uma temporada inteira e sintética, pelo driver do ensaio (docs/ENSAIO.md), sem rede e sem dado de terceiro.
+    # Por isso o job tem o Postgres (as mesmas porta e credenciais do job check) e o Azurite (passo abaixo, pelo compose).
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_USER: alvesting
+          POSTGRES_PASSWORD: alvesting
+          POSTGRES_DB: alvesting_dev
+        ports:
+          - 25432:5432
+        options: >-
+          --health-cmd "pg_isready -U alvesting -d alvesting_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # O Azurite do compose (porta 25100, com --skipApiVersionCheck): o ensaio que semeia o banco do e2e grava o briefing e o IO
+      # das decisões no Blob. Qualquer resposta HTTP quer dizer que ele está de pé; conexão recusada, não.
+      - name: Azurite (Blob)
+        run: |
+          docker compose up -d azurite
+          for _ in $(seq 1 30); do
+            curl -s -o /dev/null http://127.0.0.1:25100/ && exit 0
+            sleep 1
+          done
+          docker compose logs azurite
+          exit 1
+
+      - name: Navegadores do Playwright (Chromium e WebKit)
+        run: pnpm --filter @alvesting/web exec playwright install --with-deps chromium webkit
+
+      # pixel-7 (Chromium), iphone-15 (WebKit) e desktop. Mobile é gate de merge. A api do e2e semeia o banco ao subir.
+      - name: Playwright
+        run: pnpm test:e2e
+
+      # LCP <= 2,5 s, CLS <= 0,1 e TBT <= 200 ms na home, em emulação de celular (apps/web/lighthouserc.json).
+      - name: Lighthouse CI (mobile)
+        run: pnpm lighthouse
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: lighthouse-report
+          path: apps/web/.lighthouseci
+          retention-days: 7
+          if-no-files-found: ignore
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            port: 8080
+          - app: web
+            port: 3000
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Construir a imagem
+        run: docker build -f apps/${{ matrix.app }}/Dockerfile -t alvesting-${{ matrix.app }}:ci .
+
+      # A api roda em produção (NODE_ENV da imagem), e o contrato da conta (docs/CONTA.md) a faz recusar subir sem o segredo da sessão,
+      # o Communication Services, o controlador e o contato da privacidade e uma URL https. Valores SINTÉTICOS, gerados aqui, que
+      # chegam por arquivo de ambiente (fora da imagem e fora do log); nenhum é segredo de verdade.
+      - name: Gerar a configuração sintética da conta
+        run: |
+          {
+            echo "PUBLIC_URL=https://ci.example.test"
+            echo "BETTER_AUTH_SECRET=$(openssl rand -base64 48 | tr -d '\n')"
+            echo "ACS_CONNECTION_STRING=endpoint=https://acs-ci.example.test/;accesskey=$(openssl rand -base64 24 | tr -d '\n')"
+            echo "EMAIL_SENDER_ADDRESS=DoNotReply@ci.example.test"
+            echo "LEGAL_CONTROLLER_NAME=Controlador do CI"
+            echo "LEGAL_CONTACT_EMAIL=privacidade@example.test"
+          } > "${RUNNER_TEMP}/account.env"
+
+      # Sobe a imagem como o Container Apps sobe (porta do targetPort) e confere o /health. O DATABASE_URL é só
+      # para a API aceitar o boot: ela abre a conexão na primeira consulta, e o /health não consulta. O usuário é o login de menor
+      # privilégio da api (alvesting_api): em produção a api recusa subir com outro (apps/api/src/config/env.ts, requireApiLogin; ADR 0028).
+      - name: Subir a imagem e conferir o /health
+        env:
+          APP: ${{ matrix.app }}
+          PORT: ${{ matrix.port }}
+        run: |
+          ACCOUNT_ENV=()
+          if [ "${APP}" = api ]; then ACCOUNT_ENV=(--env-file "${RUNNER_TEMP}/account.env"); fi
+          docker run -d --name app -p "127.0.0.1:${PORT}:${PORT}" "${ACCOUNT_ENV[@]}" \
+            -e DATABASE_URL=postgresql://alvesting_api:sem@127.0.0.1:5432/sem "alvesting-${APP}:ci"
+          for _ in $(seq 1 60); do
+            curl -sf "http://127.0.0.1:${PORT}/health" > health.json && break
+            sleep 1
+          done
+          cat health.json
+          grep -q "\"service\":\"${APP}\"" health.json
+
+      # Contrato fail closed da trava de origem (docs/INFRA.md, 3.3): com ORIGIN_LOCK=front-door e sem FRONT_DOOR_ID
+      # o app recusa subir. Se subisse, um ID perdido por erro de configuração desligaria a trava em silêncio.
+      - name: Recusa subir com ORIGIN_LOCK e sem FRONT_DOOR_ID
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          # a api leva a configuração da conta, senão ela recusaria por outro motivo e este teste passaria à toa
+          ACCOUNT_ENV=()
+          if [ "${APP}" = api ]; then ACCOUNT_ENV=(--env-file "${RUNNER_TEMP}/account.env"); fi
+          if docker run --rm "${ACCOUNT_ENV[@]}" -e DATABASE_URL=postgresql://alvesting_api:sem@127.0.0.1:5432/sem \
+            -e ORIGIN_LOCK=front-door "alvesting-${APP}:ci" > /dev/null 2>&1; then
+            echo "::error::a imagem ${APP} subiu com ORIGIN_LOCK=front-door e sem FRONT_DOOR_ID"
+            exit 1
+          fi
+
+      # Contrato fail closed da conta (docs/CONTA.md): em produção a api recusa subir sem a configuração dela, e o remetente falso
+      # (EMAIL_OUTBOX_DIR) não liga. O motivo da recusa é lido do log, para um erro qualquer não passar por este.
+      - name: A api recusa subir sem a configuração da conta e com o e-mail falso
+        if: ${{ matrix.app == 'api' }}
+        run: |
+          check() {
+            local name="$1"; shift
+            docker run -d --name "refuse-${name}" -e DATABASE_URL=postgresql://alvesting_api:sem@127.0.0.1:5432/sem "$@" alvesting-api:ci > /dev/null
+            for _ in $(seq 1 30); do
+              [ "$(docker inspect -f '{{.State.Running}}' "refuse-${name}")" = false ] && break
+              sleep 1
+            done
+            if [ "$(docker inspect -f '{{.State.Running}}' "refuse-${name}")" != false ]; then
+              echo "::error::a api subiu em produção (${name})"; docker logs "refuse-${name}"; exit 1
+            fi
+            docker logs "refuse-${name}" 2>&1 | grep -q "Configuração da conta inválida" \
+              || { echo "::error::a api recusou por outro motivo (${name})"; docker logs "refuse-${name}"; exit 1; }
+            docker rm -f "refuse-${name}" > /dev/null
+          }
+          check sem-conta
+          check com-email-falso --env-file "${RUNNER_TEMP}/account.env" -e EMAIL_OUTBOX_DIR=/tmp/caixa
+
+      # Contrato fail closed do banco (docs/INFRA.md, 2.2; ADR 0028): em produção a api só roda com o login de menor privilégio
+      # (alvesting_api). Com o do administrador ela recusa subir, e o motivo vem do log (a configuração da conta está completa, então
+      # nada mais a faria recusar). É o que impede um segredo trocado por engano de pôr a api de volta como dona das tabelas.
+      - name: A api recusa subir com o login administrador do banco
+        if: ${{ matrix.app == 'api' }}
+        run: |
+          docker run -d --name refuse-admin --env-file "${RUNNER_TEMP}/account.env" \
+            -e DATABASE_URL=postgresql://alvesting:sem@127.0.0.1:5432/sem alvesting-api:ci > /dev/null
+          for _ in $(seq 1 30); do
+            [ "$(docker inspect -f '{{.State.Running}}' refuse-admin)" = false ] && break
+            sleep 1
+          done
+          if [ "$(docker inspect -f '{{.State.Running}}' refuse-admin)" != false ]; then
+            echo "::error::a api subiu em produção com o login administrador do banco"; docker logs refuse-admin; exit 1
+          fi
+          docker logs refuse-admin 2>&1 | grep -q "login alvesting_api" \
+            || { echo "::error::a api recusou por outro motivo"; docker logs refuse-admin; exit 1; }
+          docker rm -f refuse-admin > /dev/null
+
+      # Regra 4 do CLAUDE.md: nenhum .env, nenhum prompt e nenhum segredo na imagem. Usuário não root.
+      - name: Sem root e sem arquivo .env na imagem
+        run: |
+          test "$(docker exec app id -u)" != "0"
+          docker exec app sh -c '! find / -xdev \( -path /proc -o -path /sys -o -path "*/node_modules" \) -prune -o -name ".env*" -print 2>/dev/null | grep -q .'
+
+      # O Bicep escolhe o papel pelo comando e roda o CLI do Prisma da imagem no job-migrate (docs/INFRA.md, 2.8).
+      - name: Os quatro papéis e o CLI do Prisma existem na imagem da api
+        if: ${{ matrix.app == 'api' }}
+        run: |
+          docker exec app sh -c 'for role in main worker decide schedule; do test -f "dist/${role}.js" || exit 1; done'
+          docker exec app node node_modules/prisma/build/index.js --version
+
+      # O job-migrate roda o db:roles depois do migrate deploy, e o backup-verify chama pg_dump e pg_restore pelo PATH (docs/INFRA.md, 2.8). O
+      # cliente do PostgreSQL tem de ser o 17, o major do servidor (o Dockerfile instala o pacote do repositório PGDG). O tamanho da imagem vai
+      # para o resumo do job: o pacote traz o perl do Debian (o pg_dump do PATH é um wrapper em Perl), e é aqui que o peso aparece pela primeira vez.
+      - name: O cliente do PostgreSQL 17 existe na imagem da api
+        if: ${{ matrix.app == 'api' }}
+        run: |
+          docker exec app pg_dump --version | grep -q '(PostgreSQL) 17\.'
+          docker exec app pg_restore --version | grep -q '(PostgreSQL) 17\.'
+          docker exec app psql --version | grep -q '(PostgreSQL) 17\.'
+          size="$(docker image inspect alvesting-api:ci --format '{{.Size}}')"
+          echo "Imagem da api: $((size / 1000000)) MB" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log do contêiner
+        if: ${{ failure() }}
+        run: docker logs app
+
+  whatif:
+    # Só com as variáveis de OIDC do repositório (docs/DEPLOY.md) e nunca em PR de fork: o fork não recebe o
+    # token de OIDC, e o job quebraria. Sem as variáveis o job é pulado.
+    if: ${{ vars.AZURE_CLIENT_ID != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'rg-alvesting-prod' }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - run: az bicep install --version v0.48.1
+
+      # Informativo: mostra o que mudaria na Azure com esta infra. Só falha se o template não compilar ou se o
+      # what-if não rodar. As tags são as que estão no ar, senão a infra "reverteria" a revisão (INFRA.md, 7.3); a
+      # versão do prompt da arena também, lida do job de decisões (INFRA.md, passo 7). A senha do Postgres é fictícia,
+      # o que ela mostra de diferença é ruído (INFRA.md, 7.2).
+      - name: What-if da infra
+        env:
+          ALVESTING_PG_ADMIN_PASSWORD: what-if-only-Not-A-Secret-0123456789
+          ALVESTING_PG_API_PASSWORD: what-if-only-Not-A-Secret-api-0123456789abcdef
+          ALVESTING_BUDGET_EMAIL: ${{ vars.ALVESTING_BUDGET_EMAIL || 'what-if@example.com' }}
+          ALVESTING_ADMIN_PRINCIPAL_ID: ${{ vars.ALVESTING_ADMIN_PRINCIPAL_ID }}
+          # a conta (docs/CONTA.md): controlador e contato da privacidade (a infra exige não vazios na fase 2) e o client ID do Google;
+          # variáveis do repositório, não segredos. Sem elas o what-if usa um valor de mentira (e mostra a diferença como ruído).
+          ALVESTING_LEGAL_CONTROLLER_NAME: ${{ vars.ALVESTING_LEGAL_CONTROLLER_NAME || 'what-if' }}
+          ALVESTING_LEGAL_CONTACT_EMAIL: ${{ vars.ALVESTING_LEGAL_CONTACT_EMAIL || 'what-if@example.com' }}
+          ALVESTING_GOOGLE_CLIENT_ID: ${{ vars.ALVESTING_GOOGLE_CLIENT_ID }}
+        run: |
+          mapfile -t tags < <(node scripts/deploy.mjs current-tags)
+          prompt_version="$(az containerapp job show --resource-group "$RESOURCE_GROUP" --name job-worker-decisions \
+            --query "properties.template.containers[0].env[?name=='PROMPT_ARENA_VERSION'].value | [0]" -o tsv)"
+          az deployment group what-if --resource-group "$RESOURCE_GROUP" --name alvesting \
+            --parameters infra/main.prod.bicepparam "${tags[@]}" "promptArenaVersion=$prompt_version"

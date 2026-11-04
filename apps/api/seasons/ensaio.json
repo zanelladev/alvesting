@@ -1,0 +1,57 @@
+{
+  "slug": "ensaio",
+  "name": "Temporada 0: ensaio local com provedores fake",
+  "params": {
+    "capitalCents": 10000000,
+    "sessions": 5,
+    "maxPositions": 10,
+    "maxOrdersPerCycle": 5,
+    "buyPercentOfEquity": [5, 25],
+    "sellPercentOfPosition": [1, 100],
+    "tradeCostBps": 3,
+    "decisionTimeBrt": "08:00",
+    "deadlineTimeBrt": "09:30",
+    "randomSeed": "alvesting-ensaio-sorteio",
+    "monteCarloSeed": "alvesting-ensaio-monte-carlo",
+    "monteCarloRuns": 1000
+  },
+  "competitors": [
+    {
+      "kind": "MODEL",
+      "slug": "fake-momentum",
+      "name": "Fake Momentum",
+      "provider": "fake",
+      "modelId": "fake/momentum"
+    },
+    {
+      "kind": "MODEL",
+      "slug": "fake-contrarian",
+      "name": "Fake Contrarian",
+      "provider": "fake",
+      "modelId": "fake/contrarian"
+    },
+    {
+      "kind": "MODEL",
+      "slug": "fake-hold",
+      "name": "Fake Hold",
+      "provider": "fake",
+      "modelId": "fake/hold-only"
+    },
+    {
+      "kind": "MODEL",
+      "slug": "fake-flaky",
+      "name": "Fake Flaky",
+      "provider": "fake",
+      "modelId": "fake/flaky-json"
+    },
+    { "kind": "RANDOM", "slug": "sorteio", "name": "Sorteio" },
+    {
+      "kind": "BENCHMARK",
+      "slug": "igual-peso",
+      "name": "Igual-peso do universo (só preço)",
+      "benchmark": "EQUAL_WEIGHT"
+    },
+    { "kind": "BENCHMARK", "slug": "cdi", "name": "CDI", "benchmark": "CDI" },
+    { "kind": "BENCHMARK", "slug": "bova11", "name": "BOVA11 (contexto)", "benchmark": "BOVA11" }
+  ]
+}

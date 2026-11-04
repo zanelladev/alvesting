@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<rss version="2.0"><channel><title>Fixture Agência Brasil</title><link>https://exemplo.invalid/</link><description>fixture sintética</description>
+<item>
+<title>Fixture: Copom mantém a meta de teste</title>
+<link>https://exemplo.invalid/agencia-brasil/copom-teste</link>
+<pubDate>Thu, 29 Oct 2026 16:00:00 -0300</pubDate>
+<description><![CDATA[<p>Notícia de teste sobre juros, sem ticker.</p>]]></description>
+</item>
+</channel></rss>

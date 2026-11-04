@@ -1,0 +1,10 @@
+{
+  "extends": "@alvesting/config/tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["src", "vitest.config.ts"]
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "tasks": {
+    "generate": {
+      "outputs": ["src/generated/**"]
+    },
+    "build": {
+      "dependsOn": ["^build", "generate"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "dependsOn": ["^build", "generate"],
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build", "generate"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "generate"]
+    },
+    "test": {
+      "dependsOn": ["^build", "generate"],
+      "cache": false,
+      "env": [
+        "TEST_DATABASE_URL",
+        "SERVICEBUS_EMULATOR",
+        "SERVICEBUS_CONNECTION_STRING",
+        "STORAGE_CONNECTION_STRING",
+        "CI"
+      ]
+    },
+    "test:e2e": {
+      "dependsOn": ["build", "@alvesting/api#build"],
+      "cache": false,
+      "env": ["BASE_URL", "E2E_API_URL", "E2E_DATABASE_URL", "STORAGE_CONNECTION_STRING"]
+    }
+  }
+}

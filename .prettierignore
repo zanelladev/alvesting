@@ -1,0 +1,14 @@
+node_modules
+dist
+.next
+.turbo
+playwright-report
+test-results
+.lighthouseci
+pnpm-lock.yaml
+apps/api/src/generated
+apps/api/prisma/migrations
+# docs são prosa com tabelas escritas à mão
+docs
+# o texto jurídico: o SHA-256 que o aceite guarda é o do arquivo, e um formatador que realinhasse uma tabela mudaria o hash
+apps/api/src/modules/account/legal

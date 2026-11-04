@@ -1,0 +1,31 @@
+{
+  "ci": {
+    "collect": {
+      "startServerCommand": "rm -rf .next/standalone/apps/web/.next/cache && PORT=4302 HOSTNAME=127.0.0.1 pnpm start",
+      "startServerReadyPattern": "Ready in",
+      "startServerReadyTimeout": 60000,
+      "url": ["http://127.0.0.1:4302/"],
+      "numberOfRuns": 5,
+      "settings": {
+        "chromeFlags": "--no-sandbox"
+      }
+    },
+    "assert": {
+      "assertions": {
+        "largest-contentful-paint": [
+          "error",
+          { "maxNumericValue": 2500, "aggregationMethod": "median" }
+        ],
+        "cumulative-layout-shift": [
+          "error",
+          { "maxNumericValue": 0.1, "aggregationMethod": "median" }
+        ],
+        "total-blocking-time": ["error", { "maxNumericValue": 200, "aggregationMethod": "median" }]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": ".lighthouseci"
+    }
+  }
+}

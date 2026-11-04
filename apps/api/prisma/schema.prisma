@@ -1,0 +1,842 @@
+// Tabelas do plano (seção 8), uma seção por etapa: Operação (job_run, audit_log), Mercado (etapa 4), Notícias,
+// macro e briefing (etapa 5), a decisão da Arena (etapa 6), a liquidação (etapa 7), a Conta (etapa 11) e a Carteira (etapa 12). O resto do
+// domínio chega nas próximas etapas.
+// IDs são ULID gerados na aplicação (26 caracteres); datas em timestamptz (dias de pregão em date).
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum JobRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  // espera, não falha (etapa 10): o eod que não achou o arquivo do pregão e agendou a própria nova tentativa. O alerta de job falho
+  // olha só o FAILED; a próxima entrega reassume a linha, como reassume a FAILED
+  WAITING
+
+  @@map("job_run_status")
+}
+
+// Uma linha por mensagem processada. (type, idempotency_key) é a chave natural da mensagem
+// (ex.: eod + 2026-10-30): mensagem repetida não processa de novo.
+model JobRun {
+  id             String       @id @db.VarChar(26)
+  queue          String
+  type           String
+  idempotencyKey String       @map("idempotency_key")
+  status         JobRunStatus @default(RUNNING)
+  attempts       Int          @default(1)
+  error          String?
+  startedAt      DateTime     @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt     DateTime?    @map("finished_at") @db.Timestamptz(3)
+
+  @@unique([type, idempotencyKey])
+  @@map("job_run")
+}
+
+// Ações de admin e eventos sensíveis. actor: "system", "cli" (comando rodado pelo operador), "admin:<ULID>" ou "user:<ULID>".
+// Hoje grava: corporate_event.created e corporate_event.updated (target "TICKER:data-ex:tipo", detail com o fator antigo e o novo),
+// account.promoted (comando account:promote, target o ULID) e account.deleted (a exclusão da conta pelo dono, target o ULID).
+model AuditLog {
+  id        String   @id @db.VarChar(26)
+  actor     String
+  action    String
+  target    String?
+  detail    Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+// --- Mercado (etapa 4; docs/DADOS.md) ---------------------------------------------------------------
+// Preços em centavos por ação (bigint), da brapi (fonte única, ADR 0032). O banco é o cache: uma barra gravada nunca é sobrescrita.
+
+enum InstrumentKind {
+  // ação à vista do lote padrão (ON, PN, UNIT): candidata ao universo
+  STOCK
+  // fora do universo, mas gravado: o briefing e o ranking usam (BOVA11)
+  REFERENCE
+
+  @@map("instrument_kind")
+}
+
+enum BarSource {
+  // legado: as barras que o banco de dev já tinha, carregadas do arquivo da B3 antes de a brapi virar a fonte única (ADR 0032, docs/DADOS.md,
+  // seção 1). Nada novo grava este valor, e nada exige dele para tratar a barra como definitiva
+  COTAHIST
+  // a fonte única: a brapi. O volume é estimado (quantidade x fechamento)
+  BRAPI
+
+  @@map("bar_source")
+}
+
+enum TradingDaySource {
+  // previsto pela lista de feriados da B3 (dias futuros ou ainda sem barras). É previsão, não fonte de leitura:
+  // a lista pode mudar (2027 é provisório) e a linha não acompanha. Quem precisa saber se um dia é pregão
+  // pergunta ao TradingCalendar (código); qualquer outro valor é dado confirmado
+  CALENDAR
+  // legado: confirmado por um arquivo do COTAHIST, no dev, antes da brapi (ADR 0032). Nada novo grava este valor
+  COTAHIST
+  // confirmado pela brapi: o pregão tem barras gravadas (o eod concluiu, ou a carga inicial as trouxe)
+  BRAPI
+
+  @@map("trading_day_source")
+}
+
+// ticker = o código negociado. O papel semeado pela lista da brapi tem ISIN nulo e a classe tirada do sufixo do código (docs/DADOS.md, seção 8);
+// os que o dev já tinha mantêm o nome, o ISIN e a classe do COTAHIST. last_seen é o último pregão com barra.
+model Instrument {
+  id          String         @id @db.VarChar(26)
+  ticker      String         @unique @db.VarChar(12)
+  name        String
+  isin        String?        @db.VarChar(12)
+  // classe da espécie (ON, PN, PNA, UNT, CI...), sem os sufixos de evento e de segmento
+  spec        String         @db.VarChar(10)
+  kind        InstrumentKind
+  // Legado do COTAHIST (FATCOT): todo papel novo entra com 1. Só GOLL54 (1000) e AZUL53 (1000000), gravados antes de o
+  // papel por lote ser descartado, têm outro valor, e o universo e a carteira do usuário os ignoram. Sai numa migration
+  // de limpeza, depois de apagar os dois e as barras deles (docs/DADOS.md, seção 4)
+  quoteFactor Int            @default(1) @map("quote_factor")
+  lastSeen    DateTime       @map("last_seen") @db.Date
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  // CNPJ da companhia, 14 dígitos. Vem do cadastro de valores mobiliários do FCA da CVM (etapa 5) e é o que leva o
+  // fato relevante da CVM ao ticker certo. Vazio até o FCA citar o código (docs/DADOS.md, seção 14)
+  cnpj        String?        @db.Char(14)
+
+  bars    DailyBar[]
+  members UniverseMember[]
+
+  @@index([cnpj])
+  @@map("instrument")
+}
+
+// Uma barra por (papel, pregão), de qualquer fonte, e nunca sobrescrita: só se insere o que falta, e a barra que chega com valor diferente do
+// gravado vira o sinal barras-divergentes, sem mudar nada. Correção é pelo evento corporativo do admin (docs/DADOS.md, seção 6).
+model DailyBar {
+  id           String    @id @db.VarChar(26)
+  instrumentId String    @map("instrument_id") @db.VarChar(26)
+  date         DateTime  @db.Date
+  openCents    BigInt    @map("open_cents")
+  highCents    BigInt    @map("high_cents")
+  lowCents     BigInt    @map("low_cents")
+  closeCents   BigInt    @map("close_cents")
+  // volume financeiro do dia em centavos. Na BRAPI é estimado: quantidade x fechamento (a brapi informa a quantidade)
+  volumeCents  BigInt    @map("volume_cents")
+  // negócios do dia: só as barras legadas do COTAHIST têm; a BRAPI não informa
+  trades       Int?
+  source       BarSource
+
+  instrument Instrument @relation(fields: [instrumentId], references: [id])
+
+  @@unique([instrumentId, date])
+  @@index([date])
+  @@map("daily_bar")
+}
+
+// Um dia em que a B3 negocia. Os passados saem das barras da brapi (confirmados), os futuros da lista de feriados (previstos).
+model TradingDay {
+  date           DateTime         @id @db.Date
+  source         TradingDaySource
+  // Legado: o SHA-256 do ZIP diário do COTAHIST que o dev guardou. Nulo nos dias confirmados pela brapi (nada mais é guardado no Blob)
+  cotahistSha256 String?          @map("cotahist_sha256") @db.Char(64)
+
+  @@map("trading_day")
+}
+
+// O universo de uma semana ISO, congelado: week é único e o snapshot nunca é refeito.
+model UniverseSnapshot {
+  id          String   @id @db.VarChar(26)
+  // semana ISO a que o universo vale, ex.: 2026-W45
+  week        String   @unique @db.VarChar(8)
+  windowStart DateTime @map("window_start") @db.Date
+  windowEnd   DateTime @map("window_end") @db.Date
+  windowDays  Int      @map("window_days")
+  // ações com algum negócio na janela
+  candidates  Int
+  // ações que passaram na presença mínima (antes do corte em 500)
+  eligible    Int
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  members UniverseMember[]
+
+  @@map("universe_snapshot")
+}
+
+model UniverseMember {
+  id             String @id @db.VarChar(26)
+  snapshotId     String @map("snapshot_id") @db.VarChar(26)
+  instrumentId   String @map("instrument_id") @db.VarChar(26)
+  // 1 = maior volume médio
+  position       Int
+  avgVolumeCents BigInt @map("avg_volume_cents")
+  // pregões da janela em que o papel negociou
+  presenceDays   Int    @map("presence_days")
+
+  snapshot   UniverseSnapshot @relation(fields: [snapshotId], references: [id])
+  instrument Instrument       @relation(fields: [instrumentId], references: [id])
+
+  @@unique([snapshotId, instrumentId])
+  @@unique([snapshotId, position])
+  // as duas únicas começam por snapshot_id: "em quais universos o papel esteve" e a checagem da FK ao mexer em
+  // instrument precisam deste
+  @@index([instrumentId])
+  @@map("universe_member")
+}
+
+// --- Notícias, macro e briefing (etapa 5; docs/DADOS.md, seções 13 a 18) -----------------------------------
+// Texto de terceiro (título e trecho) entra limpo e truncado (domain/text.ts); só o título, a fonte e o link são públicos.
+
+// Uma notícia (RSS) ou um documento da CVM (fato relevante, comunicado). url_hash é o SHA-256 da URL normalizada:
+// a mesma notícia buscada de novo não duplica.
+model NewsItem {
+  id          String   @id @db.VarChar(26)
+  urlHash     String   @unique @map("url_hash") @db.Char(64)
+  url         String
+  // id da fonte na lista fixa do código (infomoney, cvm-ipe...)
+  source      String   @db.VarChar(64)
+  title       String
+  // até 300 caracteres; não é público. Vai para o briefing só se os termos da fonte deixam (domain/sources.ts)
+  snippet     String
+  // tickers conhecidos (instrument) que a notícia cita; nos documentos da CVM vêm do CNPJ da companhia. NOT NULL no banco
+  // (a migration 20261101190000 acrescenta o que o Prisma não emite para lista)
+  tickers     String[] @default([])
+  // o que a fonte diz, nunca depois de first_seen_at (CHECK no banco). A CVM informa só o dia: meia-noite de Brasília
+  publishedAt DateTime @map("published_at") @db.Timestamptz(3)
+  // quando o worker gravou o item pela primeira vez: é o que decide em qual briefing ele entra (exatamente um). É a hora
+  // da gravação, não a do começo da busca (domain/draft.ts, seenNow)
+  firstSeenAt DateTime @map("first_seen_at") @db.Timestamptz(3)
+
+  @@index([firstSeenAt])
+  // A API pública (etapa 9; docs/API.md): /noticias e /acoes/[ticker]. O GIN atende "notícias que citam o ticker" (tickers @> {X}),
+  // e o btree em (published_at, id), as duas direções DESC, atende a lista da mais nova à mais antiga e a paginação por posição
+  // (published_at, id) < (...). Medido em 250 mil linhas (EXPLAIN em docs/API.md): de 14 a 37 ms com varredura da tabela para
+  // 0,02 a 0,6 ms. O custo é a escrita de duas entradas a mais por notícia (uns 700 por dia no máximo).
+  @@index([tickers], type: Gin)
+  @@index([publishedAt(sort: Desc), id(sort: Desc)])
+  @@map("news_item")
+}
+
+// Séries do BCB (SGS). Uma linha por (série, data do valor); a data é a do valor, não a da busca. A série `series` é o
+// nome da lista fixa do código (cdi_daily_pct, usd_brl_ptax_sell...).
+model MacroDaily {
+  series    String   @db.VarChar(32)
+  date      DateTime @db.Date
+  value     Decimal  @db.Decimal(18, 8)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([series, date])
+  @@map("macro_daily")
+}
+
+// A entrada comum a todos os modelos, congelada às 07:30 (plano 10). sha256 é o dos bytes exatos gravados no Blob, em
+// `uri`. Um briefing por pregão: o congelado nunca é refeito.
+model Briefing {
+  id        String   @id @db.VarChar(26)
+  date      DateTime @unique @db.Date
+  sha256    String   @db.Char(64)
+  uri       String
+  bytes     Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  // os ciclos da arena que usaram este briefing (etapa 6)
+  cycles Cycle[]
+
+  @@map("briefing")
+}
+
+// Os validadores do GET condicional (ETag e Last-Modified) do último arquivo da CVM que o worker processou por inteiro,
+// para não baixar de novo o ZIP do ano que a CVM só atualiza uma vez por dia.
+model FetchState {
+  source       String   @id @db.VarChar(64)
+  etag         String?
+  lastModified String?  @map("last_modified")
+  checkedAt    DateTime @default(now()) @map("checked_at") @db.Timestamptz(3)
+
+  @@map("fetch_state")
+}
+
+// --- Arena: a decisão (etapa 6; docs/ARENA.md) ---------------------------------------------------------------------
+// A temporada, o elenco, o ciclo de cada pregão e a decisão de cada modelo. Centavos em bigint; o custo das LLMs em
+// micro-dólares (bigint, 1 US$ = 1.000.000), sem float. O texto do prompt nunca é guardado: só a versão do segredo e o
+// SHA-256 (ADR 0011). Os CHECKs que o Prisma não emite estão na migration 20261101200000_arena.
+
+enum SeasonStatus {
+  DRAFT
+  RUNNING
+  FINISHED
+
+  @@map("season_status")
+}
+
+enum CompetitorKind {
+  // um LLM, com o provedor e o ID do modelo fixados na criação da temporada
+  MODEL
+  // o Sorteio: controle obrigatório do ranking
+  RANDOM
+  // igual-peso do universo (só preço), CDI e BOVA11
+  BENCHMARK
+
+  @@map("competitor_kind")
+}
+
+enum Benchmark {
+  EQUAL_WEIGHT
+  CDI
+  BOVA11
+
+  @@map("benchmark")
+}
+
+enum CycleStatus {
+  // criado, com as mensagens decide publicadas; fecha quando todo MODEL tem decisão
+  OPEN
+  CLOSED
+  // sem briefing ou sem orçamento: nenhum modelo foi chamado (a liquidação trata como HOLD de todos)
+  SKIPPED
+
+  @@map("cycle_status")
+}
+
+enum DecisionStatus {
+  DECIDED
+  // HOLD que o sistema impôs (prazo, prompt divergente, resposta inválida, falha); o motivo fica em hold_reason
+  FORCED_HOLD
+
+  @@map("decision_status")
+}
+
+enum DecisionAction {
+  BUY
+  SELL
+  HOLD
+
+  @@map("decision_action")
+}
+
+enum MarketView {
+  otimista
+  pessimista
+  neutro
+
+  @@map("market_view")
+}
+
+// Os parâmetros em `params` são os de seasonParamsSchema (packages/contracts): o web e a liquidação leem o mesmo.
+// start_date só existe depois do season:start (o próximo pregão).
+model Season {
+  id         String       @id @db.VarChar(26)
+  slug       String       @unique @db.VarChar(64)
+  name       String
+  status     SeasonStatus @default(DRAFT)
+  startDate  DateTime?    @map("start_date") @db.Date
+  params     Json
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  startedAt  DateTime?    @map("started_at") @db.Timestamptz(3)
+  finishedAt DateTime?    @map("finished_at") @db.Timestamptz(3)
+
+  competitors Competitor[]
+  cycles      Cycle[]
+  // as linhas derivadas da liquidação (etapa 7)
+  orders      Order[]
+  positions   Position[]
+  snapshots   EquitySnapshot[]
+  stats       SeasonStat[]
+  baselines   RandomBaseline[]
+
+  @@map("season")
+}
+
+model Competitor {
+  id        String         @id @db.VarChar(26)
+  seasonId  String         @map("season_id") @db.VarChar(26)
+  slug      String         @db.VarChar(64)
+  name      String
+  kind      CompetitorKind
+  // só MODEL: openrouter | azure-openai | fake, e o ID do modelo fixado (CHECK na migration)
+  provider  String?        @db.VarChar(16)
+  modelId   String?        @map("model_id")
+  // só BENCHMARK
+  benchmark Benchmark?
+  // só MODEL: recursos do provedor (JSON Schema, esforço de raciocínio) e preços, de seasonFileSchema
+  config    Json?
+  // ordem do elenco no arquivo da temporada
+  position  Int
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  season    Season           @relation(fields: [seasonId], references: [id])
+  decisions Decision[]
+  orders    Order[]
+  positions Position[]
+  snapshots EquitySnapshot[]
+  stat      SeasonStat?
+
+  @@unique([seasonId, slug])
+  @@map("competitor")
+}
+
+// A versão do segredo prompt-arena no Key Vault e o SHA-256 do texto. O sched-cycle só conhece a versão (a identidade dele
+// não lê o segredo): o sha256 fica nulo até a primeira execução do decide, que o registra, e daí em diante toda execução
+// confere o seu contra o registrado.
+model PromptVersion {
+  id           String    @id @db.VarChar(26)
+  version      String    @unique @db.VarChar(32)
+  sha256       String?   @db.Char(64)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  registeredAt DateTime? @map("registered_at") @db.Timestamptz(3)
+
+  cycles Cycle[]
+
+  @@map("prompt_version")
+}
+
+// Um ciclo por temporada e pregão. decision_at e deadline_at são os instantes de Brasília daquele dia (08:00 e 09:30).
+model Cycle {
+  id              String      @id @db.VarChar(26)
+  seasonId        String      @map("season_id") @db.VarChar(26)
+  date            DateTime    @db.Date
+  status          CycleStatus @default(OPEN)
+  // sem_briefing | orcamento; só no SKIPPED (CHECK na migration)
+  skipReason      String?     @map("skip_reason") @db.VarChar(32)
+  decisionAt      DateTime    @map("decision_at") @db.Timestamptz(3)
+  deadlineAt      DateTime    @map("deadline_at") @db.Timestamptz(3)
+  briefingId      String?     @map("briefing_id") @db.VarChar(26)
+  promptVersionId String?     @map("prompt_version_id") @db.VarChar(26)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  closedAt        DateTime?   @map("closed_at") @db.Timestamptz(3)
+
+  season        Season         @relation(fields: [seasonId], references: [id])
+  briefing      Briefing?      @relation(fields: [briefingId], references: [id], onDelete: Restrict)
+  promptVersion PromptVersion? @relation(fields: [promptVersionId], references: [id], onDelete: Restrict)
+  decisions     Decision[]
+
+  @@unique([seasonId, date])
+  @@index([date])
+  @@index([briefingId])
+  @@index([promptVersionId])
+  @@map("cycle")
+}
+
+// A decisão de um modelo num ciclo (ciclo + competidor únicos). Os textos públicos (summary e rationale) já passaram pelo
+// filtro de vazamento. O IO bruto (requisição sem o prompt, resposta crua e metadados) fica no Blob `llm-io`; aqui ficam o
+// SHA-256 de cada um e os endereços, que a API nunca devolve.
+model Decision {
+  id           String         @id @db.VarChar(26)
+  cycleId      String         @map("cycle_id") @db.VarChar(26)
+  competitorId String         @map("competitor_id") @db.VarChar(26)
+  status       DecisionStatus
+  // prazo | prompt_divergente | resposta_invalida | falha | sem_resposta; só no FORCED_HOLD (CHECK na migration)
+  holdReason   String?        @map("hold_reason") @db.VarChar(32)
+  marketView   MarketView?    @map("market_view")
+  summary      String?
+  // tokens de todas as chamadas do ciclo (a original e o reparo, se houve)
+  usage        Json?
+  // em micro-dólares, somando as chamadas
+  costMicroUsd BigInt         @default(0) @map("cost_micro_usd")
+  // o que o provedor aplicou: modelo e provedor reais e os parâmetros pedidos
+  applied      Json?
+  inputSha256  String?        @map("input_sha256") @db.Char(64)
+  outputSha256 String?        @map("output_sha256") @db.Char(64)
+  metaSha256   String?        @map("meta_sha256") @db.Char(64)
+  ioUris       Json?          @map("io_uris")
+  // os campos de texto público em que o filtro achou trecho do prompt (só o nome do campo, nunca o texto)
+  leakFields   String[]       @default([]) @map("leak_fields")
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  cycle      Cycle          @relation(fields: [cycleId], references: [id])
+  competitor Competitor     @relation(fields: [competitorId], references: [id])
+  items      DecisionItem[]
+
+  @@unique([cycleId, competitorId])
+  @@index([competitorId])
+  @@map("decision")
+}
+
+// Um item da resposta do modelo, na ordem em que ele o listou. Item descartado (dropped) leva o motivo e, quando é de
+// schema, só os códigos dos campos: o conteúdo dele não é guardado.
+model DecisionItem {
+  id         String          @id @db.VarChar(26)
+  decisionId String          @map("decision_id") @db.VarChar(26)
+  position   Int
+  action     DecisionAction?
+  ticker     String?         @db.VarChar(12)
+  // BUY: % do patrimônio (de 5 a 25 no item que vale: decision_item_buy_range_check); SELL: % da posição (1 a 100). Decimal
+  // exato (nunca float); nulo no HOLD
+  percent    Decimal?        @db.Decimal(7, 4)
+  confidence Decimal?        @db.Decimal(4, 3)
+  rationale  String?
+  dropped    Boolean         @default(false)
+  dropReason String?         @map("drop_reason") @db.VarChar(32)
+  dropDetail String?         @map("drop_detail") @db.VarChar(200)
+
+  decision Decision @relation(fields: [decisionId], references: [id])
+  // a ordem em que o item virou (etapa 7); o item descartado nunca vira ordem
+  orders   Order[]
+
+  @@unique([decisionId, position])
+  @@map("decision_item")
+}
+
+// --- Liquidação (etapa 7; docs/METODOLOGIA.md, docs/JOBS.md) ---------------------------------------------------------------
+// Tudo abaixo, menos corporate_event, é DERIVADO: a liquidação recalcula a temporada do zero e SUBSTITUI estas linhas numa
+// transação (SettlementRepository.replace), com a trava consultiva da temporada. Nenhuma é fonte de verdade; a fonte são as
+// decisões, as barras, o universo, o CDI e os eventos. Centavos em bigint; taxas e percentis em pontos-base (1 bp = 0,01%),
+// inteiros. Os CHECKs que o Prisma não emite estão na migration 20261101220000_settlement. Por serem refeitas a cada liquidação,
+// o `id` destas linhas muda toda vez: ele NÃO é identificador público (link, chave de cache, citação do chat). A API identifica
+// pelas chaves naturais: slug do competidor, pregão, ticker e o índice da ordem (docs/adr/0022).
+
+enum OrderStatus {
+  // executou a quantidade que o percentual pedia
+  FILLED
+  // o caixa só deixou comprar menos
+  REDUCED
+  // não executou; `reason` diz por quê
+  NOT_EXECUTED
+
+  @@map("order_status")
+}
+
+enum CorporateEventKind {
+  // desdobramento: cada `ratio_from` ações viram `ratio_to` (mais ações)
+  SPLIT
+  // grupamento: menos ações
+  REVERSE_SPLIT
+  // bonificação em ações
+  BONUS
+
+  @@map("corporate_event_kind")
+}
+
+// Uma ordem BUY ou SELL de um competidor num pregão, executada ou não. item_index é a posição na lista de ordens do
+// pregão (a do domínio): liga a ordem ao decision_item quando há (modelos), e é a ordem de listagem do igual-peso e do
+// Sorteio (que não têm decisão). As vendas executam antes das compras, então a ordem de execução não é a do índice.
+model Order {
+  id                String         @id @db.VarChar(26)
+  seasonId          String         @map("season_id") @db.VarChar(26)
+  competitorId      String         @map("competitor_id") @db.VarChar(26)
+  date              DateTime       @db.Date
+  itemIndex         Int            @map("item_index")
+  // só modelos: o item da decisão que originou a ordem
+  decisionItemId    String?        @map("decision_item_id") @db.VarChar(26)
+  ticker            String         @db.VarChar(12)
+  // BUY ou SELL (CHECK na migration: HOLD não vira ordem)
+  action            DecisionAction
+  status            OrderStatus
+  // no_position | max_positions | no_bar | below_one_share | insufficient_cash; só no NOT_EXECUTED (CHECK)
+  reason            String?        @db.VarChar(24)
+  // quantas ações o percentual pedia, antes do limite de caixa; nulo quando não deu para calcular
+  requestedQuantity BigInt?        @map("requested_quantity")
+  filledQuantity    BigInt         @map("filled_quantity")
+  // a abertura do pregão; nulo quando a ação não tem barra
+  priceCents        BigInt?        @map("price_cents")
+
+  season       Season        @relation(fields: [seasonId], references: [id])
+  competitor   Competitor    @relation(fields: [competitorId], references: [id])
+  decisionItem DecisionItem? @relation(fields: [decisionItemId], references: [id], onDelete: Restrict)
+  fill         Fill?
+
+  @@unique([competitorId, date, itemIndex])
+  @@index([seasonId])
+  @@index([decisionItemId])
+  @@map("order")
+}
+
+// A execução de uma ordem (uma por ordem executada). Apaga junto com a ordem: a liquidação substitui as duas.
+model Fill {
+  id            String  @id @db.VarChar(26)
+  orderId       String  @unique @map("order_id") @db.VarChar(26)
+  quantity      BigInt
+  priceCents    BigInt  @map("price_cents")
+  // quantidade x preço (CHECK)
+  notionalCents BigInt  @map("notional_cents")
+  // 0,03% (tradeCostBps) do valor, no centavo mais próximo
+  costCents     BigInt  @map("cost_cents")
+  // só na venda: o recebido (valor menos custo) menos o custo médio das ações vendidas
+  realizedCents BigInt? @map("realized_cents")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("fill")
+}
+
+// A posição de um competidor no fechamento de um pregão. Quem decide lê estas linhas do último pregão liquidado.
+model Position {
+  id           String   @id @db.VarChar(26)
+  seasonId     String   @map("season_id") @db.VarChar(26)
+  competitorId String   @map("competitor_id") @db.VarChar(26)
+  date         DateTime @db.Date
+  ticker       String   @db.VarChar(12)
+  quantity     BigInt
+  // o que foi pago nas compras (valor mais custo), baixado na proporção a cada venda; o preço médio é custo / quantidade
+  costCents    BigInt   @map("cost_cents")
+  // o fechamento do pregão, ou o último conhecido quando a ação não teve barra (stale)
+  markCents    BigInt   @map("mark_cents")
+  valueCents   BigInt   @map("value_cents")
+  stale        Boolean
+
+  season     Season     @relation(fields: [seasonId], references: [id])
+  competitor Competitor @relation(fields: [competitorId], references: [id])
+
+  @@unique([competitorId, date, ticker])
+  @@index([seasonId])
+  @@map("position")
+}
+
+// Caixa, posições e patrimônio de um competidor no fechamento de um pregão (modelos, Sorteio e referências).
+model EquitySnapshot {
+  id                  String    @id @db.VarChar(26)
+  seasonId            String    @map("season_id") @db.VarChar(26)
+  competitorId        String    @map("competitor_id") @db.VarChar(26)
+  date                DateTime  @db.Date
+  cashCents           BigInt    @map("cash_cents")
+  positionsValueCents BigInt    @map("positions_value_cents")
+  equityCents         BigInt    @map("equity_cents")
+  // juros do CDI creditados no início do pregão (zero no primeiro)
+  interestCents       BigInt    @map("interest_cents")
+  // a data da taxa de CDI usada: a do pregão anterior, ou a última publicada antes dela (nulo no primeiro pregão)
+  cdiDate             DateTime? @map("cdi_date") @db.Date
+  // percentil no Monte Carlo nesse pregão, em pontos-base (0 a 10.000)
+  percentileBps       Int?      @map("percentile_bps")
+
+  season     Season     @relation(fields: [seasonId], references: [id])
+  competitor Competitor @relation(fields: [competitorId], references: [id])
+
+  @@unique([competitorId, date])
+  @@index([seasonId, date])
+  @@map("equity_snapshot")
+}
+
+// As métricas de um competidor até o último pregão liquidado (as_of). Pontos-base inteiros (docs/METODOLOGIA.md).
+model SeasonStat {
+  id                   String   @id @db.VarChar(26)
+  seasonId             String   @map("season_id") @db.VarChar(26)
+  competitorId         String   @unique @map("competitor_id") @db.VarChar(26)
+  asOf                 DateTime @map("as_of") @db.Date
+  returnBps            Int      @map("return_bps")
+  percentileBps        Int?     @map("percentile_bps")
+  excessEqualWeightBps Int?     @map("excess_equal_weight_bps")
+  excessCdiBps         Int?     @map("excess_cdi_bps")
+  maxDrawdownBps       Int      @map("max_drawdown_bps")
+  sells                Int
+  winningSells         Int      @map("winning_sells")
+  // nulo sem venda
+  winRateBps           Int?     @map("win_rate_bps")
+  trades               Int
+
+  season     Season     @relation(fields: [seasonId], references: [id])
+  competitor Competitor @relation(fields: [competitorId], references: [id])
+
+  @@index([seasonId])
+  @@map("season_stat")
+}
+
+// O Monte Carlo de um pregão: a semente, quantas carteiras aleatórias e a distribuição do patrimônio de fechamento
+// (percentis 5, 25, 50, 75 e 95, pelo posto mais próximo) e do retorno sobre o capital. A mesma semente dá as mesmas linhas.
+model RandomBaseline {
+  id             String   @id @db.VarChar(26)
+  seasonId       String   @map("season_id") @db.VarChar(26)
+  date           DateTime @db.Date
+  seed           String   @db.VarChar(64)
+  runs           Int
+  equityP5Cents  BigInt   @map("equity_p5_cents")
+  equityP25Cents BigInt   @map("equity_p25_cents")
+  equityP50Cents BigInt   @map("equity_p50_cents")
+  equityP75Cents BigInt   @map("equity_p75_cents")
+  equityP95Cents BigInt   @map("equity_p95_cents")
+  returnP5Bps    Int      @map("return_p5_bps")
+  returnP25Bps   Int      @map("return_p25_bps")
+  returnP50Bps   Int      @map("return_p50_bps")
+  returnP75Bps   Int      @map("return_p75_bps")
+  returnP95Bps   Int      @map("return_p95_bps")
+
+  season Season @relation(fields: [seasonId], references: [id])
+
+  @@unique([seasonId, date])
+  @@map("random_baseline")
+}
+
+// Desdobramento, grupamento ou bonificação em ações, registrado pelo admin (settle:event). É do mercado, não de uma
+// temporada: toda temporada que tem a ação na carteira na data ex o aplica. Cada `ratio_from` ações antigas viram `ratio_to`
+// novas (desdobramento 1:2, grupamento 10:1, bonificação de 10% = 10:11). Proventos em dinheiro estão fora da v2.0.
+model CorporateEvent {
+  id        String             @id @db.VarChar(26)
+  ticker    String             @db.VarChar(12)
+  exDate    DateTime           @map("ex_date") @db.Date
+  kind      CorporateEventKind
+  ratioFrom Int                @map("ratio_from")
+  ratioTo   Int                @map("ratio_to")
+  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([ticker, exDate, kind])
+  @@index([exDate])
+  @@map("corporate_event")
+}
+
+// --- Conta (etapa 11; docs/CONTA.md) ---------------------------------------------------------------------------------------------
+// user, session, account e verification são as tabelas do Better Auth (nomes do plano, §8), com ULID na chave (advanced.database.generateId
+// = newId) e colunas em snake_case como o resto do schema. Todo modelo ligado ao usuário apaga em cascata e sai no export
+// (modules/account/domain/user-data.ts, e o teste user-data.spec.ts reprova o que esquecer: a carteira e as conversas das etapas 12 e
+// 13 já nascem cobertas). `consent` é o que o plano chama de `profile` (termos e versão): o mínimo que o aceite pede.
+
+enum UserRole {
+  USER
+  ADMIN
+
+  @@map("user_role")
+}
+
+enum LegalDocument {
+  TERMS
+  PRIVACY
+
+  @@map("legal_document")
+}
+
+// O papel só muda pelo comando account:promote (e na hora do boot de um ambiente de teste): nenhuma rota HTTP o aceita (o campo no
+// Better Auth é input: false). O e-mail é sempre minúsculo (CHECK na migration).
+model User {
+  id            String   @id @db.VarChar(26)
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false) @map("email_verified")
+  image         String?
+  role          UserRole @default(USER)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sessions  Session[]
+  accounts  Account[]
+  consents  Consent[]
+  portfolio Portfolio?
+
+  @@map("user")
+}
+
+// Uma sessão por login. O token é a credencial (o cookie leva o valor assinado) e nunca sai. ip_address e user_agent existem porque o
+// Better Auth os grava; o hook de session.create os deixa nulos (dados mínimos, docs/CONTA.md).
+model Session {
+  id        String   @id @db.VarChar(26)
+  userId    String   @map("user_id") @db.VarChar(26)
+  token     String   @unique
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+// Uma forma de entrar: `credential` (e-mail e senha: password é o scrypt) ou `google`. Os tokens do Google existem na tabela porque o
+// Better Auth os grava, mas o hook de account.create/update os zera: nenhum token de terceiro fica no banco.
+model Account {
+  id                    String    @id @db.VarChar(26)
+  userId                String    @map("user_id") @db.VarChar(26)
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz(3)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+// Pedidos de uso único: a redefinição de senha (identifier = o resumo do token, value = o ULID do usuário) e o estado do fluxo do Google.
+// Não tem chave para o usuário (o Better Auth não a prevê), então não entra no export (guarda token) e é apagada junto com a conta
+// pelo value (user.deleteUser.beforeDelete em modules/account/infrastructure/auth.ts, na mesma transação da exclusão).
+// O índice de `value` é hash: o estado do fluxo do Google (callbackURL, errorURL e dado extra) é texto do cliente, e um btree recusa
+// linha acima de 2704 bytes (a escrita anônima de um valor comprido virava 500).
+model Verification {
+  id         String   @id @db.VarChar(26)
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([identifier])
+  @@index([value], type: Hash)
+  @@index([expiresAt])
+  @@map("verification")
+}
+
+// O aceite dos termos e da política: uma linha por (usuário, documento, versão) com o SHA-256 do texto que o usuário viu e a data. É um
+// histórico que não se reescreve: um gatilho do banco recusa UPDATE e outro recusa DELETE (as migrations), e a linha só some junto com a
+// conta (a cascata passa pelo gatilho). Versão nova de um documento = linha nova, e a antiga fica.
+// ponytail: a chave é (usuário, documento, versão), sem o SHA-256: editar um texto sem subir a versão faria o aceite novo ser descartado
+// em silêncio (ON CONFLICT DO NOTHING) e a linha antiga guardar o hash do texto errado. Quem impede isso é o teste dos hashes congelados
+// (legal-documents.spec.ts); se um dia o texto puder mudar fora do repositório, a chave passa a incluir o sha256.
+model Consent {
+  id         String        @id @db.VarChar(26)
+  userId     String        @map("user_id") @db.VarChar(26)
+  document   LegalDocument
+  version    String        @db.VarChar(16)
+  sha256     String        @db.Char(64)
+  acceptedAt DateTime      @default(now()) @map("accepted_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, document, version])
+  @@map("consent")
+}
+
+// --- Carteira (etapa 12; docs/API.md, seção 9; ADR 0031) ----------------------------------------------------------------------------
+// Uma carteira por usuário (nasce no primeiro lançamento) e os lançamentos de compra dela. É dado pessoal: some junto com a conta (a cascata
+// do usuário passa pela carteira e chega aos lançamentos), sai no export e fica FORA do dump do backup mensal (table-policy.ts, `personal`).
+
+model Portfolio {
+  id        String   @id @db.VarChar(26)
+  userId    String   @unique @map("user_id") @db.VarChar(26)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lots PortfolioLot[]
+
+  @@map("portfolio")
+}
+
+// Um lançamento de compra. O que vale é o CUSTO TOTAL em centavos (quantidade × preço, ou o valor total pago): o modo em que o usuário o digitou
+// não é guardado, e os dois modos geram o mesmo custo. Os tetos (quantidade e custo) são CHECK do banco, repetidos pelo contrato
+// (packages/contracts/src/portfolio-rules.ts). Um gatilho do banco (`portfolio_lot_api_guard`, só para o login da api) limita a carteira a 200
+// lançamentos, sob trava: dois INSERT juntos não passam do teto.
+// ponytail: o ticker é texto, validado na ESCRITA contra `instrument` (kind STOCK, o mesmo conjunto que /stocks?q busca), e NÃO é chave
+// estrangeira: a limpeza de `instrument` que o schema prevê (docs/DADOS.md, seção 4) não pode travar por causa da carteira de um usuário.
+// Teto: um ticker que sai de `instrument` fica no lançamento sem fechamento (a posição sai com valor e P&L nulos); a saída seria uma tabela
+// de tickers aposentados e um aviso na tela.
+model PortfolioLot {
+  id          String    @id @db.VarChar(26)
+  portfolioId String    @map("portfolio_id") @db.VarChar(26)
+  ticker      String    @db.VarChar(12)
+  quantity    Int
+  costCents   BigInt    @map("cost_cents")
+  // a data da compra é opcional
+  boughtOn    DateTime? @map("bought_on") @db.Date
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId])
+  @@map("portfolio_lot")
+}

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Fixture Money Times</title><link>https://exemplo.invalid/</link><description>fixture sintética</description>
+<item>
+<title>Fixture: Banco do Brasil (BBAS3) e Itaú (ITUB4) em teste de balanço</title>
+<link>https://exemplo.invalid/money-times/bancos-balanco-teste</link>
+<pubDate>Thu, 29 Oct 2026 17:00:00 -0300</pubDate>
+<description><![CDATA[<p>Dados <em>sintéticos</em>: lucro hipotético de R$&nbsp;1,00 bilhão.</p>]]></description>
+</item>
+<item>
+<title>Fixture: Ibovespa e BOVA11 abrem em teste</title>
+<link>https://exemplo.invalid/money-times/ibovespa-teste</link>
+<pubDate>Thu, 29 Oct 2026 21:00:00 -0300</pubDate>
+<description>Texto de teste sobre o índice.</description>
+</item>
+</channel></rss>

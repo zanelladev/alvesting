@@ -1,0 +1,5 @@
+competitor,return_bps,excess_equal_weight_bps,excess_cdi_bps,max_drawdown_bps,sells,winning_sells,win_rate_bps,trades
+model-a,-90,-674,-110,437,3,1,3333,10
+equal-weight,584,0,564,341,0,0,,3
+cdi,20,-564,0,0,0,0,,0
+bova11,301,-283,281,37,0,0,,1

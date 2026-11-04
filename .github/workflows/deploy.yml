@@ -1,0 +1,220 @@
+name: Deploy
+
+# Plano §5.10 e etapas 3 e 10 do §16. Merge na main publica, sem passo manual. Passo a passo do primeiro deploy, OIDC e
+# variáveis: docs/DEPLOY.md. A lógica do Container Apps está em scripts/deploy.mjs (com testes); aqui fica a ordem.
+#
+#   images  constrói as duas imagens e as publica no ACR com a tag = SHA do commit
+#   deploy  blue/green com o label green (ADR 0029). Migrations (e o login da api no banco); depois a API e, só então, o WEB, cada um assim:
+#           revisão nova SEM tráfego e com o label green → smoke no endereço do label → Playwright mobile pelo endpoint green do
+#           Front Door (WAF e trava de origem de verdade) → só então 100%. No fim, o Front Door de produção é provado de novo.
+#
+# GARANTIA: prova que falha NÃO muda o tráfego. A antiga segue com 100% e a nova é desativada.
+#  1. O passo "Fixar o tráfego" roda antes de existir revisão nova e prende os 100% à revisão atual, pelo nome.
+#     Assim a Azure cria a nova com 0% (Microsoft Learn, "Traffic splitting").
+#  2. Só os passos "Virar o tráfego" movem tráfego para a nova. Cada um vem depois do smoke no label e do Playwright do app dele; uma
+#     prova que falha interrompe o job antes. A api vira antes do web: o web novo pode depender dela, e a migration é só aditiva (por isso
+#     o Playwright do web verde já roda contra a api nova).
+#  3. O passo "Desfazer" (if: failure() || cancelled()) devolve 100% à antiga nos DOIS apps, tira o label green e desativa a nova.
+#     Idempotente.
+#  4. O ponto sem volta é o passo "Confirmar": depois dele a antiga é desativada e o "Desfazer" não faz mais nada (voltar de lá é
+#     `node scripts/deploy.mjs revert`, docs/DEPLOY.md, seção 6).
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+    inputs:
+      images_only:
+        description: 'Só publica as imagens no ACR (primeiro deploy, antes da fase 2 da infra: docs/DEPLOY.md)'
+        type: boolean
+        default: false
+
+# Dois deploys juntos brigariam pelo tráfego. O segundo espera o primeiro terminar; nunca cancela um em andamento.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'rg-alvesting-prod' }}
+  ACR_NAME: ${{ vars.ACR_NAME || 'cralvesting' }}
+  REGISTRY: ${{ vars.ACR_NAME || 'cralvesting' }}.azurecr.io
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  images:
+    # Sem as variáveis de OIDC (fork, ou repositório ainda não configurado) não há o que publicar: o job é pulado.
+    if: ${{ vars.AZURE_CLIENT_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Entrar no ACR
+        run: az acr login --name "$ACR_NAME"
+
+      # Tag = SHA do commit: imutável, e é ela que o deploy e o rollback citam. Nada de `latest`.
+      - name: Construir e publicar as imagens
+        run: |
+          for app in api web; do
+            image="${REGISTRY}/alvesting-${app}:${IMAGE_TAG}"
+            docker build -f "apps/${app}/Dockerfile" -t "$image" .
+            docker push "$image"
+            echo "publicada: $image" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+  deploy:
+    needs: images
+    if: ${{ !inputs.images_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      # URL pública do Front Door (ou do domínio próprio), sem barra no fim. É onde o smoke final e o Playwright de produção batem.
+      SITE_URL: ${{ vars.SITE_URL }}
+      # O endpoint green do Front Door (saída greenSiteUrl da infra), sem barra no fim: leva aos labels green da api e do web, com o WAF e a
+      # trava de origem de verdade, e é onde o Playwright prova a revisão nova ANTES de ela receber tráfego.
+      SITE_GREEN_URL: ${{ vars.SITE_GREEN_URL }}
+      # O estado entre os passos (qual revisão é a antiga, qual é a nova) fica num arquivo do runner. Está no env do job,
+      # e não num passo, para o "Desfazer" achá-lo mesmo quando a falha vem antes do primeiro passo do rollout.
+      DEPLOY_STATE: ${{ github.workspace }}/.deploy-state.json
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Tudo o que pode falhar sem tocar na Azure vem antes de qualquer mudança de tráfego.
+      - name: Conferir as variáveis do repositório
+        run: |
+          check_url() {
+            test -n "$2" || { echo "::error::falta a variável $1 do repositório (docs/DEPLOY.md, seção 3)"; exit 1; }
+            case "$2" in https://*) ;; *) echo "::error::$1 precisa começar com https://"; exit 1 ;; esac
+          }
+          check_url SITE_URL "$SITE_URL"
+          check_url SITE_GREEN_URL "$SITE_GREEN_URL"
+          # O Playwright pelo Front Door verde só prova a revisão NOVA se o endereço for o do endpoint green. Com o do site (uma cópia errada da
+          # variável) ele provaria a revisão antiga, que ainda tem os 100%, passaria, e o `promote` viraria código não provado pela borda.
+          test "${SITE_URL%/}" != "${SITE_GREEN_URL%/}" || { echo "::error::SITE_GREEN_URL não pode ser igual a SITE_URL: é o endereço do endpoint green (saída greenSiteUrl da infra, docs/DEPLOY.md, seção 3)"; exit 1; }
+
+      - name: Dependências do e2e
+        run: |
+          pnpm install --frozen-lockfile --filter "@alvesting/web..."
+          pnpm --filter @alvesting/contracts build
+          pnpm --filter @alvesting/web exec playwright install --with-deps chromium webkit
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # O sufixo da revisão (o nome vira ca-api--<sufixo>) começa por letra, como a Azure exige, e é único por tentativa.
+      - name: Nome da revisão
+        run: echo "REVISION_SUFFIX=r${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+
+      - name: Fixar o tráfego na revisão atual
+        run: node scripts/deploy.mjs pin
+
+      # Migration segura (CLAUDE.md): o código antigo continua funcionando com o banco já migrado. O job roda o `migrate deploy` e, se deu certo,
+      # o `db:roles` (o login de menor privilégio da api no banco, ADR 0028).
+      - name: Migrations e login da api no banco (job-migrate)
+        run: node scripts/deploy.mjs migrate
+
+      # --- A API primeiro: o web novo pode depender dela. Cada app passa por: revisão nova com o label green a 0% → smoke no label →
+      # Playwright mobile pelo endpoint green do Front Door → 100%. O Playwright é o smoke de apps/web/e2e/smoke.spec.ts (o resto da suíte e2e
+      # depende do servidor local) e chama o playwright direto, sem o turbo, que reconstruiria tudo aqui. Em Pixel 7 e iPhone 15 (WebKit).
+      - name: API, passo 1 - criar a revisão nova, com o label green e sem tráfego
+        run: node scripts/deploy.mjs create api
+
+      - name: API, passo 2 - smoke no endereço do label green
+        run: node scripts/deploy.mjs smoke-green api
+
+      # No Front Door verde o web ainda é o do deploy anterior (o web novo só nasce depois): só os testes da api (@api).
+      - name: API, passo 3 - Playwright (mobile) pelo Front Door verde
+        env:
+          BASE_URL: ${{ vars.SITE_GREEN_URL }}
+        run: pnpm --filter @alvesting/web exec playwright test e2e/smoke.spec.ts --project=pixel-7 --project=iphone-15 --grep @api
+
+      - name: API, passo 4 - virar o tráfego da api
+        run: node scripts/deploy.mjs promote api
+
+      # --- O WEB: o Playwright do web verde já fala com a api nova (a que acabou de ganhar os 100%), pelo SSR e pelo /api/*.
+      - name: Web, passo 1 - criar a revisão nova, com o label green e sem tráfego
+        run: node scripts/deploy.mjs create web
+
+      - name: Web, passo 2 - smoke no endereço do label green
+        run: node scripts/deploy.mjs smoke-green web
+
+      # A suíte inteira do smoke: o site verde (web novo) e a api (a nova, que já serve).
+      - name: Web, passo 3 - Playwright (mobile) pelo Front Door verde
+        env:
+          BASE_URL: ${{ vars.SITE_GREEN_URL }}
+        run: pnpm --filter @alvesting/web exec playwright test e2e/smoke.spec.ts --project=pixel-7 --project=iphone-15
+
+      - name: Web, passo 4 - virar o tráfego do web
+        run: node scripts/deploy.mjs promote web
+
+      # --- Os dois já servem o código novo: o Front Door de produção (rotas com cache, domínio, certificado) é provado com ele. Falhou: o
+      # "Desfazer" devolve os DOIS apps às revisões antigas, que seguem ativas.
+      - name: Smoke pelo Front Door de produção
+        run: node scripts/deploy.mjs smoke-edge
+
+      - name: Smoke do Playwright (mobile) pelo Front Door de produção
+        env:
+          BASE_URL: ${{ vars.SITE_URL }}
+        run: pnpm --filter @alvesting/web exec playwright test e2e/smoke.spec.ts --project=pixel-7 --project=iphone-15
+
+      # Ponto sem volta: confirma o deploy e desativa as revisões antigas (senão o custo dobra a cada deploy).
+      - name: Confirmar e desativar as revisões antigas
+        run: node scripts/deploy.mjs cleanup
+
+      # Worker, decisões e agendadores usam a mesma imagem da api: sem isto ficariam na imagem da infra.
+      - name: Atualizar worker, decisões e agendadores
+        run: node scripts/deploy.mjs roll-roles
+
+      # Medição, não portão (ADR 0017): o resultado do SSE pelo Front Door vai para o resumo do job.
+      - name: Teste de SSE pelo Front Door (informativo)
+        continue-on-error: true
+        run: |
+          {
+            echo '### SSE pelo Front Door'
+            echo '```'
+            node scripts/sse-probe.mjs "${SITE_URL%/}/api/v1/health/stream" 2>&1 || echo "(código de saída $?)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # O relatório do Playwright do último portão, para ver o que quebrou. Fica antes do "Desfazer" de propósito.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        with:
+          name: playwright-report-deploy
+          path: apps/web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Desfazer (a antiga volta a ter 100% nos dois apps, o label green sai e a nova é desativada)
+        if: ${{ failure() || cancelled() }}
+        run: node scripts/deploy.mjs rollback

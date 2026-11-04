@@ -1,0 +1,2 @@
+# pastas temporárias do infra/tests/check.mjs (apagadas ao fim; sobram só se o processo for morto)
+tests/.tmp-*/

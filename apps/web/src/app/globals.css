@@ -1,0 +1,78 @@
+@import 'tailwindcss';
+
+/* Estética crua do Alpha Arena: papel, tinta preta, bordas pretas de 1 a 2 px, sem gradiente, sombra nem animação. */
+@theme {
+  --color-paper: #f2efe6;
+  --color-ink: #000000;
+  --color-muted: #4a4a4a; /* 7,4:1 sobre o papel */
+  --color-band: #d6d0bd; /* a faixa p5 a p95 do Monte Carlo: um tom abaixo do papel, sem texto por cima */
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+/* O foco do teclado é sempre visível, em toda tela. */
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+/* Palavra mais larga que a caixa (SHA-256, URL) quebra em vez de empurrar a página para o lado. `break-word`, e não `anywhere`: este
+   não deixa a palavra encolher a coluna da tabela, e "Momentum" ficaria "Momentu" e "m". */
+html {
+  overflow-wrap: break-word;
+}
+
+/* Só a IBM Plex Sans de peso 400 vai para o navegador (a variável pesa 40 KB, a estática de um peso 18 KB, e o LCP simulado do Lighthouse
+   conta cada KB). O negrito do texto corrido é da Plex Mono (600); a Sans nunca ganha negrito falso. */
+html {
+  font-synthesis-weight: none;
+}
+
+/* As classes que se repetem dezenas de vezes por página (link, botão, célula de tabela) moram aqui, e não em cada elemento: o mesmo texto
+   repetido no HTML e de novo no payload do React somava um terço do documento, e o documento acima de uns 14 KB custa um viagem de ida e
+   volta a mais no celular (Lighthouse, LCP). Todo link e todo botão tem alvo de toque de pelo menos 44 px (plano §13). */
+@layer components {
+  .link {
+    @apply inline-flex min-h-11 min-w-11 items-center justify-start underline underline-offset-4 hover:bg-ink hover:text-paper;
+  }
+  .btn {
+    @apply inline-flex min-h-11 min-w-11 items-center justify-center border-2 border-ink px-4 font-mono text-sm uppercase hover:bg-ink hover:text-paper disabled:border-muted disabled:text-muted disabled:hover:bg-transparent disabled:hover:text-muted;
+  }
+  .field {
+    @apply min-h-11 min-w-0 border-2 border-ink bg-paper px-3 font-mono disabled:border-muted disabled:text-muted;
+  }
+  /* A caixa de marcar das telas da conta: 44 por 44 px, o alvo de toque do projeto (a nativa tem uns 13 px). Marcada, é um quadrado
+     preto com um X: não depende da cor para dizer que está marcada. */
+  .check {
+    @apply size-11 shrink-0 cursor-pointer appearance-none border-2 border-ink bg-paper checked:bg-ink disabled:cursor-not-allowed disabled:border-muted;
+  }
+  .check:checked::before {
+    content: '✕';
+    @apply flex size-full items-center justify-center font-mono text-xl text-paper;
+  }
+  /* O radio do modo de preço da carteira: também 44 por 44 px, mas redondo, para não se confundir com a caixa de marcar. Marcado, é um disco
+     preto com um ponto; desmarcado, um círculo vazio: a diferença é o preenchimento e o ponto (que é texto, então sobrevive ao modo de alto
+     contraste do sistema, que troca as cores de fundo), e não a cor. */
+  .radio {
+    @apply size-11 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-ink bg-paper checked:bg-ink disabled:cursor-not-allowed disabled:border-muted;
+  }
+  .radio:checked::before {
+    content: '●';
+    @apply flex size-full items-center justify-center font-mono text-xl text-paper;
+  }
+  .tbl {
+    @apply w-full border-collapse text-left text-sm tabular-nums;
+  }
+  .th {
+    @apply px-1.5 py-2 font-mono text-xs font-semibold whitespace-nowrap uppercase sm:px-2;
+  }
+  .td {
+    @apply px-1.5 py-1 font-mono whitespace-nowrap sm:px-2;
+  }
+  .row {
+    @apply border-t border-ink;
+  }
+  .muted {
+    @apply text-sm text-muted;
+  }
+}

@@ -1,0 +1,31 @@
+# dependências e saídas de build
+node_modules
+dist
+.next
+.turbo
+*.tsbuildinfo
+next-env.d.ts
+
+# cliente do Prisma (gerado por `pnpm generate`)
+apps/api/src/generated
+
+# segredos: nada de .env no git, só o exemplo
+.env
+.env.*
+!.env.example
+
+# relatórios do Playwright e do Lighthouse CI
+playwright-report
+test-results
+.lighthouseci
+
+# estado do rollout do deploy (scripts/deploy.mjs), só aparece se alguém rodar o script na mão
+.deploy-state.json
+
+# arquivos de terceiros baixados à mão (os da B3 que o dev ainda guarda, antes de a brapi ser a fonte; docs/DADOS.md, seção 1) e o que os
+# comandos de dev geram (relatórios do ensaio).
+# Nunca entram no git: no repositório só vai fixture sintética (docs/DADOS.md)
+.data/
+
+# sistema operacional e editores
+.DS_Store
