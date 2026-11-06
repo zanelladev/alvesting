@@ -81,6 +81,7 @@
     "@types/pg": "8.23.1",
     "@types/supertest": "7.2.1",
     "@types/yauzl": "3.4.0",
+    "@vitest/coverage-v8": "5.0.5",
     "eslint": "10.14.0",
     "supertest": "7.3.1",
     "typescript": "6.0.3",
