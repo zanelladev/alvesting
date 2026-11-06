@@ -1,13 +1,17 @@
+import type { ReactNode } from 'react';
 import type { ArenaCurrent } from '@alvesting/contracts';
 import { formatShortDate } from '../lib/format';
 import { Arte } from './arte';
 import { Fita } from './fita';
-import { BUTTON, HERO_TITLE, NavLink } from './ui';
+import { BUTTON, NavLink } from './ui';
 
-// O hero da home (ADR 0034; docs/redesign-ascii/plano.md, seção 4): a composição da v1 com o texto da v2. O preto, a escadaria em ASCII
-// âmbar sangrando à direita e embaixo, a pílula do anúncio, o título, a descrição, a pílula branca e o botão escuro, e no pé a legenda e a
-// fita. Componente de servidor, sem entrada animada: o título nasce visível no HTML (o que o LCP da home pede). A seção sai da coluna do
-// main por margem negativa (a mesma técnica da linha da moldura), e o texto volta para a coluna de 1200 com a calha.
+// O hero da landing (ADR 0035; docs/redesign-rallies/plano.md, d.2 e d.3), no desenho do Rallies com a arte de antes. Em cima, duas colunas a
+// partir de 1024 px: o título e os dois CTAs à esquerda; a pílula da temporada, o parágrafo e o aviso da arena simulada à direita (no celular,
+// uma coluna nessa ordem, os CTAs em largura cheia). Embaixo, a moldura grande, escura nos dois temas (`.moldura`: a arte é âmbar sobre preto, e
+// no claro sumiria no branco): a escadaria enche o palco, e no pé, por dentro, a legenda com o crédito das cotações e a fita. O cartão
+// "Arena agora" segue o tema da página, então fica fora do elemento da moldura: por cima dela, à esquerda e embaixo, a partir de 1024 px (o
+// lado esquerdo da arte é o vazio preto, e o touro fica à direita), e embaixo dela no celular. Componente de servidor, sem entrada animada: o
+// título e o parágrafo nascem visíveis no HTML, antes da moldura (o LCP do celular, d.10).
 
 const Seta = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -23,34 +27,33 @@ const Seta = () => (
 );
 
 export interface HeroProps {
-  // a pílula do anúncio ("Temporada em andamento · pregão 4 de 20"); sem temporada, nenhuma
+  // a pílula da temporada ("Temporada encerrada · pregão 20 de 20"); sem temporada, nenhuma
   pill: { text: string; href: string } | null;
-  // o último ciclo: "Ver decisões" leva a ele; sem ciclo, o botão some e "Regras da arena" vira a pílula branca
-  lastCycleDate: string | null;
   // algum modelo exibido decide pelo provedor fake (ui.tsx, isSimulated): o aviso da arena simulada
   simulated: boolean;
-  // a legenda do pé, com o crédito das cotações, e a fita (lib/fita.ts)
+  // a legenda do pé da moldura, com o crédito das cotações, e a fita (lib/fita.ts)
   caption: string;
   tape: { text: string; label: string };
+  // o cartão "Arena agora" (por cima da moldura a partir de 1024 px)
+  card?: ReactNode;
 }
 
-// A pílula do anúncio: a temporada e o pregão em que ela está (de `params.sessions`), levando ao último ciclo; antes do primeiro, o dia dele,
-// levando às regras. Sem temporada, nenhuma. O nome da temporada fica na seção "Temporada" (pode ser longo). O pregão é o do último ciclo:
-// os liquidados (`settled`, as datas do patrimônio) e mais ele mesmo enquanto não é liquidado (o ciclo nasce às 08:00 e a liquidação sai à
-// noite; sem isto o primeiro dia diria "pregão 0").
-export function heroPill(
-  { season, lastCycle, nextCycle }: Pick<ArenaCurrent, 'season' | 'lastCycle' | 'nextCycle'>,
-  settled: number,
-): HeroProps['pill'] {
+// A pílula da temporada, levando ao último ciclo; antes do primeiro, o dia dele, levando às regras. Sem temporada, nenhuma. O nome da temporada
+// fica na arena (pode ser longo). A temporada em andamento diz a data do último pregão, e não "pregão N de M": a conta saía das datas do
+// patrimônio, que a landing não lê (d.10: menos leituras que a home de antes); a encerrada fez todos os pregões dos parâmetros.
+export function heroPill({
+  season,
+  lastCycle,
+  nextCycle,
+}: Pick<ArenaCurrent, 'season' | 'lastCycle' | 'nextCycle'>): HeroProps['pill'] {
   if (!season) return null;
   const total = season.params.sessions;
   if (lastCycle) {
-    const session = settled + (season.settledThrough === lastCycle.date ? 0 : 1);
     return {
       text:
         season.status === 'FINISHED'
           ? `Temporada encerrada · pregão ${total} de ${total}`
-          : `Temporada em andamento · pregão ${session} de ${total}`,
+          : `Temporada em andamento · último pregão em ${formatShortDate(lastCycle.date)}`,
       href: `/ciclos/${lastCycle.date}`,
     };
   }
@@ -62,25 +65,43 @@ export function heroPill(
     : null;
 }
 
-export function Hero({ pill, lastCycleDate, simulated, caption, tape }: HeroProps) {
+// Os dois CTAs, no hero e no fim da landing: a pílula preta leva à arena e a cinza às regras.
+export const Chamadas = ({ className = '' }: { className?: string }) => (
+  <div className={`flex flex-wrap gap-2 ${className}`}>
+    <NavLink href="/arena" className={`${BUTTON} btn-primary`}>
+      Abrir a arena
+      <Seta />
+    </NavLink>
+    <NavLink href="/como-funciona" className={BUTTON}>
+      Regras da arena
+    </NavLink>
+  </div>
+);
+
+export function Hero({ pill, simulated, caption, tape, card }: HeroProps) {
   return (
-    <section className="relative isolate -mt-6 ml-[calc(50%-50vw)] flex min-h-[max(656px,calc(100svh-4rem))] w-screen flex-col overflow-hidden">
-      <div className="mx-auto w-full max-w-[1200px] px-(--calha) pt-24 max-[560px]:pt-16">
-        <div className="grid max-w-[860px] justify-items-start gap-5">
+    <>
+      <section className="grid gap-x-16 gap-y-6 pt-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)] lg:pt-20">
+        <div className="grid content-start justify-items-start gap-6">
+          <h1 className="max-w-[22ch] font-display text-30 text-balance">
+            Modelos de linguagem investindo na B3
+          </h1>
+          <Chamadas className="max-sm:w-full max-sm:flex-col" />
+        </div>
+        <div className="grid content-start justify-items-start gap-4">
           {pill ? (
             <NavLink href={pill.href} className="pill -my-1.5">
               {pill.text}
               <Seta />
             </NavLink>
           ) : null}
-          <h1 className={HERO_TITLE}>Modelos de linguagem investindo na B3</h1>
-          <p className="max-w-[560px] text-lead text-pretty max-[560px]:text-base">
+          <p className="text-15 text-pretty text-muted">
             Às 08:00 de cada pregão, todos recebem o mesmo briefing e o mesmo prompt, oculto e com o
             hash publicado. As ordens fictícias executam na abertura, a preço real, com a
             justificativa aberta.
           </p>
           {simulated ? (
-            <p className="flex max-w-[560px] gap-2 text-label text-muted">
+            <p className="flex gap-2 text-xs text-muted">
               <span aria-hidden="true" className="font-mono">
                 [!]
               </span>
@@ -92,36 +113,30 @@ export function Hero({ pill, lastCycleDate, simulated, caption, tape }: HeroProp
             </p>
           ) : null}
         </div>
-      </div>
-      {/* A arte nunca fica atrás de texto. A partir de 1024 px ela é o fundo do hero inteiro, sangrando à direita e embaixo, e termina
-          acima da fita (o pé mora no preto); a grade anda para a direita o bastante para o touro (as colunas 89 a 133 de 200) começar
-          depois da coluna de texto (560 px e a calha), em qualquer largura. Abaixo de 1024 px o texto é alto demais para ela: a arte vai
-          para o palco sob os botões (este bloco), e só as 56 linhas de baixo da grade aparecem (o touro e a escada). */}
-      <div className="max-lg:relative max-lg:isolate">
-        <Arte
-          nome="escadaria"
-          className="-z-10 max-lg:top-auto max-lg:h-[min(75vw,420px)] max-lg:[--linhas:56] lg:bottom-22 lg:[--deslocar:max(5.5vw_+_8px,608px_-_44.5vw)]"
-        />
-        <div className="mx-auto flex w-full max-w-[1200px] flex-wrap gap-3 px-(--calha) pt-8 max-[560px]:*:flex-1">
-          {lastCycleDate ? (
-            <NavLink href={`/ciclos/${lastCycleDate}`} className={`${BUTTON} btn-primary`}>
-              Ver decisões
-              <Seta />
-            </NavLink>
-          ) : null}
-          <NavLink
-            href="/como-funciona"
-            className={lastCycleDate ? BUTTON : `${BUTTON} btn-primary`}
-          >
-            Regras da arena
-          </NavLink>
+      </section>
+
+      {/* A moldura: a partir de 1024 px o palco tem 12:5, e a arte (200 × 120 células, 5:3) enche a largura presa ao pé, sem as linhas de
+          cima, que são só o preto vazio; no celular, a altura do palco de antes, com as 56 linhas de baixo (o touro e a escada). A arte nunca
+          fica atrás de texto: o pé, com a legenda e a fita, vem depois do palco. A grade anda para a direita o bastante para o touro (as
+          colunas 89 a 133 de 200) passar do cartão. */}
+      <div className="relative mt-12 lg:mt-16">
+        <div className="moldura flex flex-col overflow-hidden rounded-lg">
+          <div className="relative isolate h-[min(75vw,420px)] lg:aspect-[12/5] lg:h-auto">
+            <Arte nome="escadaria" className="max-lg:[--linhas:56] lg:[--deslocar:10%]" />
+          </div>
+          <div className="flex flex-col items-center justify-center gap-3 pt-2 pb-5 lg:h-20 lg:p-0">
+            <p className="px-(--calha) text-center text-xs text-pretty text-moldura-cinza">
+              {caption}
+            </p>
+            <Fita texto={tape.text} rotulo={tape.label} />
+          </div>
         </div>
-        <div className="h-[min(75vw,420px)] lg:hidden" />
+        {card ? (
+          <div className="mt-4 lg:absolute lg:bottom-32 lg:left-12 lg:mt-0 lg:w-[min(520px,46%)]">
+            {card}
+          </div>
+        ) : null}
       </div>
-      <div className="mt-auto flex flex-col items-center gap-3 pt-6 pb-6 lg:pt-12">
-        <p className="px-(--calha) text-center text-label text-pretty text-muted">{caption}</p>
-        <Fita texto={tape.text} rotulo={tape.label} />
-      </div>
-    </section>
+    </>
   );
 }

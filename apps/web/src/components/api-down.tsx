@@ -15,7 +15,7 @@ export function ApiDown({ digest, retry }: { digest?: string | undefined; retry:
       {/* a tela de erro não vale como página: sem isto, um rastreador que a pegue durante uma queda a indexaria (a resposta é 200) */}
       <meta name="robots" content="noindex" />
       <PageHead title="Não foi possível carregar os dados">
-        <p className="max-w-prose text-lead text-pretty">
+        <p className="max-w-prose text-15 text-pretty">
           A arena não respondeu agora. Tente de novo em alguns minutos; se continuar assim, o
           problema é do site, e não da sua conexão.
         </p>

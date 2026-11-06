@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { Position, Totals } from '@alvesting/contracts';
-import { WalletPositions, WalletSummary } from './wallet-panels';
+import { WalletEmpty, WalletPositions, WalletSummary } from './wallet-panels';
 
 // O resumo e as posições da carteira renderizados no servidor (etapa 12, parte 2; docs/TELAS.md, seção 9). Os números vêm prontos da api em
 // centavos e pontos-base inteiros: aqui se confere como saem na tela. O e2e (carteira.spec.ts) confere o mesmo contra a api de verdade; aqui
@@ -196,10 +196,11 @@ describe('WalletSummary', () => {
   const dts = (markup: string) =>
     [...markup.matchAll(/<dt[^>]*>(.*?)<\/dt>/g)].map((m) => plain(m[1]!));
 
-  it('o custo, o valor estimado e o resultado com sinal, percentual e palavra', () => {
+  // a ordem do Today do Rallies (docs/redesign-rallies/plano.md, f.3): o valor estimado em cima, a frase do resultado e o custo total
+  it('o valor estimado, o resultado com sinal, percentual e palavra, e o custo', () => {
     const out = html(<WalletSummary totals={totals()} />);
-    expect(dts(out)).toEqual(['Custo total', 'Valor estimado', 'Resultado']);
-    expect(dds(out)).toEqual(['R$ 7.100,00', 'R$ 8.000,00', '+R$ 900,00 (+12,68%, ganho)']);
+    expect(dts(out)).toEqual(['Valor estimado', 'Resultado', 'Custo total']);
+    expect(dds(out)).toEqual(['R$ 8.000,00', '+R$ 900,00 (+12,68%, ganho)', 'R$ 7.100,00']);
     expect(out).not.toContain('sem cotação');
   });
 
@@ -220,9 +221,9 @@ describe('WalletSummary', () => {
             totals={totals({ valueCents: 590_000, pnlCents: -120_000, pnlBps: -1_690 })}
           />,
         ),
-      )[2],
+      )[1],
     ).toBe('-R$ 1.200,00 (-16,90%, perda)');
-    expect(dds(html(<WalletSummary totals={totals({ pnlBps: null })} />))[2]).toBe(
+    expect(dds(html(<WalletSummary totals={totals({ pnlBps: null })} />))[1]).toBe(
       '+R$ 900,00 (sem percentual, ganho)',
     );
   });
@@ -239,7 +240,7 @@ describe('WalletSummary', () => {
         })}
       />,
     );
-    expect(dds(out)).toEqual(['R$ 7.100,00', 'sem cotação', 'sem cotação']);
+    expect(dds(out)).toEqual(['sem cotação', 'sem cotação', 'R$ 7.100,00']);
   });
 
   it('avisa quantas posições ficaram fora do valor e do resultado, no singular e no plural', () => {
@@ -254,5 +255,31 @@ describe('WalletSummary', () => {
     expect(plain(html(<WalletSummary totals={totals({ unpriced: 0 })} />))).not.toContain(
       'sem cotação:',
     );
+  });
+
+  // A lista curta da coluna (a partir de 1024 px, ao lado da tabela): o mesmo que a tabela diz, sem par termo/valor (os três pares da região são os
+  // que o e2e confere contra a api), e a pílula preta que leva ao formulário.
+  it('a lista curta das posições repete a tabela (o ticker, o percentual com o glifo e o fechamento com a data), e a pílula leva ao formulário', () => {
+    const out = html(
+      <WalletSummary
+        totals={totals()}
+        positions={[position(), position({ ticker: 'SEMN3', ...SEM_FECHAMENTO })]}
+      />,
+    );
+    expect(dds(out)).toHaveLength(3);
+    const text = plain(out);
+    expect(text).toContain('MOVE3 +12,68% R$ 40,00 em 09/11/2026');
+    expect(text).toContain('SEMN3 sem cotação');
+    expect(out).toMatch(/<span data-dir="up"[^>]*>\+12,68%<\/span>/);
+    expect(out).toContain('<a href="#lancar" class="btn btn-primary">Lançar compra</a>');
+  });
+});
+
+describe('WalletEmpty', () => {
+  it('a coluna da carteira vazia não tem números nem a região do resumo, e leva ao formulário', () => {
+    const out = html(<WalletEmpty />);
+    expect(out).not.toContain('<dd');
+    expect(out).not.toContain('id="resumo"');
+    expect(out).toContain('<a href="#lancar" class="btn btn-primary">Lançar compra</a>');
   });
 });

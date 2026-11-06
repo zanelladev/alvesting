@@ -54,5 +54,15 @@ export function proxy(request: NextRequest) {
       headers: { 'Cache-Control': 'no-store' },
     });
   }
+
+  // O feed de decisões era da home, e foi para a /arena (docs/redesign-rallies/plano.md, c.3): o `/?filtro=` e o `/?cursor=` de antes (links
+  // guardados, buscadores) levam ao mesmo feed, com a query inteira e 308 (o `#feed` o navegador mantém). Mora aqui, DEPOIS da trava, e não
+  // no `redirects()` do next.config.ts, que roda antes do proxy e responderia sem o X-Azure-FDID: não é exceção à trava.
+  const { searchParams } = request.nextUrl;
+  if (pathname === '/' && (searchParams.has('filtro') || searchParams.has('cursor'))) {
+    const arena = request.nextUrl.clone();
+    arena.pathname = '/arena';
+    return NextResponse.redirect(arena, 308);
+  }
   return NextResponse.next();
 }

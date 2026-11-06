@@ -23,21 +23,24 @@ import {
   SIMULATED,
   TICKER,
   brl,
+  brlSigned,
   brt,
   clean,
   dmy,
   fetchApi,
   fetchBars,
+  fetchTape,
   itemText,
   pct,
   pctl,
+  ratioBps,
   shownName,
   stockDecisionText,
   usd,
 } from './data';
 import { abrirMenu } from './menu';
 
-// o h1 da home é o título do hero (ADR 0034)
+// o h1 da landing (a /) é o título do hero (ADR 0034), que a navegação de ponta a ponta confere no fim
 const HERO_TITLE = 'Modelos de linguagem investindo na B3';
 
 // As telas da arena (etapa 9, parte 2) sobre o banco sintético do e2e: a mesma temporada inteira do ensaio (5 pregões, os 6 modelos
@@ -129,7 +132,9 @@ async function expectCard(
 const newsStamp = (n: NewsItem) =>
   n.source.startsWith('cvm') ? brt(n.publishedAt).slice(0, 10) : brt(n.publishedAt);
 
-test.describe('início', () => {
+// A arena (/arena): o conteúdo que era da home, no desenho da Arena do Rallies (docs/redesign-rallies/plano.md, seção e). A landing da / não
+// tem mais estas regiões.
+test.describe('arena', () => {
   test('mostra a temporada, as cotações com a data, os ciclos e o ranking do banco sintético', async ({
     page,
     request,
@@ -138,9 +143,9 @@ test.describe('início', () => {
     const season = current.season!;
     const last = current.lastCycle!;
     const macro = current.macro;
-    await page.goto('/');
-    await expect(page).toHaveTitle('Alvesting');
-    await expect(page.getByRole('heading', { level: 1, name: HERO_TITLE })).toBeVisible();
+    await page.goto('/arena');
+    await expect(page).toHaveTitle('Arena · Alvesting');
+    await expect(page.getByRole('heading', { level: 1, name: 'Arena' })).toBeVisible();
 
     const seasonRegion = region(page, 'Temporada');
     await expect(fact(seasonRegion, 'Nome')).toHaveText(season.name);
@@ -194,7 +199,37 @@ test.describe('início', () => {
     await expect(fact(cycles, 'Próximo ciclo')).toContainText('a temporada acabou');
   });
 
-  test('o gráfico de patrimônio tem título, descrição e uma tabela com os mesmos valores', async ({
+  test('as telas da área: a arena, o ranking e o último ciclo, com a arena marcada, e as regras da arena', async ({
+    page,
+    request,
+  }) => {
+    const current = await fetchApi(request, '/arena/current', arenaCurrentSchema);
+    await page.goto('/arena');
+    // no celular é o segmentado, no desktop a linha de abas: o mesmo nome, um desenho em cada largura (o outro fica fora da tela)
+    const screens = page.getByRole('navigation', { name: 'Telas da arena' });
+    await expect(screens).toHaveCount(1);
+    await expect(screens.getByRole('link')).toHaveText(['Arena', 'Ranking', 'Último ciclo']);
+    await expect(screens.getByRole('link', { name: 'Arena' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(screens.getByRole('link', { name: 'Último ciclo' })).toHaveAttribute(
+      'href',
+      `/ciclos/${current.lastCycle!.date}`,
+    );
+    const wide = (page.viewportSize()?.width ?? 0) >= 1024;
+    if (wide) {
+      await expect(
+        page.getByRole('main').getByRole('link', { name: 'Regras da arena' }),
+      ).toHaveAttribute('href', '/como-funciona');
+    } else {
+      await expect(page.getByRole('navigation', { name: 'Trilha' })).toHaveText(
+        /Início\s*›\s*Arena/,
+      );
+    }
+  });
+
+  test('o gráfico de patrimônio tem título, descrição, uma tabela com os mesmos valores e o rótulo no fim de cada linha', async ({
     page,
     request,
   }) => {
@@ -204,7 +239,7 @@ test.describe('início', () => {
       `/seasons/${SEASON}/random-baseline`,
       randomBaselineSchema,
     );
-    await page.goto('/');
+    await page.goto('/arena');
     const chart = region(page, 'Patrimônio');
 
     const svg = chart.getByRole('img', { name: /Patrimônio/ });
@@ -243,49 +278,64 @@ test.describe('início', () => {
         brl(baseline.rows[i]!.equityCents.p95),
       ]);
     }
+
+    // no fim de cada linha, o logo do laboratório (o Sorteio, a inicial) e o patrimônio final numa pílula; decorativo para o leitor de tela,
+    // que tem a tabela. Os rótulos não se encavalam: de cima para baixo, cada um começa depois de o de cima terminar.
+    const boxes: { y: number; height: number }[] = [];
+    for (const s of drawn) {
+      const label = chart.locator(`[data-rotulo="${s.competitor.slug}"]`);
+      await expect(label).toBeVisible();
+      await expect(label).toHaveText(brl(s.equityCents.at(-1)!));
+      await expect(
+        label.locator(s.competitor.type === 'MODEL' ? '[data-lab]' : '[data-inicial]'),
+      ).toHaveCount(1);
+      boxes.push((await label.boundingBox())!);
+    }
+    await expect(chart.locator('ul[aria-hidden="true"] [data-rotulo]')).toHaveCount(drawn.length);
+    const sorted = boxes.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < sorted.length; i += 1) {
+      expect(sorted[i]!.y).toBeGreaterThanOrEqual(sorted[i - 1]!.y + sorted[i - 1]!.height - 0.5);
+    }
   });
 
-  test('o ranking traz os modelos e o Sorteio, com retorno e percentil', async ({
+  // A faixa dos modelos do Rallies (plano, e.3): um cartão por modelo e o Sorteio, na ordem do ranking, com o nome, o retorno e o percentil.
+  test('a faixa traz os modelos e o Sorteio na ordem do ranking, com retorno e percentil', async ({
     page,
     request,
   }) => {
     const board = await fetchApi(request, `/seasons/${SEASON}/leaderboard`, leaderboardSchema);
-    await page.goto('/');
+    await page.goto('/arena');
     const ranking = region(page, 'Ranking');
     const shown = board.rows.filter(
       (r) => r.competitor.type === 'MODEL' || r.competitor.type === 'RANDOM',
     );
     expect(shown).toHaveLength(7);
-    await expect(ranking.getByRole('columnheader')).toHaveText([
-      'Pos.',
-      'Competidor',
-      'Retorno',
-      'Percentil',
-    ]);
-    await expect(ranking.getByRole('row')).toHaveCount(1 + shown.length);
-    for (const r of shown) {
-      await expect(rowOf(ranking, shownName(r.competitor)).locator('th, td')).toHaveText([
-        String(r.rank),
-        shownName(r.competitor),
-        pct(r.returnBps),
-        pctl(r.percentileBps!),
-      ]);
+    const items = ranking.getByRole('listitem');
+    await expect(items).toHaveCount(shown.length);
+    for (const [i, r] of shown.entries()) {
+      const link = items.nth(i).getByRole('link');
+      // O nome acessível do cartão, e não o innerText: no cartão de 160 px a etiqueta "simulado" desce para a linha de baixo, e o
+      // innerText do WebKit apaga o espaço dessa quebra ("Gemini 4 Argonsimulado"); o nome acessível não depende de onde a linha quebra.
+      await expect(link).toHaveAccessibleName(
+        `${shownName(r.competitor)} ${pct(r.returnBps)} percentil ${pctl(r.percentileBps!)}`,
+      );
+      await expect(link).toHaveAttribute('href', `/modelos/${r.competitor.slug}`);
     }
-    // as referências não entram no ranking da home, e a tabela diz por que a posição pode pular números
-    await expect(ranking.getByRole('rowheader', { name: 'CDI', exact: true })).toHaveCount(0);
-    await expect(ranking).toContainText('A posição vale entre todos os competidores');
+    // as referências não entram na faixa
+    await expect(ranking.getByText('CDI', { exact: true })).toHaveCount(0);
     await expect(ranking.getByRole('link', { name: 'Ranking completo' })).toHaveAttribute(
       'href',
       '/ranking',
     );
   });
 
-  test('o feed mostra as decisões mais novas, com o texto do modelo como texto', async ({
+  test('o feed mostra as decisões mais novas, com o retorno do modelo e o texto do modelo como texto', async ({
     page,
     request,
   }) => {
     const feed = await fetchApi(request, `/decisions?limit=${FEED_PAGE}`, decisionsPageSchema);
-    await page.goto('/');
+    const board = await fetchApi(request, `/seasons/${SEASON}/leaderboard`, leaderboardSchema);
+    await page.goto('/arena');
     const cards = region(page, 'Decisões').getByRole('article');
     await expect(cards).toHaveCount(feed.rows.length);
     for (const [i, row] of feed.rows.entries()) {
@@ -294,6 +344,68 @@ test.describe('início', () => {
         date: row.date,
         simulated: row.competitor.provider === 'fake',
       });
+      // o retorno do modelo na temporada, do ranking, no cabeçalho (o glifo da direção é do CSS)
+      const ret = board.rows.find((r) => r.competitor.slug === row.competitor.slug)!.returnBps;
+      await expect(cards.nth(i).locator('header [data-dir]')).toHaveText(pct(ret));
+    }
+  });
+
+  // A barra "Carteiras" (plano, e.2): a carteira de cada modelo no último pregão liquidado, conferida contra /competitors/:slug, valor a valor:
+  // a alocação é o valor da posição sobre o patrimônio, e o resultado % é o resultado sobre o custo.
+  test('as carteiras dos modelos: a alocação, o resultado e o caixa de cada um, contra a api', async ({
+    page,
+    request,
+  }) => {
+    const board = await fetchApi(request, `/seasons/${SEASON}/leaderboard`, leaderboardSchema);
+    const current = await fetchApi(request, '/arena/current', arenaCurrentSchema);
+    const capital = current.season!.params.capitalCents;
+    await page.goto('/arena');
+    const wallets = region(page, 'Carteiras');
+    const models = board.rows.filter((r) => r.competitor.type === 'MODEL');
+    // só os modelos: o Sorteio e as referências não têm composição pública (ADR 0033)
+    await expect(wallets.locator('[data-carteira]')).toHaveCount(models.length);
+    for (const r of models) {
+      const detail = await fetchApi(
+        request,
+        `/competitors/${r.competitor.slug}`,
+        competitorDetailSchema,
+      );
+      const portfolio = detail.portfolio!;
+      const holdings = portfolio.holdings!;
+      const wallet = wallets.locator(`[data-carteira="${r.competitor.slug}"]`);
+      await expect(wallet.getByRole('heading', { level: 3 })).toHaveText(shownName(r.competitor));
+      await expect(wallet.getByRole('heading', { level: 3 }).getByRole('link')).toHaveAttribute(
+        'href',
+        `/modelos/${r.competitor.slug}`,
+      );
+      await expect(fact(wallet, 'Resultado')).toHaveText(
+        brlSigned(portfolio.equityCents - capital),
+      );
+      await expect(fact(wallet, 'Caixa')).toHaveText(brl(holdings.cashCents));
+      if (holdings.positions.length === 0) {
+        await expect(wallet).toContainText('Nenhuma posição: o patrimônio está todo em caixa.');
+        await expect(wallet.getByRole('table')).toHaveCount(0);
+        continue;
+      }
+      const table = wallet.getByRole('table', {
+        name: `Carteira de ${r.competitor.name} em ${dmy(portfolio.date)}`,
+      });
+      await expect(table.getByRole('columnheader')).toHaveText([
+        'Ação',
+        'Alocação',
+        'Resultado',
+        'Resultado %',
+      ]);
+      await expect(table.getByRole('row')).toHaveCount(1 + holdings.positions.length);
+      for (const p of holdings.positions) {
+        const row = rowOf(table, p.ticker);
+        await expect(row.getByRole('link')).toHaveAttribute('href', `/acoes/${p.ticker}`);
+        await expect(row.getByRole('cell')).toHaveText([
+          pct(ratioBps(p.valueCents, portfolio.equityCents), false),
+          brlSigned(p.pnlCents),
+          pct(ratioBps(p.pnlCents, p.costCents)),
+        ]);
+      }
     }
   });
 });
@@ -314,7 +426,7 @@ test.describe('filtro do feed por BUY, SELL e HOLD', () => {
       );
       expect(all.rows.length, 'o banco sintético tem decisões de cada ação').toBeGreaterThan(0);
 
-      await page.goto('/');
+      await page.goto('/arena');
       await filter(page).getByRole('link', { name: action, exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`[?&]filtro=${action}(&|#|$)`));
       await expect(filter(page).getByRole('link', { name: action, exact: true })).toHaveAttribute(
@@ -371,16 +483,112 @@ test.describe('filtro do feed por BUY, SELL e HOLD', () => {
   test('um filtro que não existe é ignorado, e um cursor torto é 404 (nunca 500)', async ({
     page,
   }) => {
-    const ignored = await page.goto('/?filtro=hold');
+    const ignored = await page.goto('/arena?filtro=hold');
     expect(ignored?.status()).toBe(200);
     await expect(filter(page).getByRole('link', { name: 'Todas' })).toHaveAttribute(
       'aria-current',
       'true',
     );
-    const bad = await page.goto('/?cursor=%00%00');
+    // o modelo que não tem a forma de um slug também é ignorado
+    expect((await page.goto('/arena?modelo=%00'))?.status()).toBe(200);
+    await expect(region(page, 'Decisões').getByRole('article')).toHaveCount(FEED_PAGE);
+    const bad = await page.goto('/arena?cursor=%00%00');
     expect(bad?.status()).toBe(404);
-    const forged = await page.goto('/?cursor=AAAA');
+    const forged = await page.goto('/arena?cursor=AAAA');
     expect(forged?.status()).toBe(404);
+  });
+
+  // O feed era da home, e o `/?filtro=` e o `/?cursor=` de antes (links guardados, buscadores) levam ao mesmo feed na /arena, com 308 (o
+  // src/proxy.ts, depois da trava de origem), e o `#feed` o navegador mantém.
+  test('o /?filtro= e o /?cursor= de antes levam à /arena com 308, e a âncora fica', async ({
+    page,
+    request,
+  }) => {
+    for (const [from, to] of [
+      ['/?filtro=SELL', '/arena?filtro=SELL'],
+      ['/?cursor=AAAA', '/arena?cursor=AAAA'],
+      ['/?filtro=BUY&cursor=AAAA', '/arena?filtro=BUY&cursor=AAAA'],
+    ] as const) {
+      const response = await request.get(from, { maxRedirects: 0 });
+      expect(response.status(), from).toBe(308);
+      expect(new URL(response.headers()['location']!, 'http://x').pathname, from).toBe('/arena');
+      expect(new URL(response.headers()['location']!, 'http://x').search, from).toBe(
+        to.slice('/arena'.length),
+      );
+    }
+    // a / sem o filtro é a landing, sem redirecionar
+    expect((await request.get('/', { maxRedirects: 0 })).status()).toBe(200);
+    await page.goto('/?filtro=SELL#feed');
+    await expect(page).toHaveURL(/\/arena\?filtro=SELL#feed$/);
+    await expect(filter(page).getByRole('link', { name: 'SELL', exact: true })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+  });
+});
+
+// O filtro do feed por modelo (o "Funds ▾" do Rallies; plano, c.4): um `details` com um link por modelo, sem JavaScript. Junta-se ao filtro
+// por ação, e a paginação segue os dois.
+test.describe('filtro do feed por modelo', () => {
+  test('só as decisões do modelo, na ordem da api, e o filtro por ação junto', async ({
+    page,
+    request,
+  }) => {
+    const name = 'GPT-6.1 Sol';
+    const all = await fetchApi(
+      request,
+      `/decisions?competitor=${MODEL}&limit=100`,
+      decisionsPageSchema,
+    );
+    // no banco do e2e (5 pregões) o modelo tem uma página de decisões; o link "Mais antigas" com os dois filtros e o cursor é do teste de
+    // unidade da página (app/(app)/(arena)/arena/page.spec.tsx). O laço abaixo segue as páginas que houver.
+    expect(all.rows.length).toBeGreaterThan(0);
+    await page.goto('/arena');
+    const byModel = page.getByRole('navigation', { name: 'Filtrar por modelo' });
+    await byModel.locator('summary').click();
+    await byModel.getByRole('link', { name: new RegExp(`^${name.replace('.', '\\.')}`) }).click();
+    await expect(page).toHaveURL(new RegExp(`[?&]modelo=${MODEL}(&|#|$)`));
+    await expect(byModel.locator('summary')).toHaveText(new RegExp(`^${name.replace('.', '\\.')}`));
+
+    const seen: string[] = [];
+    for (;;) {
+      const cards = region(page, 'Decisões').getByRole('article');
+      const n = await cards.count();
+      expect(n).toBeGreaterThan(0);
+      for (let i = 0; i < n; i += 1) {
+        const card = cards.nth(i);
+        await expect(card.getByRole('link').first()).toHaveAttribute('href', `/modelos/${MODEL}`);
+        seen.push(
+          (await card.getByRole('link', { name: /^\d{2}\/\d{2}\/\d{4}$/ }).getAttribute('href'))!,
+        );
+      }
+      const older = region(page, 'Decisões').getByRole('link', { name: 'Mais antigas' });
+      if ((await older.count()) === 0) break;
+      const before = page.url();
+      await older.click();
+      await expect(page).not.toHaveURL(before);
+      await expect(page).toHaveURL(new RegExp(`modelo=${MODEL}`));
+    }
+    expect(seen).toEqual(all.rows.map((r) => `/ciclos/${r.date}`));
+
+    // o filtro por ação mantém o modelo, e "Todos os modelos" o tira
+    const sells = await fetchApi(
+      request,
+      `/decisions?competitor=${MODEL}&action=SELL&limit=100`,
+      decisionsPageSchema,
+    );
+    await page
+      .getByRole('navigation', { name: 'Filtrar decisões' })
+      .getByRole('link', { name: 'SELL', exact: true })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`filtro=SELL&modelo=${MODEL}`));
+    await expect(region(page, 'Decisões').getByRole('article')).toHaveCount(
+      Math.min(FEED_PAGE, sells.rows.length),
+    );
+    await byModel.locator('summary').click();
+    await byModel.getByRole('link', { name: 'Todos os modelos' }).click();
+    await expect(page).not.toHaveURL(/modelo=/);
+    await expect(page).toHaveURL(/filtro=SELL/);
   });
 });
 
@@ -398,7 +606,7 @@ test.describe('filtro do feed sem JavaScript', () => {
         `/decisions?action=${action}&limit=100`,
         decisionsPageSchema,
       );
-      await page.goto('/');
+      await page.goto('/arena');
       await page
         .getByRole('navigation', { name: 'Filtrar decisões' })
         .getByRole('link', { name: action, exact: true })
@@ -497,9 +705,9 @@ test.describe('ranking', () => {
 });
 
 // A arena simulada, até a integração (docs/ARENA.md, seções 1 e 8): o elenco é o da Temporada 1 e as decisões vêm do provedor fake. A tela
-// marca cada modelo com a etiqueta "simulado" e a home avisa; com o provedor de verdade, a etiqueta e o aviso somem sozinhos.
+// marca cada modelo com a etiqueta "simulado" e a arena avisa; com o provedor de verdade, a etiqueta e o aviso somem sozinhos.
 test.describe('arena simulada', () => {
-  test('a home avisa que as decisões são simuladas, e o ranking traz os seis do elenco, cada um com a etiqueta', async ({
+  test('a arena avisa que as decisões são simuladas, e a faixa traz os seis do elenco, cada um com a etiqueta', async ({
     page,
     request,
   }) => {
@@ -508,21 +716,27 @@ test.describe('arena simulada', () => {
     expect(models.map((r) => r.competitor.name).sort()).toEqual([...CAST].sort());
     expect(models.every((r) => r.competitor.provider === 'fake')).toBe(true);
 
-    await page.goto('/');
+    await page.goto('/arena');
     await expect(
       page.getByText('Decisões simuladas: os modelos ainda não estão conectados.'),
     ).toBeVisible();
     const ranking = region(page, 'Ranking');
     for (const name of CAST) {
-      const header = ranking.getByRole('rowheader', { name: `${name} ${SIMULATED}`, exact: true });
-      await expect(header).toBeVisible();
-      // a etiqueta fica fora do link: o nome do link é só o do modelo
-      await expect(header.getByRole('link')).toHaveText(name);
-      await expect(header.getByText(SIMULATED, { exact: true })).toBeVisible();
+      const item = ranking.getByRole('listitem').filter({ hasText: name });
+      await expect(item).toHaveCount(1);
+      // a etiqueta vem logo depois do nome, como em toda tela
+      await expect(item).toContainText(`${name} ${SIMULATED}`);
+      await expect(item.getByText(SIMULATED, { exact: true })).toBeVisible();
     }
     // o Sorteio não é modelo: fica sem etiqueta
-    await expect(ranking.getByRole('rowheader', { name: 'Sorteio', exact: true })).toBeVisible();
+    const draw = ranking.getByRole('listitem').filter({ hasText: 'Sorteio' });
+    await expect(draw).toHaveCount(1);
+    await expect(draw.getByText(SIMULATED, { exact: true })).toHaveCount(0);
     await expect(ranking.getByText(SIMULATED, { exact: true })).toHaveCount(CAST.length);
+    // e as carteiras também: os seis, cada um com a etiqueta
+    await expect(region(page, 'Carteiras').getByText(SIMULATED, { exact: true })).toHaveCount(
+      CAST.length,
+    );
   });
 
   test('o ranking completo marca só os modelos: o Sorteio e as referências ficam sem etiqueta', async ({
@@ -534,6 +748,112 @@ test.describe('arena simulada', () => {
     );
     for (const name of ['Sorteio (controle)', 'Referências']) {
       await expect(region(page, name).getByText(SIMULATED, { exact: true })).toHaveCount(0);
+    }
+  });
+});
+
+// O Explorar (plano, f.1), no desenho do Discover: um cartão por competidor (conferido contra o ranking e as carteiras), o universo da
+// semana (contra a fita da rota interna, como o site a lê), a busca e a barra "Explorar".
+test.describe('explorar', () => {
+  test('um cartão por competidor, com o retorno do ranking e as posições da carteira (só os modelos)', async ({
+    page,
+    request,
+  }) => {
+    const board = await fetchApi(request, `/seasons/${SEASON}/leaderboard`, leaderboardSchema);
+    await page.goto('/explorar');
+    await expect(page).toHaveTitle('Explorar · Alvesting');
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Explore as carteiras da arena' }),
+    ).toBeVisible();
+    const groups = [
+      ['Modelos', board.rows.filter((r) => r.competitor.type === 'MODEL')],
+      ['Controle e referências', board.rows.filter((r) => r.competitor.type !== 'MODEL')],
+    ] as const;
+    for (const [name, rows] of groups) {
+      expect(rows.length, name).toBeGreaterThan(0);
+      const cards = region(page, name).getByRole('listitem');
+      await expect(cards).toHaveCount(rows.length);
+      for (const [i, r] of rows.entries()) {
+        const card = cards.nth(i);
+        await expect(card.getByRole('link')).toHaveAttribute(
+          'href',
+          `/modelos/${r.competitor.slug}`,
+        );
+        await expect(card).toContainText(shownName(r.competitor));
+        await expect(fact(card, 'Retorno')).toHaveText(pct(r.returnBps));
+        if (r.competitor.type === 'MODEL') {
+          const detail = await fetchApi(
+            request,
+            `/competitors/${r.competitor.slug}`,
+            competitorDetailSchema,
+          );
+          await expect(fact(card, 'Posições')).toHaveText(
+            String(detail.portfolio!.holdings!.positions.length),
+          );
+        } else {
+          // o Sorteio e as referências não têm composição pública (ADR 0033)
+          await expect(fact(card, 'Posições')).toHaveText('—');
+        }
+      }
+    }
+  });
+
+  test('o universo da semana: os papéis da fita, com o fechamento, a variação e o crédito', async ({
+    page,
+    request,
+  }) => {
+    const tape = await fetchTape(request);
+    expect(tape.rows.length).toBeGreaterThan(0);
+    await page.goto('/explorar');
+    const universe = region(page, 'Universo da semana');
+    await expect(universe).toContainText(`fechamento do pregão de ${dmy(tape.date!)}`);
+    await expect(universe).toContainText('Cotações: brapi.dev');
+    const items = universe.getByRole('listitem');
+    await expect(items).toHaveText(
+      tape.rows.map((row) => {
+        const change =
+          row.previousCloseCents !== null && row.previousCloseCents > 0
+            ? `(${pct(Math.round(((row.closeCents - row.previousCloseCents) * 10_000) / row.previousCloseCents))})`
+            : '(sem o anterior)';
+        return `${row.ticker} ${brl(row.closeCents)} ${change}`;
+      }),
+      { useInnerText: true },
+    );
+    for (const [i, row] of tape.rows.entries()) {
+      await expect(items.nth(i).getByRole('link')).toHaveAttribute('href', `/acoes/${row.ticker}`);
+    }
+  });
+
+  test('a busca leva à busca de ações, e a barra lista os competidores pelo retorno', async ({
+    page,
+    request,
+  }) => {
+    const board = await fetchApi(request, `/seasons/${SEASON}/leaderboard`, leaderboardSchema);
+    await page.goto('/explorar');
+    await page.getByLabel('Buscar ação pelo ticker ou pelo nome').fill('MO');
+    await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+    await expect(page).toHaveURL(/\/acoes\?q=MO$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Ações' })).toBeVisible();
+
+    // a barra das telas da área (aqui, a da busca de ações): os populares abertos, na ordem do ranking, e os grupos
+    const bar = page.getByRole('navigation', { name: 'Explorar', exact: true });
+    await expect(bar.locator('details')).toHaveAttribute('open', '');
+    const popular = bar.locator('details li');
+    await expect(popular).toHaveCount(board.rows.length);
+    for (const [i, r] of board.rows.entries()) {
+      await expect(popular.nth(i).getByRole('link')).toHaveAttribute(
+        'href',
+        `/modelos/${r.competitor.slug}`,
+      );
+      await expect(popular.nth(i).locator('[data-dir]')).toHaveText(pct(r.returnBps));
+    }
+    for (const [name, href] of [
+      ['Modelos', '/explorar#modelos'],
+      ['Controle e referências', '/explorar#referencias'],
+      ['Ações', '/acoes'],
+      ['Notícias', '/noticias'],
+    ] as const) {
+      await expect(bar.getByRole('link', { name, exact: true })).toHaveAttribute('href', href);
     }
   });
 });
@@ -997,62 +1317,13 @@ test.describe('404', () => {
   });
 });
 
-// O urso da 404 (ADR 0034; o mesmo componente da arte do hero, components/arte.tsx): a arte é arquivo e o código só troca o quadro. O quadro 0
-// vem no HTML, já sem JavaScript; o celular nunca pede o arquivo inteiro (o JSON dos quadros e o sprite grande; o sprite do quadro 0,
-// urso-q0.png, não conta); e a partir de 1024 px ele anda. As larguras que importam são postas à mão nos três projetos.
-const bearFrame = (page: Page) => page.locator('[data-arte="urso"] pre');
-const WHOLE_BEAR = /\/ascii\/arte\/urso\.(json|png)$/;
-
-test.describe('404 sem JavaScript', () => {
-  test.use({ javaScriptEnabled: false });
-
-  test('o urso já vem com o quadro 0 inteiro no HTML, igual ao primeiro quadro do arquivo da v1', async ({
-    page,
-    request,
-  }) => {
-    const whole = (await (await request.get('/ascii/arte/urso.json')).json()) as {
-      rows: number;
-      frames: string[];
-    };
-    expect((await page.goto('/rota-que-nao-existe'))?.status()).toBe(404);
-    const text = await bearFrame(page).textContent();
-    expect(text).toBe(whole.frames[0]);
-    expect(text!.split('\n')).toHaveLength(whole.rows);
-  });
-});
-
-test.describe('404 e o urso', () => {
-  test('em 390 px o urso não pede o arquivo inteiro: nem o JSON dos quadros nem o sprite grande', async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    const asked: string[] = [];
-    page.on('request', (request) => {
-      if (WHOLE_BEAR.test(new URL(request.url()).pathname)) asked.push(request.url());
-    });
-    await page.goto('/rota-que-nao-existe');
-    await page.waitForLoadState('networkidle');
-    // o laço só começaria depois do load, quando o navegador fica à toa: o tempo de ele ter começado, se fosse começar
-    await page.waitForTimeout(1_000);
-    expect(asked).toEqual([]);
-    await expect(bearFrame(page)).not.toBeEmpty();
-  });
-
-  test('em 1440 px o urso anda (o quadro muda)', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/rota-que-nao-existe');
-    const first = await bearFrame(page).textContent();
-    await expect
-      .poll(async () => (await bearFrame(page).textContent()) !== first, { timeout: 10_000 })
-      .toBe(true);
-  });
-});
-
 test.describe('navegação de ponta a ponta', () => {
-  test('início, modelo, ciclo, ação e notícias, só clicando', async ({ page }) => {
-    await page.goto('/');
-    // início -> modelo, pelo ranking
-    await region(page, 'Ranking').getByRole('link', { name: 'GPT-6.1 Sol', exact: true }).click();
+  test('arena, modelo, ciclo, ação e notícias, só clicando', async ({ page }) => {
+    await page.goto('/arena');
+    // arena -> modelo, pela faixa dos modelos (o nome do cartão é o nome, a etiqueta, o retorno e o percentil)
+    await region(page, 'Ranking')
+      .getByRole('link', { name: /^GPT-6\.1 Sol simulado/ })
+      .click();
     await expect(page).toHaveURL(new RegExp(`/modelos/${MODEL}$`));
     await expect(page.getByRole('heading', { level: 1, name: 'GPT-6.1 Sol' })).toBeVisible();
 
@@ -1078,22 +1349,19 @@ test.describe('navegação de ponta a ponta', () => {
     await expect(page).toHaveURL(new RegExp(`/acoes/${ticker}$`));
     await expect(page.getByRole('heading', { level: 1, name: ticker })).toBeVisible();
 
-    // ação -> notícias da ação -> notícias (menu)
+    // ação -> notícias da ação -> notícias -> a arena (pela navegação da casca do app: o trilho no desktop, a barra de abas no celular) ->
+    // o início (pela marca)
     await page.getByRole('link', { name: `Todas as notícias de ${ticker}` }).click();
     await expect(page).toHaveURL(new RegExp(`/noticias\\?ticker=${ticker}$`));
     await expect(page.getByRole('heading', { level: 1, name: 'Notícias' })).toBeVisible();
-    // abaixo de 1024 px o menu é a folha que o botão "Menu" abre (e2e/menu.ts)
+    // na casca do app a navegação está sempre na tela (e2e/menu.ts)
     await abrirMenu(page);
     await page
       .getByRole('navigation', { name: 'Principal' })
-      .getByRole('link', { name: 'Ranking' })
+      .getByRole('link', { name: 'Arena', exact: true })
       .click();
-    await expect(page.getByRole('heading', { level: 1, name: 'Ranking' })).toBeVisible();
-    await abrirMenu(page);
-    await page
-      .getByRole('navigation', { name: 'Principal' })
-      .getByRole('link', { name: 'Início' })
-      .click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Arena' })).toBeVisible();
+    await page.getByRole('banner').getByRole('link', { name: 'Alvesting' }).click();
     await expect(page.getByRole('heading', { level: 1, name: HERO_TITLE })).toBeVisible();
   });
 });

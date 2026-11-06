@@ -80,7 +80,7 @@ describe('a carteira vazia', () => {
 
   it('o modo de preço são dois radios nativos num grupo com legenda, o "preço por ação" já marcado', () => {
     expect(out).toContain(
-      '<legend class="font-display text-sm font-medium text-ink">Como você vai informar o valor?</legend>',
+      '<legend class="text-sm font-medium text-ink">Como você vai informar o valor?</legend>',
     );
     const radios = inputs(out).filter((input) => input.type === 'radio');
     expect(radios).toHaveLength(2);

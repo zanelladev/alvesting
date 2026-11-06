@@ -17,7 +17,6 @@ Rode linha por linha. Corrija o que falhar e rode de novo.
 - [ ] Todo valor com direção leva glifo `▲ ▼ ■` e sinal; a cor nunca sozinha.
 - [ ] `muted-soft` nunca em texto; `muted` não vai sobre `surface-strong` em texto pequeno.
 - [ ] Nenhum número sintético na tela: o ASCII de dado sai do valor da api.
-- [ ] Gráfico pequeno em blocos é o `AsciiChart` (`areaChart`), decorativo, com o número em texto ao lado.
 - [ ] Moeda com o espaço que não quebra (`formatBRL`).
 
 ## Moldura e alvos
@@ -31,7 +30,7 @@ Rode linha por linha. Corrija o que falhar e rode de novo.
 
 ## ASCII e arte
 
-- [ ] Peça de dado em caractere usa `ascii-block` (a mono do sistema); arte só com glifos latinos.
+- [ ] Peça de dado em caractere (a fita) usa a mono do sistema; arte só com glifos latinos.
 - [ ] ASCII decorativo com `aria-hidden` e o mesmo dado em texto (`sr-only` ou ao lado).
 - [ ] A arte tem linha em `docs/DEPENDENCIAS.md`, "Artes", com a procedência; nada de terceiros "só para desenvolvimento".
 - [ ] O quadro 0 vem no HTML (confira com o JavaScript desligado); o laço só a partir de 1024 px, sem movimento reduzido e sem Save-Data.

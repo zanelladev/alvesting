@@ -81,9 +81,19 @@ test.describe('quem entra no painel', () => {
     await expect(
       page.getByRole('heading', { level: 1, name: 'Página não encontrada' }),
     ).toBeVisible();
-    const hidden = await page.getByRole('main').innerText();
+    // o texto da tela, sem a arte do urso: ela é decorativa (aria-hidden), o quadro 0 chega depois do load (e2e/nao-encontrada.spec.ts) e,
+    // a partir de 1024 px, anda; comparada, a arte fazia a conta depender de quando o quadro chegou em cada página
+    const text = () =>
+      page.getByRole('main').evaluate((main: HTMLElement) => {
+        const arts = [...main.querySelectorAll<HTMLElement>('[data-arte]')];
+        for (const art of arts) art.style.display = 'none';
+        const visible = main.innerText;
+        for (const art of arts) art.style.display = '';
+        return visible;
+      });
+    const hidden = await text();
     await page.goto('/nao-existe-de-verdade');
-    expect(await page.getByRole('main').innerText()).toBe(hidden);
+    expect(await text()).toBe(hidden);
 
     for (const route of ['/seasons', '/jobs', '/costs']) {
       expect((await page.request.get(`/api/v1/admin${route}`)).status(), route).toBe(403);

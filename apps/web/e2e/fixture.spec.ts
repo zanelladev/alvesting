@@ -13,13 +13,17 @@ const fact = (scope: Locator, term: string): Locator => scope.locator(`dt:text-i
 const WEEKDAY = '(domingo|segunda-feira|terça-feira|quarta-feira|quinta-feira|sexta-feira|sábado)';
 
 test.describe('temporada que ainda não teve ciclo', () => {
-  test('a home diz o que falta, em vez de uma tela quebrada: sem ciclo, sem resultado, sem decisão e sem macro', async ({
+  // A landing (a /) abre com a api falsa; o que falta é dito na /arena, para onde foi o conteúdo da home de antes (docs/redesign-rallies/plano.md,
+  // seção e).
+  test('a arena diz o que falta, em vez de uma tela quebrada: sem ciclo, sem resultado, sem decisão e sem macro', async ({
     page,
   }) => {
     await page.goto(`${FIXTURE_WEB_URL}/`);
     await expect(
       page.getByRole('heading', { level: 1, name: 'Modelos de linguagem investindo na B3' }),
     ).toBeVisible();
+    await page.goto(`${FIXTURE_WEB_URL}/arena`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Arena' })).toBeVisible();
     await expect(fact(region(page, 'Temporada'), 'Nome')).toHaveText('Temporada de teste');
     await expect(fact(region(page, 'Temporada'), 'Situação')).toHaveText('Em andamento');
     await expect(fact(region(page, 'Temporada'), 'Liquidado até')).toHaveText('ainda não');
@@ -49,13 +53,37 @@ test.describe('temporada que ainda não teve ciclo', () => {
     await expect(region(page, 'Ranking')).toContainText(noResult);
     await expect(region(page, 'Decisões')).toContainText('Nenhuma decisão ainda.');
     await expect(region(page, 'Decisões').getByRole('article')).toHaveCount(0);
+    // sem ranking não há modelo para o filtro do feed nem carteira para mostrar
+    await expect(page.getByRole('navigation', { name: 'Filtrar por modelo' })).toHaveCount(0);
+    await expect(region(page, 'Carteiras')).toContainText(
+      'As carteiras aparecem depois da primeira liquidação.',
+    );
+    await expect(page.locator('[data-carteira]')).toHaveCount(0);
+  });
+
+  test('o explorar sem resultado diz o que falta, e o universo da semana também', async ({
+    page,
+  }) => {
+    await page.goto(`${FIXTURE_WEB_URL}/explorar`);
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Explore as carteiras da arena' }),
+    ).toBeVisible();
+    await expect(page.getByRole('main')).toContainText(
+      'Ainda não há resultado: os cartões aparecem depois da primeira liquidação',
+    );
+    await expect(region(page, 'Universo da semana')).toContainText(
+      'O universo da semana aparece depois do primeiro ciclo.',
+    );
+    await expect(page.getByRole('navigation', { name: 'Explorar', exact: true })).toContainText(
+      'O retorno aparece depois da primeira liquidação.',
+    );
   });
 
   test('a contagem para o próximo ciclo anda sozinha: passou um dia, ela mostra um dia a menos', async ({
     page,
   }) => {
     await page.clock.install({ time: Date.now() });
-    await page.goto(`${FIXTURE_WEB_URL}/`);
+    await page.goto(`${FIXTURE_WEB_URL}/arena`);
     const countdown = page.getByTestId('contagem');
     await expect(countdown).toHaveText(/^Faltam \d+ dias?( e \d+ horas?)?\.$/);
     const before = (await countdown.innerText()).trim();

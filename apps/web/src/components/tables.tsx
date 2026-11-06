@@ -1,4 +1,4 @@
-import type { LeaderboardRow } from '@alvesting/contracts';
+import type { LeaderboardRow, PublicCompetitor } from '@alvesting/contracts';
 import {
   formatBRL,
   formatBRLSigned,
@@ -7,23 +7,28 @@ import {
   formatQuantity,
   formatUsdMicro,
 } from '../lib/format';
-import { LINK, NavLink, ROW, SimulatedTag, TABLE, TD, TH, TableScroll, isSimulated } from './ui';
+import { Competidor } from './competidor';
+import { LINK, NavLink, ROW, SimulatedTag, TABLE, TD, TH, TableScroll, direction } from './ui';
 
-// As tabelas da arena. Densas e legíveis: números em fonte mono e tabulares, uma linha por competidor ou posição, com o nome como
-// cabeçalho da linha (o leitor de tela lê "CDI, retorno...", e "Gemini 4 Argon simulado, retorno..." com a etiqueta da arena simulada)
-// e preso à esquerda quando a tabela rola dentro da própria caixa (ui.tsx, TableScroll). As colunas que mais dizem vêm primeiro, para
+// As tabelas da arena. Densas e legíveis: números tabulares, uma linha por competidor ou posição, com o nome como cabeçalho da linha (o
+// leitor de tela lê "CDI, retorno...", e "Gemini 4 Argon simulado, retorno..." com a etiqueta da arena simulada), o logo do laboratório ao
+// lado do nome (competidor.tsx; decorativo) e preso à esquerda quando a tabela rola dentro da própria caixa (ui.tsx, TableScroll). As colunas que mais dizem vêm primeiro, para
 // caberem em 360 px sem rolar: o resto está à direita. Valor que não existe (percentil antes do Monte Carlo, acerto sem venda) é "—".
 
 const DASH = '—';
 const NAME = `${LINK} font-sans`;
-// A direção de um número com sinal, para o glifo ▲ ▼ ■ que o CSS põe antes dele (`[data-dir]` em globals.css): fora do texto, que o leitor de
-// tela e o e2e leem. Só em valor com sinal; o que não existe ("—") fica sem.
-export const direction = (value: number) => (value > 0 ? 'up' : value < 0 ? 'down' : 'flat');
+// (a direção mora em ui.tsx, de onde o componente do competidor também a lê; as telas a importam daqui)
+export { direction };
 // o nome nunca quebra no meio de uma palavra, nem o ticker em dois; só nos espaços, e só abaixo de 1024 px (para caber em 360 px): na tela
 // larga, o nome e a etiqueta "simulado" ficam numa linha, e a linha do nome comprido tem a altura das outras. (A tabela de posições da
-// carteira, wallet-panels.tsx, usa o cabeçalho de coluna e a célula presa à esquerda daqui.)
-export const STICKY =
-  'sticky left-0 min-w-28 bg-surface-card px-1.5 py-1 text-left font-normal text-ink sm:px-3 lg:whitespace-nowrap';
+// carteira, wallet-panels.tsx, usa o cabeçalho de coluna e a célula presa à esquerda daqui.) O fundo é o da caixa em que a tabela está. O
+// nome e o ticker em 14/600, como os do Rallies (plano do redesenho, e.2 e e.6).
+const PRESA =
+  'sticky left-0 bg-canvas py-1 text-left text-sm font-semibold text-ink lg:whitespace-nowrap';
+export const STICKY = `${PRESA} px-2`;
+// a célula do competidor: o logo fica fora do fluxo do texto, no respiro da esquerda (globals.css, `.celula-competidor`), e a célula tem
+// pelo menos 160 px (o nome curto cabe numa linha no celular, com a etiqueta embaixo)
+const STICKY_COMPETIDOR = `${PRESA} celula-competidor min-w-40 pr-2 pl-10`;
 
 export const Th = ({ children }: { children: string }) => (
   <th scope="col" className={TH}>
@@ -69,11 +74,8 @@ export function LeaderboardTable({
           {rows.map((row) => (
             <tr key={row.competitor.slug} className={ROW}>
               <td className={TD}>{row.rank}</td>
-              <th scope="row" className={STICKY}>
-                <NavLink href={`/modelos/${row.competitor.slug}`} className={NAME}>
-                  {row.competitor.name}
-                </NavLink>
-                {isSimulated(row.competitor) ? <SimulatedTag /> : null}
+              <th scope="row" className={STICKY_COMPETIDOR}>
+                <Competidor competitor={row.competitor} />
               </th>
               <td className={TD} data-dir={direction(row.returnBps)}>
                 {formatBps(row.returnBps)}
@@ -130,6 +132,8 @@ export interface PositionRow {
   stale: boolean;
   // quem tem a ação é um modelo da arena simulada (ui.tsx, SimulatedTag)
   simulated?: boolean;
+  // na tabela de quem tem a ação: o competidor, que leva o logo, o link e a etiqueta (competidor.tsx)
+  competitor?: PublicCompetitor;
 }
 
 // A carteira de um modelo (primeira coluna: a ação) ou quem tem uma ação (primeira coluna: o competidor). O fechamento de cada ação não
@@ -159,14 +163,20 @@ export function PositionsTable({
         <tbody>
           {rows.map((row) => (
             <tr key={row.key} className={ROW}>
-              <th scope="row" className={STICKY}>
-                <NavLink
-                  href={row.href}
-                  className={`${NAME} ${first === 'Ação' ? 'font-mono whitespace-nowrap' : ''}`}
-                >
-                  {row.label}
-                </NavLink>
-                {row.simulated ? <SimulatedTag /> : null}
+              <th scope="row" className={row.competitor ? STICKY_COMPETIDOR : STICKY}>
+                {row.competitor ? (
+                  <Competidor competitor={row.competitor} />
+                ) : (
+                  <>
+                    <NavLink
+                      href={row.href}
+                      className={`${NAME} ${first === 'Ação' ? 'font-mono whitespace-nowrap' : ''}`}
+                    >
+                      {row.label}
+                    </NavLink>
+                    {row.simulated ? <SimulatedTag /> : null}
+                  </>
+                )}
               </th>
               <td className={TD}>
                 {formatBRL(row.valueCents)}

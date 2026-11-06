@@ -1,17 +1,23 @@
 ---
 name: ascii-ui
-description: O estilo da Alvesting (ADR 0034) — o canvas preto da v1 com a interface nas medidas do Arc (uiarc.dev), o ASCII onde há dado e a arte ASCII "com brasa" (grade de glifos cinza, topo em ladrilho vazado, foco aceso em âmbar) como imagem, na gramática do WAERK (@basit_designs). Use ao criar ou refazer qualquer tela, seção, componente ou estado neste estilo, ao pôr uma arte ASCII numa tela, ou ao revisar se uma tela segue o estilo.
+description: Desde 05/11/2026, só a arte ASCII da Alvesting (a escadaria e o urso); as telas seguem o design do Rallies AI (docs/TELAS.md, seção 10; ADR 0035). O estilo da onda anterior (ADR 0034) — o canvas preto da v1 com a interface nas medidas do Arc (uiarc.dev), o ASCII onde há dado e a arte ASCII "com brasa" (grade de glifos cinza, topo em ladrilho vazado, foco aceso em âmbar) como imagem, na gramática do WAERK (@basit_designs). Use ao pôr, gerar ou ajustar uma arte ASCII numa tela (a escadaria, o urso) ou ao revisar a arte; para desenhar ou revisar uma tela, o docs/TELAS.md, seção 10.
 when_to_use: "estilo ascii", "ascii-ui", "design da v1", "como o WAERK", "arte ascii com cor", "brasa", "hero com arte ascii", "medidas do Arc", "uiarc", "refazer a tela nesse estilo", arte para hero/404/vazio, revisar tela contra o docs/TELAS.md
 ---
 
 # ascii-ui
+
+> **Desde 05/11/2026 as telas seguem o design do Rallies AI, nos dois temas** (`docs/TELAS.md`, seção 10; ADR 0035;
+> `docs/redesign-rallies/plano.md`): a casca, os tokens, as peças e o tipo descritos abaixo são os da onda anterior e valem só como
+> história. **Esta skill vale para a arte ASCII** (a escadaria do hero da landing e da tela dividida, e o urso da 404): o arquivo
+> pré-renderizado com brasa, a moldura escura em que ela mora nos dois temas, o quadro 0 e o laço (`references/arte.md` e a seção "ASCII e
+> arte" do checklist).
 
 O sistema visual da v1 (o worktree `feat-redesign`, commit `cddd320`) com o código da v2. Três camadas, cada uma com dono:
 
 | Camada        | Onde                                                                                                            | O que é                                                                                                                                                                    |
 | ------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Interface** | `apps/web/src/app/globals.css` (os tokens no `@theme`, as classes no `@layer components`) e `components/ui.tsx` | cabeçalho com a cápsula, pílula branca, cartões de borda, tabela, faixa de números, etiqueta, filtro, vazio, alerta, rodapé: Server Components com CSS, nas medidas do Arc |
-| **Dado**      | `src/lib/ascii.ts` (`areaChart`, `GLYPH`), `AsciiChart` (`ui.tsx`) e a fita (`components/fita.tsx`)             | o ASCII que carrega valor real, sempre decorativo e com o mesmo dado em texto ao lado                                                                                      |
+| **Dado**      | a fita (`components/fita.tsx`; o texto e o glifo em `src/lib/fita.ts`)                                          | o ASCII que carrega valor real, sempre decorativo e com o mesmo dado em texto ao lado                                                                                      |
 | **Imagem**    | `components/arte.tsx` (servidor) e `components/arte-viva.tsx` (cliente, o laço)                                 | a peça com brasa: arquivo pré-renderizado, o navegador só troca o quadro                                                                                                   |
 
 A fonte de verdade das regras é o `docs/TELAS.md`, seção 10 ("Sistema visual (ascii-ui)"), e a dos valores, o `globals.css`. A decisão e
@@ -67,17 +73,16 @@ verbo. Spinner circular é proibido. Movimento reduzido: tudo parado no quadro d
 
 ## Onde mora cada coisa
 
-| O quê                                                                                                                | Arquivo                                                                                                                |
-| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Tokens e classes                                                                                                     | `apps/web/src/app/globals.css`                                                                                         |
-| Fontes, a moldura (`data-moldura`) e a linha antes do rodapé                                                         | `apps/web/src/app/layout.tsx`                                                                                          |
-| Cabeçalho (a marca, a `nav` com a cápsula e a folha `popover`) e rodapé                                              | `apps/web/src/components/site-chrome.tsx`                                                                              |
-| Peças comuns (`Rule`, `PageHead`, `Section`, `Facts`, `Strip`, `AsciiChart`, `Empty`, `SimulatedTag`, `TableScroll`) | `apps/web/src/components/ui.tsx`                                                                                       |
-| O hero, a arte, o laço e a fita                                                                                      | `components/hero.tsx`, `arte.tsx`, `arte-viva.tsx`, `fita.tsx`; o texto da fita em `src/lib/fita.ts`                   |
-| O gráfico em blocos                                                                                                  | `apps/web/src/lib/ascii.ts`                                                                                            |
-| Os arquivos da arte                                                                                                  | `apps/web/public/ascii/arte/` (o arquivo inteiro e o sprite do quadro 0) e `apps/web/src/arte/` (o quadro 0 importado) |
-| A procedência de cada arte                                                                                           | `docs/DEPENDENCIAS.md`, "Artes"; o ADR 0034                                                                            |
-| O ajudante do menu nos testes                                                                                        | `apps/web/e2e/menu.ts`                                                                                                 |
+| O quê                                                                                          | Arquivo                                                                                                                |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Tokens e classes                                                                               | `apps/web/src/app/globals.css`                                                                                         |
+| Fontes, a moldura (`data-moldura`) e a linha antes do rodapé                                   | `apps/web/src/app/layout.tsx`                                                                                          |
+| Cabeçalho (a marca, a `nav` com a cápsula e a folha `popover`) e rodapé                        | `apps/web/src/components/site-chrome.tsx`                                                                              |
+| Peças comuns (`PageHead`, `Section`, `Facts`, `Strip`, `Empty`, `SimulatedTag`, `TableScroll`) | `apps/web/src/components/ui.tsx`                                                                                       |
+| O hero, a arte, o laço e a fita                                                                | `components/hero.tsx`, `arte.tsx`, `arte-viva.tsx`, `fita.tsx`; o texto da fita em `src/lib/fita.ts`                   |
+| Os arquivos da arte                                                                            | `apps/web/public/ascii/arte/` (o arquivo inteiro e o sprite do quadro 0) e `apps/web/src/arte/` (o quadro 0 importado) |
+| A procedência de cada arte                                                                     | `docs/DEPENDENCIAS.md`, "Artes"; o ADR 0034                                                                            |
+| O ajudante do menu nos testes                                                                  | `apps/web/e2e/menu.ts`                                                                                                 |
 
 ## Comandos
 

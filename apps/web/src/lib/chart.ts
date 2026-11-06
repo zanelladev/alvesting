@@ -21,12 +21,12 @@ const MARGIN = { left: 58, top: 8, right: 10, bottom: 22 };
 
 const fix = (n: number): string => String(Math.round(n * 10) / 10);
 
-function plotOf({ width, height }: Size): Plot {
+function plotOf({ width, height }: Size, margin = MARGIN): Plot {
   return {
-    left: MARGIN.left,
-    top: MARGIN.top,
-    right: width - MARGIN.right,
-    bottom: height - MARGIN.bottom,
+    left: margin.left,
+    top: margin.top,
+    right: width - margin.right,
+    bottom: height - margin.bottom,
   };
 }
 
@@ -45,13 +45,16 @@ export function niceTicks(min: number, max: number, count: number): number[] {
   return ticks;
 }
 
-// Até 5 rótulos de data, a primeira e a última nas pontas (alinhadas para dentro, para o texto não sair do desenho).
+// Até 5 rótulos de data, a primeira e a última nas pontas (alinhadas para dentro, para o texto não sair do desenho). `minor`: o que não é
+// a primeira, a do meio nem a última, que o desenho estreito (o celular) esconde para as datas não encostarem.
 function xLabelsOf(
   dates: readonly string[],
   xOf: (index: number) => number,
-): Array<{ label: string; x: number; anchor: 'start' | 'middle' | 'end' }> {
+): Array<{ label: string; x: number; anchor: 'start' | 'middle' | 'end'; minor: boolean }> {
   const shown = Math.min(dates.length, 5);
-  if (shown === 1) return [{ label: formatShortDate(dates[0]!), x: xOf(0), anchor: 'middle' }];
+  if (shown === 1) {
+    return [{ label: formatShortDate(dates[0]!), x: xOf(0), anchor: 'middle', minor: false }];
+  }
   return Array.from({ length: shown }, (_, i) => {
     const index = Math.round((i * (dates.length - 1)) / (shown - 1));
     return {
@@ -59,6 +62,7 @@ function xLabelsOf(
       x: xOf(index),
       anchor:
         i === 0 ? ('start' as const) : i === shown - 1 ? ('end' as const) : ('middle' as const),
+      minor: i !== 0 && i !== shown - 1 && i * 2 !== shown - 1,
     };
   });
 }
@@ -94,7 +98,12 @@ export interface EquityLayout {
   band: { d: string } | null;
 }
 
-export function layoutEquity(input: EquityInput, size: Size): EquityLayout {
+// `margin`: a dos rótulos de eixo dentro do SVG (o padrão, das velas); o gráfico da arena desenha os rótulos em HTML e passa a dele.
+export function layoutEquity(
+  input: EquityInput,
+  size: Size,
+  margin: typeof MARGIN = MARGIN,
+): EquityLayout {
   const { dates, series, band } = input;
   if (dates.length === 0) throw new RangeError('gráfico sem nenhuma data');
   for (const s of series) {
@@ -105,7 +114,7 @@ export function layoutEquity(input: EquityInput, size: Size): EquityLayout {
     throw new RangeError('faixa fora do tamanho das datas');
   }
 
-  const plot = plotOf(size);
+  const plot = plotOf(size, margin);
   const xOf = (index: number) =>
     dates.length === 1
       ? (plot.left + plot.right) / 2
@@ -164,6 +173,30 @@ export function alignBand(
   const aligned = dates.map((date) => byDate.get(date));
   if (aligned.some((row) => row === undefined)) return null;
   return { p5: aligned.map((row) => row!.p5), p95: aligned.map((row) => row!.p95) };
+}
+
+// Os rótulos do fim das linhas do patrimônio (o logo e a pílula com o valor; plano do redesenho, e.4): cada um na altura em que a sua linha
+// termina, sem encavalar. Na ordem da altura, o que ficaria a menos de `gap` do de cima desce até caber; se o último passar de `bottom`, ele
+// fica no pé e empurra para cima os de cima dele. Devolve as alturas na ordem da entrada. `ys`, `gap`, `top` e `bottom` na mesma unidade
+// (o px do desenho: a altura do gráfico é fixa). O empate fica na ordem da entrada.
+// ponytail: mais rótulos que cabem na altura (uns 13 de 20 px em 280) passam do topo; a saída é um gráfico mais alto ou a legenda só.
+export function spreadLabels(
+  ys: readonly number[],
+  gap: number,
+  top: number,
+  bottom: number,
+): number[] {
+  const order = ys.map((y, i) => ({ y, i })).sort((a, b) => a.y - b.y || a.i - b.i);
+  const placed = order.map((label) => label.y);
+  for (let k = 0; k < placed.length; k += 1) {
+    placed[k] = Math.max(placed[k]!, k === 0 ? top : placed[k - 1]! + gap);
+  }
+  for (let k = placed.length - 1; k >= 0; k -= 1) {
+    placed[k] = Math.min(placed[k]!, k === placed.length - 1 ? bottom : placed[k + 1]! - gap);
+  }
+  const out = new Array<number>(ys.length);
+  order.forEach((label, k) => (out[label.i] = placed[k]!));
+  return out;
 }
 
 // --- barras (velas) ------------------------------------------------------------------------------------------------------------

@@ -19,8 +19,10 @@ export async function LegalDocumentPage({ id }: { id: LegalDocumentId }) {
 
   return (
     <>
+      {/* o h1 e os pares (a versão, a vigência, o SHA-256 na mono e, na política, o controlador e o contato) num cartão cinza, acima da prosa
+          (docs/redesign-rallies/plano.md, f.5) */}
       <PageHead title={doc.title}>
-        <div className="max-w-2xl">
+        <div className="max-w-2xl rounded-lg bg-surface-card px-4 [&_dl>div:last-child]:border-b-0">
           <Facts>
             <Fact term="Versão">{doc.version}</Fact>
             <Fact term="Vigência">{formatDate(doc.effectiveDate)}</Fact>
@@ -53,8 +55,8 @@ export async function LegalDocumentPage({ id }: { id: LegalDocumentId }) {
         </p>
       </PageHead>
 
-      {/* o texto em prosa, até 64 caracteres por linha */}
-      <article aria-label={doc.title} className="mt-12">
+      {/* o texto em prosa, até 65 caracteres por linha */}
+      <article aria-label={doc.title} className="mt-10">
         <LegalText text={doc.text} />
       </article>
 

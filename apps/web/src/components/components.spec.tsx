@@ -88,7 +88,7 @@ describe('NewsList', () => {
   });
 
   it('lista vazia é uma lista vazia, sem erro', () => {
-    expect(html(<NewsList rows={[]} />)).toBe('<ul aria-label="Notícias" class="space-y-3"></ul>');
+    expect(html(<NewsList rows={[]} />)).toBe('<ul aria-label="Notícias" class="max-w-2xl"></ul>');
   });
 });
 
@@ -203,7 +203,7 @@ describe('DecisionCard', () => {
         })}
       />,
     );
-    expect(out).toMatch(/<p class="min-w-0 basis-full text-sm">W{100}<\/p>/);
+    expect(out).toMatch(/<p class="min-w-0 basis-full text-sm[^"]*">W{100}<\/p>/);
   });
 
   // "neutro" é o valor do contrato (o que o modelo responde); a frase concorda com "visão": "visão neutra" (otimista e pessimista servem
@@ -221,9 +221,11 @@ describe('DecisionCard', () => {
 
   it('na página do modelo o título é a data, link para o ciclo; no feed é o modelo', () => {
     const byDate = html(<DecisionCard by="date" date="2026-11-09" decision={decision()} />);
-    expect(byDate).toContain(
-      '<h3 class="font-display text-title"><a class="link" href="/ciclos/2026-11-09">09/11/2026</a></h3>',
+    expect(byDate).toMatch(
+      /<h3 class="[^"]*"><a class="link[^"]*" href="\/ciclos\/2026-11-09">09\/11\/2026<\/a><\/h3>/,
     );
+    // na página do modelo não há logo nem retorno no cabeçalho: a página já os mostra
+    expect(byDate).not.toContain('class="logo');
     const byModel = html(<DecisionCard by="model" date="2026-11-09" decision={decision()} />);
     expect(byModel).toContain('href="/modelos/gemini-4-argon"');
   });
@@ -231,12 +233,59 @@ describe('DecisionCard', () => {
   it('a decisão simulada leva a etiqueta logo depois do nome do modelo; na página do modelo (título é a data) não', () => {
     const simulated = html(<DecisionCard by="model" decision={decision()} simulated />);
     expect(simulated).toMatch(
-      /<h3[^>]*><a class="link" href="\/modelos\/gemini-4-argon">Gemini 4 Argon<\/a> <span class="[^"]*border-dashed[^"]*">simulado<\/span><\/h3>/,
+      /<h3[^>]*><a class="link[^"]*" href="\/modelos\/gemini-4-argon">Gemini 4 Argon<\/a> <span class="[^"]*border-dashed[^"]*">simulado<\/span><\/h3>/,
     );
     expect(html(<DecisionCard by="model" decision={decision()} />)).not.toContain('simulado');
     expect(
       html(<DecisionCard by="date" date="2026-11-09" decision={decision()} simulated />),
     ).not.toContain('simulado');
+  });
+});
+
+describe('DecisionCard no feed da arena', () => {
+  // O item do feed do Rallies (plano do redesenho, e.5): o logo do laboratório e o retorno do modelo no cabeçalho. O contrato de DOM que os
+  // e2e leem fica: o h3 com o link, um p só no cabeçalho, o resumo como o único p direto do item.
+  it('o cabeçalho tem o logo do laboratório (pelo slug, quando o dado não traz o tipo) e o retorno do modelo, fora do h3 e do p', () => {
+    const out = html(
+      <DecisionCard by="model" date="2026-11-09" decision={decision()} returnBps={-120} />,
+    );
+    expect(out).toMatch(/<span aria-hidden="true" data-lab="google" class="logo size-10"><\/span>/);
+    expect(out).toMatch(/<\/h3><span data-dir="down"[^>]*>-1,20%<\/span><p/);
+    expect(out.match(/<header[\s\S]*<\/header>/)![0].match(/<p/g)).toHaveLength(1);
+  });
+
+  it('sem o retorno (a landing não o passa), sem a frase; com o competidor do feed, o laboratório sai do modelo', () => {
+    const out = html(
+      <DecisionCard
+        by="model"
+        decision={decision({
+          competitor: {
+            slug: 'modelo-x',
+            name: 'Modelo X',
+            type: 'MODEL',
+            provider: 'openrouter',
+            modelId: 'anthropic/claude-opus-5.5',
+          },
+        })}
+      />,
+    );
+    expect(out).not.toContain('data-dir');
+    expect(out).toContain('data-lab="anthropic"');
+  });
+
+  it('o resumo é o único parágrafo direto do item, e os descartados ficam recuados, fora dele', () => {
+    const out = html(
+      <DecisionCard
+        by="model"
+        decision={decision({ dropped: [{ position: 1, reason: 'not_in_universe' }] })}
+      />,
+    );
+    const direct = out
+      .replace(/<header[\s\S]*<\/header>/, '')
+      .match(/<article[^>]*>(?:<p[^>]*>[^<]*<\/p>)?/g);
+    expect(direct![0]).toContain('Resumo.');
+    expect(out).toContain('aria-label="Itens descartados"');
+    expect(out).toContain('Item 2: ação fora do universo');
   });
 });
 
@@ -274,10 +323,11 @@ describe('tabelas', () => {
     expect(out).not.toContain('Patrimônio');
   });
 
+  // o logo do laboratório (ou a inicial, aqui a do CDI) vem antes do nome, decorativo e sem texto (competidor.tsx)
   it('o nome do competidor é o cabeçalho da linha e é link para a página dele', () => {
     const out = html(<LeaderboardTable rows={[row()]} label="Ranking" />);
     expect(out).toMatch(
-      /<th scope="row"[^>]*><a class="[^"]*" href="\/modelos\/cdi">CDI<\/a><\/th>/,
+      /<th scope="row"[^>]*><span aria-hidden="true" data-inicial="C" class="logo[^"]*"><\/span><a class="[^"]*" href="\/modelos\/cdi">CDI<\/a><\/th>/,
     );
   });
 
@@ -300,7 +350,7 @@ describe('tabelas', () => {
       />,
     );
     expect(out).toMatch(
-      /<th scope="row"[^>]*><a class="[^"]*" href="\/modelos\/claude-opus-5-5">Claude Opus 5.5<\/a> <span class="[^"]*">simulado<\/span><\/th>/,
+      /<th scope="row"[^>]*><span aria-hidden="true" data-lab="anthropic" class="logo[^"]*"><\/span><a class="[^"]*" href="\/modelos\/claude-opus-5-5">Claude Opus 5.5<\/a> <span class="[^"]*">simulado<\/span><\/th>/,
     );
     expect(out.match(/simulado/g)).toHaveLength(1);
   });
@@ -455,9 +505,85 @@ describe('gráficos', () => {
     );
     const legend = /<figcaption.*<\/figcaption>/s.exec(out)![0];
     expect(legend).toMatch(/Modelo A <span class="[^"]*border-dashed[^"]*">simulado<\/span><\/li>/);
-    expect(legend).toMatch(/<\/svg>Sorteio<\/li>/);
+    // o traço e o logo (aqui a inicial, sem laboratório) antes do nome, que segue sozinho no texto
+    expect(legend).toMatch(
+      /<\/svg><span aria-hidden="true" data-inicial="S"[^>]*><\/span>Sorteio<\/li>/,
+    );
     expect(legend.match(/simulado/g)).toHaveLength(1);
     expect(/<table.*<\/table>/s.exec(out)![0]).not.toContain('simulado');
+  });
+
+  // O fim de cada linha (plano do redesenho, e.4): o logo e o patrimônio final numa pílula da cor do laboratório, decorativos (o mesmo
+  // valor está na descrição e na tabela). A cor vai por classe, nunca em hexadecimal no atributo (no claro a linha ficaria invisível).
+  it('o fim de cada linha leva o logo e o patrimônio final, na cor do laboratório; o Sorteio, neutro e tracejado', () => {
+    const out = html(
+      <EquityChart
+        {...props}
+        series={[
+          {
+            ...props.series[0]!,
+            slug: 'claude-opus-5-5',
+            competitor: {
+              slug: 'claude-opus-5-5',
+              name: 'Modelo A',
+              type: 'MODEL',
+              provider: 'fake',
+              modelId: 'fake/momentum',
+            },
+          },
+          {
+            ...props.series[1]!,
+            slug: 'sorteio',
+            competitor: {
+              slug: 'sorteio',
+              name: 'Sorteio',
+              type: 'RANDOM',
+              provider: null,
+              modelId: null,
+            },
+          },
+        ]}
+      />,
+    );
+    const labels = /<ul aria-hidden="true">.*?<\/ul>/s.exec(out)![0];
+    expect(labels.match(/data-rotulo=/g)).toHaveLength(2);
+    expect(labels).toMatch(
+      /data-rotulo="claude-opus-5-5"[^>]*>.*data-lab="anthropic".*bg-serie-anthropic[^>]*>R\$\u00a0101\.000,00</s,
+    );
+    expect(labels).toMatch(/data-rotulo="sorteio"[^>]*>.*data-inicial="S".*bg-serie-neutra/s);
+    expect(out).toMatch(/data-series="claude-opus-5-5"[^>]*class="stroke-serie-anthropic"/);
+    expect(out).toMatch(/data-series="sorteio"[^>]*stroke-dasharray="6 4"/);
+    expect(out).not.toMatch(/(fill|stroke)="#/);
+    // a altura do desenho é fixa e a largura estica: o traço não escala com ela
+    expect(out).toContain('preserveAspectRatio="none"');
+    expect(out.match(/vector-effect="non-scaling-stroke"/g)!.length).toBeGreaterThan(2);
+  });
+
+  // No dia da primeira liquidação a série tem uma data só: a linha seria só um "mova para" e o SVG não desenharia nada. O ponto de cada linha
+  // vai em HTML, posicionado em % como os rótulos (um círculo no SVG esticado viraria elipse), e o rótulo fica junto dele, e não na borda.
+  it('com uma data só, cada linha é um ponto, e o rótulo fica junto dele', () => {
+    const out = html(
+      <EquityChart
+        {...props}
+        dates={['2026-11-04']}
+        series={props.series.map((s) => ({ ...s, cents: [s.cents.at(-1)!] }))}
+        band={null}
+      />,
+    );
+    const labels = /<ul aria-hidden="true">.*?<\/ul>/s.exec(out)![0];
+    for (const slug of ['a', 'b']) {
+      expect(out).toMatch(new RegExp(`data-ponto="${slug}"[^>]*style="left:50%;top:[\\d.]+px"`));
+      expect(labels).toMatch(
+        new RegExp(`data-rotulo="${slug}"[^>]*style="left:50%;top:[\\d.]+px"`),
+      );
+    }
+    expect(out).not.toMatch(/NaN|Infinity|undefined/);
+  });
+
+  it('com várias datas, o ponto e o rótulo ficam no fim da linha, na borda direita do desenho', () => {
+    const out = html(<EquityChart {...props} />);
+    expect(out).toMatch(/data-ponto="a"[^>]*style="left:100%;top:[\d.]+px"/);
+    expect(out).toMatch(/data-rotulo="a"[^>]*style="left:100%;top:[\d.]+px"/);
   });
 
   it('sem faixa do Monte Carlo não há faixa nem as colunas p5 e p95', () => {
@@ -504,6 +630,7 @@ describe('SearchForm', () => {
         action="/acoes"
         name="q"
         label="Ticker ou nome"
+        placeholder="Buscar ação…"
         button="Buscar"
         maxLength={40}
         {...props}
@@ -562,7 +689,7 @@ describe('Como funciona sem a api', () => {
   it('explicar a regra não depende de dado: sai o texto, com os números do plano e sem o hash', async () => {
     const { api } = await import('../lib/api');
     vi.mocked(api.arenaCurrent).mockRejectedValue(new Error('api fora do ar: detalhe interno'));
-    const { default: Page } = await import('../app/como-funciona/page');
+    const { default: Page } = await import('../app/(site)/como-funciona/page');
     const out = html(await Page());
     expect(out).toContain('Regras da temporada');
     expect(out).toContain('R$\u00a0100.000,00 por competidor');

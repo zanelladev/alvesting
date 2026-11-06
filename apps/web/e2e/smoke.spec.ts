@@ -56,14 +56,15 @@ test.describe('smoke', () => {
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
   });
 
-  // A faixa de cotações da home lê o BOVA11 pela rota interna da api, com o segredo do site (docs/API.md, seção 6; ADR 0033). Se o segredo do
-  // site não for o da api, a rota responde 404 e a home vira a tela "Não foi possível carregar os dados": sem o h1 do teste acima e sem esta
-  // região. É o que a prova da revisão nova mostra antes de ela receber tráfego. Banco sem barra (o primeiro deploy) diz "sem dado": o que
-  // conta é a faixa estar lá, e o crédito das cotações no rodapé.
-  test('a home mostra a faixa de cotações (o BOVA11 pela rota interna) e o crédito da brapi', async ({
+  // A faixa de cotações da arena (a /arena, para onde foi o conteúdo da home de antes; docs/redesign-rallies/plano.md, seção e) lê o BOVA11
+  // pela rota interna da api, com o segredo do site (docs/API.md, seção 6; ADR 0033). Se o segredo do site não for o da api, a rota responde
+  // 404 e a arena vira a tela "Não foi possível carregar os dados", sem esta região. É o que a prova da revisão nova mostra antes de ela
+  // receber tráfego. Banco sem barra (o primeiro deploy) diz "sem dado": o que conta é a faixa estar lá, e o crédito das cotações no rodapé.
+  test('a arena mostra a faixa de cotações (o BOVA11 pela rota interna) e o crédito da brapi', async ({
     page,
   }) => {
-    await page.goto('/');
+    const response = await page.goto('/arena');
+    expect(response?.status()).toBe(200);
     const quotes = page.getByRole('region', { name: 'Cotações e macro', exact: true });
     await expect(quotes).toBeVisible();
     await expect(quotes.locator('dt:text-is("BOVA11")')).toBeVisible();

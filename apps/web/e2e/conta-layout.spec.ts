@@ -89,6 +89,19 @@ const SCREENS: Screen[] = [
   },
 ];
 
+// Três cascas (ADR 0035): a conta mora na do app (o trilho e a barra de abas); os textos legais, na do site; as telas de entrar e criar conta, na
+// tela dividida do cadastro do Rallies (components/tela-dividida.tsx), cujo banner tem só a marca e a pílula da outra tela.
+type Casca = 'app' | 'site' | 'dividida';
+const shellOf = (screen: Screen): Casca =>
+  screen.route.startsWith('/conta')
+    ? 'app'
+    : /^\/(termos|privacidade)$/.test(screen.route)
+      ? 'site'
+      : 'dividida';
+// a pílula da tela dividida: "Criar conta" na de entrar, "Entrar" nas outras
+const pillOf = (screen: Screen): [string, string] =>
+  screen.route.startsWith('/entrar') ? ['Criar conta', '/cadastro'] : ['Entrar', '/entrar'];
+
 // A fonte carregada muda a largura do texto: só mede depois dela. O formulário só vale depois da hidratação (os campos nascem
 // desativados, e o que o teste faz com eles precisa do JavaScript).
 async function loaded(page: Page, heading: string) {
@@ -121,64 +134,69 @@ async function open(page: Page, screen: Screen, who: { request: APIRequestContex
 
 for (const screen of SCREENS) {
   test.describe(`tela ${screen.name} (${screen.route})`, () => {
-    test('em 360 px não rola na horizontal, o cabeçalho cabe e os alvos de toque têm pelo menos 44 px', async ({
-      page,
-      request,
-      ip,
-    }) => {
-      await page.setViewportSize({ width: 360, height: 800 });
-      await open(page, screen, { request, ip });
+    test(
+      'em 360 px não rola na horizontal, o cabeçalho cabe e os alvos de toque têm pelo menos 44 px',
+      { tag: '@tema' },
+      async ({ page, request, ip }) => {
+        await page.setViewportSize({ width: 360, height: 800 });
+        await open(page, screen, { request, ip });
 
-      const { scrollWidth, clientWidth, bodyWidth } = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth,
-        bodyWidth: document.body.scrollWidth,
-      }));
-      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-      expect(bodyWidth).toBeLessThanOrEqual(clientWidth);
+        const { scrollWidth, clientWidth, bodyWidth } = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+          bodyWidth: document.body.scrollWidth,
+        }));
+        expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+        expect(bodyWidth).toBeLessThanOrEqual(clientWidth);
 
-      // o cabeçalho cabe na largura, e a folha do menu abre com os sete links dentro dela, cada um com 44 px de altura (ADR 0034: em 360 px o
-      // menu é a folha que o botão "Menu" abre, uma linha por tela; o mesmo do carteira-layout.spec.ts). A contagem vem antes das medidas: sem
-      // ela o laço passaria em vazio se o cabeçalho sumisse
-      await abrirMenu(page);
-      const bannerLinks = await page.getByRole('banner').getByRole('link').all();
-      expect(bannerLinks.length).toBeGreaterThanOrEqual(8);
-      for (const link of bannerLinks) {
-        const box = (await link.boundingBox())!;
-        expect(box.x, await link.innerText()).toBeGreaterThanOrEqual(0);
-        expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(360);
-        expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
-      }
-      await page.keyboard.press('Escape');
-      await expect(page.getByRole('navigation', { name: 'Principal' })).toBeHidden();
+        // a navegação cabe na largura, cada link com 44 px de altura (ADR 0035). Na conta (a casca do app) a barra de abas está sempre na tela:
+        // a marca e os cinco links (o sexto alvo é o botão "Mais"). Nos textos legais (a casca do site), a folha que o botão "Menu" abre: a
+        // marca, os quatro links e o "Entrar", e o Esc a fecha. Na tela dividida, o banner tem só a marca e a pílula. A contagem vem antes das
+        // medidas: sem ela o laço passaria em vazio se o cabeçalho sumisse
+        const shell = shellOf(screen);
+        if (shell !== 'dividida') await abrirMenu(page);
+        const bannerLinks = await page.getByRole('banner').getByRole('link').all();
+        if (shell === 'dividida') expect(bannerLinks).toHaveLength(2);
+        else expect(bannerLinks.length).toBeGreaterThanOrEqual(6);
+        for (const link of bannerLinks) {
+          const box = (await link.boundingBox())!;
+          expect(box.x, await link.innerText()).toBeGreaterThanOrEqual(0);
+          expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(360);
+          expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
+        }
+        if (shell === 'site') {
+          await page.keyboard.press('Escape');
+          await expect(page.getByRole('navigation', { name: 'Principal' })).toBeHidden();
+        }
 
-      // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante
-      const small = await page.evaluate(() => {
-        const selector =
-          'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]';
-        return [...document.querySelectorAll(selector)]
-          .filter((element) => {
-            const style = getComputedStyle(element);
-            const box = element.getBoundingClientRect();
-            return (
-              style.visibility !== 'hidden' &&
-              style.display !== 'none' &&
-              box.width > 0 &&
-              box.height > 0
-            );
-          })
-          .map((element) => {
-            const box = element.getBoundingClientRect();
-            return {
-              element: `${element.tagName.toLowerCase()} "${(element.textContent ?? '').trim().slice(0, 30)}"`,
-              width: box.width,
-              height: box.height,
-            };
-          })
-          .filter(({ width, height }) => width < 43.95 || height < 43.95);
-      });
-      expect(small).toEqual([]);
-    });
+        // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante
+        const small = await page.evaluate(() => {
+          const selector =
+            'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]';
+          return [...document.querySelectorAll(selector)]
+            .filter((element) => {
+              const style = getComputedStyle(element);
+              const box = element.getBoundingClientRect();
+              return (
+                style.visibility !== 'hidden' &&
+                style.display !== 'none' &&
+                box.width > 0 &&
+                box.height > 0
+              );
+            })
+            .map((element) => {
+              const box = element.getBoundingClientRect();
+              return {
+                element: `${element.tagName.toLowerCase()} "${(element.textContent ?? '').trim().slice(0, 30)}"`,
+                width: box.width,
+                height: box.height,
+              };
+            })
+            .filter(({ width, height }) => width < 43.95 || height < 43.95);
+        });
+        expect(small).toEqual([]);
+      },
+    );
 
     test('não deixa erro no console nem exceção na página (hidratação, recurso que falha)', async ({
       page,
@@ -199,16 +217,24 @@ for (const screen of SCREENS) {
       expect(problems).toEqual([]);
 
       // o aviso fixo (regra do Artur: o software é educacional e não se responsabiliza pelas decisões do usuário) e as atribuições estão
-      // em TODA tela da conta, e o link fixo da conta no cabeçalho também
+      // em TODA tela da conta, e o caminho fixo para a conta no cabeçalho também: a "Conta" na casca do app, o "Entrar" na do site e, na
+      // tela dividida, a pílula da outra tela
       await expect(footer).toContainText('Arena acadêmica com dinheiro fictício');
       await expect(footer).toContainText('não se responsabiliza pelas decisões do usuário');
       await expect(footer).toContainText('Fonte: Banco Central do Brasil');
       await expect(footer).toContainText('Contém dados da CVM');
-      // abaixo de 1024 px o link está na folha que o botão "Menu" abre (e2e/menu.ts)
-      await abrirMenu(page);
+      // abaixo de 1024 px, na casca do site, o link está na folha que o botão "Menu" abre (e2e/menu.ts)
+      const shell = shellOf(screen);
+      if (shell !== 'dividida') await abrirMenu(page);
+      const [name, href] =
+        shell === 'app'
+          ? ['Conta', '/conta']
+          : shell === 'site'
+            ? ['Entrar', '/entrar']
+            : pillOf(screen);
       await expect(
-        page.getByRole('banner').getByRole('link', { name: 'Conta', exact: true }),
-      ).toHaveAttribute('href', '/conta');
+        page.getByRole('banner').getByRole('link', { name, exact: true }),
+      ).toHaveAttribute('href', href);
     });
 
     // O JavaScript que o navegador baixa nesta tela não leva o zod. Pelo índice do pacote de contratos o bundler levava os schemas (uns
@@ -228,40 +254,93 @@ for (const screen of SCREENS) {
       for (const body of bodies) expect(body).not.toContain('ZodError');
     });
 
-    test('acessibilidade (axe): nenhuma violação séria ou crítica', async ({
-      page,
-      request,
-      ip,
-    }) => {
-      await open(page, screen, { request, ip });
-      const { violations } = await new AxeBuilder({ page }).analyze();
-      const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-      expect(
-        serious,
-        JSON.stringify(
-          serious.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target) })),
-        ),
-      ).toEqual([]);
-    });
+    test(
+      'acessibilidade (axe): nenhuma violação séria ou crítica',
+      { tag: '@tema' },
+      async ({ page, request, ip }) => {
+        await open(page, screen, { request, ip });
+        const { violations } = await new AxeBuilder({ page }).analyze();
+        const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+        expect(
+          serious,
+          JSON.stringify(
+            serious.map((v) => ({
+              id: v.id,
+              impact: v.impact,
+              nodes: v.nodes.map((n) => n.target),
+            })),
+          ),
+        ).toEqual([]);
+      },
+    );
 
-    test('acessibilidade (axe) em 360 px: nenhuma violação, de qualquer impacto', async ({
-      page,
-      request,
-      ip,
-    }) => {
-      await page.setViewportSize({ width: 360, height: 800 });
-      await open(page, screen, { request, ip });
-      const { violations } = await new AxeBuilder({ page }).analyze();
-      expect(
-        violations,
-        JSON.stringify(
-          violations.map((v) => ({
-            id: v.id,
-            impact: v.impact,
-            nodes: v.nodes.map((n) => n.target),
-          })),
-        ),
-      ).toEqual([]);
-    });
+    test(
+      'acessibilidade (axe) em 360 px: nenhuma violação, de qualquer impacto',
+      { tag: '@tema' },
+      async ({ page, request, ip }) => {
+        await page.setViewportSize({ width: 360, height: 800 });
+        await open(page, screen, { request, ip });
+        const { violations } = await new AxeBuilder({ page }).analyze();
+        expect(
+          violations,
+          JSON.stringify(
+            violations.map((v) => ({
+              id: v.id,
+              impact: v.impact,
+              nodes: v.nodes.map((n) => n.target),
+            })),
+          ),
+        ).toEqual([]);
+      },
+    );
   });
 }
+
+// A tela dividida (components/tela-dividida.tsx; plano do redesenho, f.6): a partir de 1024 px a metade direita é a moldura escura com a escadaria,
+// no quadro 0 e SEM o laço (o arquivo inteiro, o JSON dos quadros e o sprite grande, uns 3,2 MB, só toca na landing: o Arte com `laco={false}`).
+// No celular, só o formulário.
+test.describe('a tela dividida de entrar e criar conta', () => {
+  const wholeArt = ['/ascii/arte/escadaria.json', '/ascii/arte/escadaria.png'];
+
+  for (const route of ['/entrar', '/cadastro']) {
+    test(`em 1440 px a escadaria fica na metade direita, parada no quadro 0, e nada do laço é pedido (${route})`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const asked: string[] = [];
+      page.on('request', (request) => {
+        const path = new URL(request.url()).pathname;
+        if (wholeArt.includes(path)) asked.push(path);
+      });
+      await page.goto(route);
+      // a moldura enche a metade direita na altura da tela, e a arte fica no pé dela, na largura dela
+      const frame = (await page.locator('.moldura').boundingBox())!;
+      expect(frame.x).toBeGreaterThanOrEqual(719);
+      expect(frame.x + frame.width).toBeLessThanOrEqual(1440);
+      expect(frame.height).toBeGreaterThanOrEqual(899);
+      const art = page.locator('[data-arte="escadaria"]');
+      await expect(art).toBeVisible();
+      const box = (await art.boundingBox())!;
+      expect(box.width).toBeCloseTo(frame.width, 0);
+      expect(box.y + box.height).toBeCloseTo(frame.y + frame.height, 0);
+      expect(box.height).toBeGreaterThan(400);
+      // o formulário fica na metade esquerda
+      const form = (await page.getByRole('main').locator('form').boundingBox())!;
+      expect(form.x + form.width).toBeLessThanOrEqual(720);
+      const first = await art.locator('pre').textContent();
+      expect(first!.length).toBeGreaterThan(1_000);
+      await page.waitForLoadState('networkidle');
+      // o laço só começaria depois do load, quando o navegador fica à toa: o tempo de ele ter começado, se fosse começar
+      await page.waitForTimeout(1_000);
+      expect(asked).toEqual([]);
+      await expect(art.locator('pre')).toHaveText(first!);
+    });
+  }
+
+  test('em 390 px é só o formulário: a arte não aparece', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/cadastro');
+    await expect(page.getByRole('heading', { level: 1, name: 'Criar conta' })).toBeVisible();
+    await expect(page.locator('[data-arte="escadaria"]')).toBeHidden();
+  });
+});

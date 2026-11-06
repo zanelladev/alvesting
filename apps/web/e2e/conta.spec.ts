@@ -68,12 +68,14 @@ test.describe('cadastro, verificação, entrar, conta, exportar, sair e excluir'
     const privacy = docs.documents.find((d) => d.document === 'PRIVACY')!;
     const address = email('fluxo');
 
-    // sem sessão, o link fixo do cabeçalho leva à entrada (com o caminho de volta) e dela ao cadastro
-    await page.goto('/');
+    // sem sessão, o link fixo da casca do app (o trilho no desktop, a barra de abas no celular) leva à entrada (com o caminho de volta) e
+    // dela ao cadastro; a landing (o site) tem a pílula "Entrar", e a "Conta" mora na casca do app
+    await page.goto('/ranking');
     await abrirMenu(page);
     await page.getByRole('banner').getByRole('link', { name: 'Conta', exact: true }).click();
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/entrar?proximo=%2Fconta`);
-    await page.getByRole('link', { name: 'Criar conta' }).click();
+    // o link da tela (a tela dividida tem a pílula "Criar conta" no banner também)
+    await page.getByRole('main').getByRole('link', { name: 'Criar conta' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Criar conta' })).toBeVisible();
 
     // o aceite é explícito: duas caixas, com a versão vigente de cada texto, e nada vem marcado
@@ -103,8 +105,8 @@ test.describe('cadastro, verificação, entrar, conta, exportar, sair e excluir'
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/verificar-email?retorno=1`);
     await expect(page.getByRole('heading', { level: 1, name: 'E-mail confirmado' })).toBeVisible();
 
-    // entrar leva à conta
-    await page.getByRole('link', { name: 'Entrar', exact: true }).click();
+    // entrar leva à conta (o link da tela: o cabeçalho do site tem a pílula "Entrar" também)
+    await page.getByRole('main').getByRole('link', { name: 'Entrar', exact: true }).click();
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/entrar`);
     await signIn(page, address, PASSWORD);
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/conta`);
@@ -717,14 +719,14 @@ test.describe('por toque', () => {
     await page.getByText(/^Li e aceito os termos de uso/).tap();
     await expect(terms).toBeChecked();
     await expect(terms).not.toHaveAttribute('aria-invalid', 'true');
-    // marcada, a caixa é um quadrado na cor da tinta com um X (não depende da cor para dizer que está marcada; no tema escuro, ADR 0034, a
-    // tinta é a clara): o que uma medida de DOM não vê e o projeto não confere por captura de tela (a linha de base de uma plataforma não
-    // vale em outra)
+    // marcada, a caixa é um quadrado na cor da tinta com um X (não depende da cor para dizer que está marcada; o e2e roda no tema claro,
+    // ADR 0035, em que a tinta é a quase preta): o que uma medida de DOM não vê e o projeto não confere por captura de tela (a linha de base
+    // de uma plataforma não vale em outra)
     const painted = await terms.evaluate((box) => ({
       mark: getComputedStyle(box, '::before').content,
       background: getComputedStyle(box).backgroundColor,
     }));
-    expect(painted).toEqual({ mark: '"✕"', background: 'rgb(245, 245, 245)' });
+    expect(painted).toEqual({ mark: '"✕"', background: 'rgb(10, 10, 10)' });
     await page.getByText(/^Li e aceito a política de privacidade/).tap();
     await expect(privacy).toBeChecked();
 
@@ -738,7 +740,7 @@ test.describe('por toque', () => {
     const mail = await mailTo(address, /Confirme/);
     await page.goto(mail.link);
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/verificar-email?retorno=1`);
-    await page.getByRole('link', { name: 'Entrar', exact: true }).tap();
+    await page.getByRole('main').getByRole('link', { name: 'Entrar', exact: true }).tap();
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/entrar`);
     await field(page, 'E-mail').fill(address);
     await field(page, 'Senha').fill(PASSWORD);

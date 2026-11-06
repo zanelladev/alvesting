@@ -40,7 +40,11 @@ const remote = process.env.BASE_URL?.trim() || undefined;
 // servidor começa de cache vazio. Os três servidores do site sobem juntos e só recebem pedido depois que todos respondem, então não se atropelam.
 const CLEAN_CACHE = 'rm -rf .next/standalone/apps/web/.next/cache';
 
-// Mobile é gate de merge: todo e2e roda nos três projetos (Pixel 7, iPhone 15 e desktop).
+// Mobile é gate de merge: todo e2e roda nos três projetos (Pixel 7, iPhone 15 e desktop), no tema claro (o padrão do Playwright e a base
+// dos tokens, ADR 0035). O tema escuro segue o sistema e vale igual: os três projetos `-escuro` são os mesmos aparelhos com
+// `colorScheme: 'dark'` e rodam só os testes marcados `@tema`: os dos quatro specs de layout (360 px sem rolagem e alvos de 44 px, o axe
+// nos dois tamanhos e o tema que trocou de verdade) e os testes de tela que conferem o tema (a moldura e o cartão da landing, a moldura do
+// urso da 404), sem dobrar a suíte: os specs funcionais leem o mesmo dado nos dois temas.
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
@@ -64,6 +68,17 @@ export default defineConfig({
     { name: 'pixel-7', use: { ...devices['Pixel 7'] } },
     { name: 'iphone-15', use: { ...devices['iPhone 15'] } },
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
+    { name: 'pixel-7-escuro', use: { ...devices['Pixel 7'], colorScheme: 'dark' }, grep: /@tema/ },
+    {
+      name: 'iphone-15-escuro',
+      use: { ...devices['iPhone 15'], colorScheme: 'dark' },
+      grep: /@tema/,
+    },
+    {
+      name: 'desktop-escuro',
+      use: { ...devices['Desktop Chrome'], colorScheme: 'dark' },
+      grep: /@tema/,
+    },
   ],
   // Sobe o build de produção (standalone), o mesmo que vai para a imagem. Rode `pnpm build` antes.
   // O segundo é o mesmo build com a trava de origem ligada (e2e/origin-lock.spec.ts). Não repete o `cp` do

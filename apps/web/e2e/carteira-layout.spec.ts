@@ -130,82 +130,106 @@ async function open(
   }
 }
 
+// A largura do Rallies (o fechamento da onda): a partir de 1280 px a carteira é a do Today, três painéis separados por fio, os dois do lado
+// com 360 px; em 1440 px a tabela de posições (seis colunas) cabe inteira no painel do meio, sem rolar dentro da própria caixa.
+test.describe('carteira em 1440 px', () => {
+  test.use({ baseURL: FRONT_DOOR_URL });
+  test('os painéis do lado têm 360 px e a tabela de posições cabe inteira', async ({
+    page,
+    request,
+    ip,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page, { name: '1440', lots: LOTS }, { request, ip });
+    const panes = await page.evaluate(() => ({
+      left: document.getElementById('resumo')!.parentElement!.getBoundingClientRect().width,
+      right: document.getElementById('perguntar')!.parentElement!.getBoundingClientRect().width,
+      page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    }));
+    expect(panes).toEqual({ left: 360, right: 360, page: 0 });
+    const box = page.getByRole('region', { name: 'Posições da carteira, por ticker' });
+    const { scrollWidth, clientWidth } = await box.evaluate((el) => ({
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    }));
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+  });
+});
+
 for (const screen of SCREENS) {
   test.describe(`carteira ${screen.name}`, () => {
     test.use({ baseURL: screen.fixture ? FIXTURE_WEB_URL : FRONT_DOOR_URL });
 
-    test('em 360 px não rola na horizontal, a folha do menu cabe na largura e os alvos de toque têm pelo menos 44 px', async ({
-      page,
-      request,
-      ip,
-    }) => {
-      await page.setViewportSize({ width: 360, height: 800 });
-      await open(page, screen, { request, ip });
+    test(
+      'em 360 px não rola na horizontal, a barra de abas cabe na largura e os alvos de toque têm pelo menos 44 px',
+      { tag: '@tema' },
+      async ({ page, request, ip }) => {
+        await page.setViewportSize({ width: 360, height: 800 });
+        await open(page, screen, { request, ip });
 
-      const { scrollWidth, clientWidth, bodyWidth } = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth,
-        bodyWidth: document.body.scrollWidth,
-      }));
-      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-      expect(bodyWidth).toBeLessThanOrEqual(clientWidth);
+        const { scrollWidth, clientWidth, bodyWidth } = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+          bodyWidth: document.body.scrollWidth,
+        }));
+        expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+        expect(bodyWidth).toBeLessThanOrEqual(clientWidth);
 
-      // o cabeçalho cabe na largura, e a folha do menu (com o link "Carteira") abre com os sete links dentro dela (ADR 0034: em 360 px o
-      // menu é a folha que o botão "Menu" abre, uma linha por tela). As contagens vêm antes das medidas: sem elas os laços passariam em
-      // vazio se o cabeçalho sumisse (o endereço de cada link é conferido no layout.spec.ts)
-      await abrirMenu(page);
-      const bannerLinks = await page.getByRole('banner').getByRole('link').all();
-      expect(bannerLinks.length).toBeGreaterThanOrEqual(8);
-      for (const link of bannerLinks) {
-        const box = (await link.boundingBox())!;
-        expect(box.x, await link.innerText()).toBeGreaterThanOrEqual(0);
-        expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(360);
-        expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
-      }
-      await expect(
-        page.getByRole('navigation', { name: 'Principal' }).getByRole('link'),
-      ).toHaveCount(7);
-      await page.keyboard.press('Escape');
-      await expect(page.getByRole('navigation', { name: 'Principal' })).toBeHidden();
+        // a barra de abas da casca do app (ADR 0035) fica na tela, com o link "Carteira", e cabe na largura: a marca e os cinco links (o sexto
+        // alvo é o botão "Mais"), cada um com 44 px de altura. As contagens vêm antes das medidas: sem elas os laços passariam em vazio se o
+        // cabeçalho sumisse (o endereço de cada link é conferido no layout.spec.ts)
+        await abrirMenu(page);
+        const bannerLinks = await page.getByRole('banner').getByRole('link').all();
+        expect(bannerLinks.length).toBeGreaterThanOrEqual(6);
+        for (const link of bannerLinks) {
+          const box = (await link.boundingBox())!;
+          expect(box.x, await link.innerText()).toBeGreaterThanOrEqual(0);
+          expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(360);
+          expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
+        }
+        await expect(
+          page.getByRole('navigation', { name: 'Principal' }).getByRole('link'),
+        ).toHaveCount(5);
 
-      // o Safari do iPhone dá zoom na página ao focar um campo de texto com fonte menor que 16 px, e o WebKit do Playwright não reproduz isso: a
-      // medida é o que protege
-      const inputs = await page.getByRole('main').locator('input:not([type="radio"])').all();
-      expect(inputs.length).toBeGreaterThan(0);
-      for (const input of inputs) {
-        const size = await input.evaluate((element) =>
-          parseFloat(getComputedStyle(element).fontSize),
-        );
-        expect(size, `${await input.getAttribute('name')}`).toBeGreaterThanOrEqual(16);
-      }
+        // o Safari do iPhone dá zoom na página ao focar um campo de texto com fonte menor que 16 px, e o WebKit do Playwright não reproduz isso: a
+        // medida é o que protege
+        const inputs = await page.getByRole('main').locator('input:not([type="radio"])').all();
+        expect(inputs.length).toBeGreaterThan(0);
+        for (const input of inputs) {
+          const size = await input.evaluate((element) =>
+            parseFloat(getComputedStyle(element).fontSize),
+          );
+          expect(size, `${await input.getAttribute('name')}`).toBeGreaterThanOrEqual(16);
+        }
 
-      // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante
-      const small = await page.evaluate(() => {
-        const selector =
-          'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]';
-        return [...document.querySelectorAll(selector)]
-          .filter((element) => {
-            const style = getComputedStyle(element);
-            const box = element.getBoundingClientRect();
-            return (
-              style.visibility !== 'hidden' &&
-              style.display !== 'none' &&
-              box.width > 0 &&
-              box.height > 0
-            );
-          })
-          .map((element) => {
-            const box = element.getBoundingClientRect();
-            return {
-              element: `${element.tagName.toLowerCase()} "${(element.textContent ?? '').trim().slice(0, 30)}"`,
-              width: box.width,
-              height: box.height,
-            };
-          })
-          .filter(({ width, height }) => width < 43.95 || height < 43.95);
-      });
-      expect(small).toEqual([]);
-    });
+        // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante
+        const small = await page.evaluate(() => {
+          const selector =
+            'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]';
+          return [...document.querySelectorAll(selector)]
+            .filter((element) => {
+              const style = getComputedStyle(element);
+              const box = element.getBoundingClientRect();
+              return (
+                style.visibility !== 'hidden' &&
+                style.display !== 'none' &&
+                box.width > 0 &&
+                box.height > 0
+              );
+            })
+            .map((element) => {
+              const box = element.getBoundingClientRect();
+              return {
+                element: `${element.tagName.toLowerCase()} "${(element.textContent ?? '').trim().slice(0, 30)}"`,
+                width: box.width,
+                height: box.height,
+              };
+            })
+            .filter(({ width, height }) => width < 43.95 || height < 43.95);
+        });
+        expect(small).toEqual([]);
+      },
+    );
 
     test('não deixa erro no console nem exceção na página (hidratação, recurso que falha), e o aviso fixo está no rodapé', async ({
       page,
@@ -253,40 +277,44 @@ for (const screen of SCREENS) {
       for (const body of bodies) expect(body).not.toContain('ZodError');
     });
 
-    test('acessibilidade (axe): nenhuma violação séria ou crítica', async ({
-      page,
-      request,
-      ip,
-    }) => {
-      await open(page, screen, { request, ip });
-      const { violations } = await new AxeBuilder({ page }).analyze();
-      const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-      expect(
-        serious,
-        JSON.stringify(
-          serious.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target) })),
-        ),
-      ).toEqual([]);
-    });
+    test(
+      'acessibilidade (axe): nenhuma violação séria ou crítica',
+      { tag: '@tema' },
+      async ({ page, request, ip }) => {
+        await open(page, screen, { request, ip });
+        const { violations } = await new AxeBuilder({ page }).analyze();
+        const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+        expect(
+          serious,
+          JSON.stringify(
+            serious.map((v) => ({
+              id: v.id,
+              impact: v.impact,
+              nodes: v.nodes.map((n) => n.target),
+            })),
+          ),
+        ).toEqual([]);
+      },
+    );
 
-    test('acessibilidade (axe) em 360 px: nenhuma violação, de qualquer impacto', async ({
-      page,
-      request,
-      ip,
-    }) => {
-      await page.setViewportSize({ width: 360, height: 800 });
-      await open(page, screen, { request, ip });
-      const { violations } = await new AxeBuilder({ page }).analyze();
-      expect(
-        violations,
-        JSON.stringify(
-          violations.map((v) => ({
-            id: v.id,
-            impact: v.impact,
-            nodes: v.nodes.map((n) => n.target),
-          })),
-        ),
-      ).toEqual([]);
-    });
+    test(
+      'acessibilidade (axe) em 360 px: nenhuma violação, de qualquer impacto',
+      { tag: '@tema' },
+      async ({ page, request, ip }) => {
+        await page.setViewportSize({ width: 360, height: 800 });
+        await open(page, screen, { request, ip });
+        const { violations } = await new AxeBuilder({ page }).analyze();
+        expect(
+          violations,
+          JSON.stringify(
+            violations.map((v) => ({
+              id: v.id,
+              impact: v.impact,
+              nodes: v.nodes.map((n) => n.target),
+            })),
+          ),
+        ).toEqual([]);
+      },
+    );
   });
 }

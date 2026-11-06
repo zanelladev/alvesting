@@ -4,113 +4,158 @@
 @source not '../**/*.spec.tsx';
 @source not '../../e2e';
 
-/* O sistema visual ascii-ui (ADR 0034; docs/TELAS.md, "Sistema visual"): o canvas preto, a tinta clara, a cor escassa e com um papel
-   só. Os tokens moram aqui e só aqui; o nome vira utilitário do Tailwind (bg-canvas, text-ink, border-hairline). O `@theme` comum (e não
-   o `static`) só emite a variável que algum utilitário ou regra usa, e o CSS inteiro é do caminho crítico da home (docs/TELAS.md, seção 5).
-   Espaço é a escala numérica do Tailwind (base de 4 px: 2 = 8, 3 = 12, 4 = 16, 6 = 24, 12 = 48, 18 = 72, 24 = 96): os nomes da v1 (xs,
-   md, lg...) não entram porque o `max-w-md` dos formulários passaria a ler o espaço de 20 px em vez do contêiner de 28rem. */
+/* O sistema visual do Rallies AI, nos dois temas (ADR 0035; docs/redesign-rallies/plano.md, seções a e b). Os tokens moram aqui e só aqui;
+   o nome vira utilitário do Tailwind (bg-canvas, text-ink, border-hairline). O claro é a base; o escuro troca os valores no
+   `prefers-color-scheme` (abaixo, na camada base), sem botão de tema: segue o sistema. O `@theme` comum (e não o `inline` nem o `static`)
+   só emite a variável que algum utilitário ou regra usa, e o utilitário lê a variável: por isso a troca do escuro vale para todos eles.
+   Espaço é a escala numérica do Tailwind (base de 4 px); raio também (rounded-md 6, rounded-lg 8, rounded-xl 12, rounded-2xl 16,
+   rounded-3xl 24, rounded-full a pílula: os valores medidos no Rallies). Os valores são os da tabela a.1 do plano, com o contraste da a.2. */
 @theme {
-  /* superfícies: preto puro e um degrau de brilho por nível */
-  --color-canvas: #000000;
-  --color-surface-card: #0a0a0a;
-  --color-surface-strong: #1c1c1c;
+  /* superfícies: o fundo, o cinza dos painéis, campos e ladrilhos, e o cinza do trilho do segmentado e da pílula cinza */
+  --color-canvas: #ffffff;
+  --color-surface-card: #f5f5f5;
+  --color-surface-strong: #efefef;
   /* linhas: toda borda tem 1 px */
-  --color-hairline: #1f1f1f;
-  --color-hairline-strong: #2e2e2e;
-  /* tinta, sobre o canvas: 19,3:1, 8,3:1 e 6,1:1. O muted-soft (3,1:1) nunca em texto: só linha e decoração */
-  --color-ink: #f5f5f5;
-  --color-body: #a3a3a3;
-  --color-muted: #8a8a8a;
-  --color-muted-soft: #5c5c5c;
-  /* âmbar: o acento (filtro escolhido, foco do teclado, a marca, a brasa da arte). Nunca CTA (o CTA é a pílula branca) nem dado */
+  --color-hairline: #e5e5e5;
+  --color-hairline-strong: #d4d4d4;
+  /* texto sobre o canvas: 19,8:1, 17,8:1 e 5,29:1 (o muted passa também nas superfícies cinza: 4,85 e 4,60) */
+  --color-ink: #0a0a0a;
+  --color-body: #17171f;
+  --color-muted: #6b6b72;
+  /* o âmbar da marca: só no ladrilho do logotipo e na brasa da arte (1,83:1 no branco: nunca texto, foco nem estado) */
   --color-primary: #ffb000;
-  --color-primary-glow: #ffc84d;
   /* dado: sempre com glifo (▲ ▼ ■) e sinal, nunca só a cor */
-  --color-data-up: #33d17a;
-  --color-data-down: #ff4d4d;
-  --color-data-flat: #8a8a8a;
-  /* sistema: erro de formulário e de operação. Não há cor de aviso: aviso é [!] em cinza */
-  --color-semantic-success: #33d17a;
-  --color-semantic-error: #ff4d4d;
+  --color-data-up: #007a32;
+  --color-data-down: #d6003a;
+  --color-data-flat: var(--color-muted);
+  /* sistema: erro e sucesso de formulário, as cores do dado. Não há cor de aviso: aviso é [!] em cinza */
+  --color-semantic-success: var(--color-data-up);
+  --color-semantic-error: var(--color-data-down);
+  /* a moldura da arte, escura nos dois temas (a classe `.moldura`, abaixo) */
+  --color-moldura: #000000;
+  --color-moldura-tinta: #f5f5f5;
+  --color-moldura-cinza: #8a8a8a;
   /* a matriz do DotSpinner, decorativa */
-  --color-dot-on: #f5f5f5;
-  --color-dot-off-card: #2a2a2a;
+  --color-dot-on: var(--color-ink);
+  --color-dot-off-card: var(--color-surface-strong);
+  /* as séries do gráfico, uma por laboratório (a cor do logo, ajustada para passar os 3:1 da linha e os 4,5:1 do texto na pílula do valor);
+     a identidade da linha vem do logo e da legenda, nunca só da cor */
+  --color-serie-openai: #0b7a5c;
+  --color-serie-anthropic: #c4512c;
+  --color-serie-google: #1a62d6;
+  --color-serie-xai: #0a0a0a;
+  --color-serie-deepseek: #3b54e0;
+  --color-serie-qwen: #6b46d9;
+  --color-serie-neutra: #6b6b72;
 
-  /* a Geist só no peso 500 (layout.tsx): o que é 500 usa a font-display, e nada ganha negrito falso. O texto é a fonte do sistema (a Inter
-     do plano saiu pelo LCP da home, docs/TELAS.md, seção 5) */
+  /* a Geist só no peso 600 (layout.tsx): títulos, nomes, números grandes e o nome gigante do rodapé, com font-display. O resto é a fonte do
+     sistema, com os pesos de verdade dela (400, 500 e 600), e a mono também é a do sistema */
   --font-display: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
-  /* a escala do Arc (12 14 16 18 22 28 36), pesos 400 e 500; o que é 500 vai com font-display. O título do hero e o da 404 crescem com a
-     tela, de 36 a 56 px: o `HERO_TITLE` de ui.tsx (um token aqui custaria as quatro variáveis no CSS da home) */
-  --text-display-lg: 36px;
-  --text-display-lg--line-height: 1.1;
-  --text-display-lg--letter-spacing: -0.03em;
-  --text-display-lg--font-weight: 500;
-  --text-display-md: 28px;
-  --text-display-md--line-height: 1.15;
-  --text-display-md--letter-spacing: -0.03em;
-  --text-display-md--font-weight: 500;
-  --text-display-sm: 22px;
-  --text-display-sm--line-height: 1.25;
-  --text-display-sm--letter-spacing: -0.02em;
-  --text-display-sm--font-weight: 500;
-  --text-lead: 18px;
-  --text-lead--line-height: 1.5;
-  --text-lead--letter-spacing: -0.01em;
-  --text-title: 16px;
-  --text-title--line-height: 1.4;
-  --text-title--letter-spacing: -0.01em;
-  --text-title--font-weight: 500;
-  --text-label: 12px;
-  --text-label--line-height: 1.4;
-  --text-prose-md: 16px;
-  --text-prose-md--line-height: 1.6;
-
-  /* raios do Arc, concêntricos (o de dentro é o de fora menos o padding); o pílula é o rounded-full */
-  --radius-control: 18px;
-  --radius-panel: 26px;
-  --radius-surface: 34px;
-
-  --ease-brand: cubic-bezier(0.22, 1, 0.36, 1);
+  /* A escala do Rallies (plano, seção b): o tamanho, a entrelinha e o espaçamento juntos. Os da escala padrão do Tailwind (12, 14, 16, 18,
+     20...) usam o nome dela (text-xs, text-sm, text-base); aqui entram os que ela não tem, pelo número em px. Os títulos levam font-display. */
+  --text-11: 11px;
+  --text-11--line-height: 1.45;
+  --text-13: 13px;
+  --text-13--line-height: 1.33;
+  --text-15: 15px;
+  --text-15--line-height: 1.45;
+  --text-18: 18px;
+  --text-18--line-height: 1.5;
+  --text-18--letter-spacing: -0.011em;
+  --text-20: 20px;
+  --text-20--line-height: 1.25;
+  --text-20--letter-spacing: -0.025em;
+  --text-22: 22px;
+  --text-22--line-height: 1.35;
+  --text-22--letter-spacing: -0.023em;
+  --text-26: 26px;
+  --text-26--line-height: 1.5;
+  --text-26--letter-spacing: -0.02em;
+  --text-30: 30px;
+  --text-30--line-height: 1.3;
+  --text-30--letter-spacing: -0.027em;
+  --text-32: 32px;
+  --text-32--line-height: 1.25;
+  --text-32--letter-spacing: -0.022em;
+  --text-40: 40px;
+  --text-40--line-height: 1.15;
+  --text-40--letter-spacing: -0.03em;
+  --text-42: 42px;
+  --text-42--line-height: 1.08;
+  --text-42--letter-spacing: -0.048em;
+  /* o nome gigante do rodapé do site: cabe em 360 px e para nos 280 px do Rallies */
+  --text-gigante: clamp(72px, 19vw, 280px);
+  --text-gigante--line-height: 1;
+  --text-gigante--letter-spacing: -0.06em;
 }
 
 @layer base {
-  /* a calha da coluna de 1200 px: o main, o cabeçalho, o rodapé e a moldura usam a mesma */
+  /* O escuro: só os valores que mudam (os que apontam para outro token, como o data-flat, seguem sozinhos). */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-canvas: #171717;
+      --color-surface-card: #1f1f1f;
+      --color-surface-strong: #242424;
+      --color-hairline: #262626;
+      --color-hairline-strong: #333333;
+      --color-ink: #fafafa;
+      --color-body: #f5f5f7;
+      --color-muted: #a3a3a9;
+      --color-data-up: #9ae600;
+      --color-data-down: #ff637e;
+      --color-serie-openai: #22c08f;
+      --color-serie-anthropic: #f08a63;
+      --color-serie-google: #6ea2ff;
+      --color-serie-xai: #fafafa;
+      --color-serie-deepseek: #8b9cff;
+      --color-serie-qwen: #a98cff;
+      --color-serie-neutra: #a3a3a9;
+    }
+  }
+  /* a calha das colunas do site (o cabeçalho, o hero e o rodapé usam a mesma) */
   :root {
     --calha: clamp(16px, 4vw, 32px);
   }
-  /* Palavra mais larga que a caixa (SHA-256, URL) quebra em vez de empurrar a página para o lado: `break-word`, e não `anywhere` (este
-     deixaria a palavra encolher a coluna da tabela). O cabeçalho é fixo no topo: a âncora (#feed) e o foco do teclado param abaixo dele. */
+  /* `light dark`: o navegador pinta o fundo, a barra de rolagem e os controles nativos no tema do sistema antes do CSS. Palavra mais larga
+     que a caixa (SHA-256, URL) quebra em vez de empurrar a página para o lado: `break-word`, e não `anywhere` (este deixaria a palavra
+     encolher a coluna da tabela). O cabeçalho do site é fixo no topo: a âncora (#feed) e o foco do teclado param abaixo dele. */
   html {
-    color-scheme: dark;
+    color-scheme: light dark;
     overflow-wrap: break-word;
     font-synthesis-weight: none;
     scroll-padding-top: 4rem;
+  }
+  /* no celular a barra de abas do app fica no pé: o foco e a âncora param acima dela (WCAG 2.4.11) */
+  @media (width < 64rem) {
+    html:has(.app) {
+      scroll-padding-top: 1rem;
+      scroll-padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+    }
   }
   body {
     background: var(--color-canvas);
     color: var(--color-body);
     font-family: var(--font-sans);
-    letter-spacing: -0.01em;
   }
   h1,
   h2,
   h3 {
     color: var(--color-ink);
   }
-  /* o negrito do texto corrido é a Geist 500 (a fonte do texto é a do sistema, e o peso 500 da casca é sempre a Geist) */
+  /* o negrito do texto corrido é o 600 da fonte do sistema (um peso de verdade dela) */
   strong,
   b {
     color: var(--color-ink);
-    font-family: var(--font-display);
-    font-weight: 500;
+    font-weight: 600;
   }
-  /* O foco do teclado é sempre visível, em toda tela: o contorno sólido de 2 px, no âmbar. */
+  /* O foco do teclado é sempre visível, em toda tela: o contorno sólido de 2 px na tinta, nos dois temas (19,8:1 e 17,2:1). O do Rallies
+     (`auto 1px`, cinza a 50%) não passa os 3:1 da WCAG 1.4.11. */
   :focus-visible {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--color-ink);
     outline-offset: 2px;
   }
   /* Movimento reduzido: tudo parado no quadro de partida (a fita no começo; a arte nem busca o laço, arte-viva.tsx), e nada escala (o botão
@@ -129,27 +174,36 @@
 
 /* As classes que se repetem dezenas de vezes por página (link, botão, célula de tabela) moram aqui, e não em cada elemento: o mesmo texto
    repetido no HTML e de novo no payload do React somava um terço do documento (docs/TELAS.md, seção 5). Todo link e todo botão tem alvo de
-   toque de pelo menos 44 px, em toda largura (plano §13): onde o desenho do Arc pede uma pílula menor (32 ou 36 px), a caixa do link tem
-   44 px e a pílula visível é o ::before, por dentro. As medidas vêm do Arc (uiarc.dev, MIT: referência, nenhum código copiado). */
+   toque de pelo menos 44 px, em toda largura (plano §13): onde o desenho do Rallies pede uma pílula menor (28 a 36 px), a caixa do link tem
+   44 px e a pílula visível é o ::before, por dentro. As medidas vêm do Rallies (referência de desenho, nenhum código copiado). */
 @layer components {
   .link {
-    @apply inline-flex min-h-11 min-w-11 items-center justify-start text-ink underline decoration-muted-soft underline-offset-4 transition-colors duration-150 hover:decoration-primary-glow;
+    @apply inline-flex min-h-11 min-w-11 items-center justify-start text-ink underline decoration-hairline-strong underline-offset-4 transition-colors duration-150 hover:decoration-ink;
   }
+  /* a pílula cinza (a ação de apoio) e a preta (a principal, uma por superfície): 44 px, o texto 14/500 da fonte do sistema */
   .btn {
-    @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-control border border-hairline bg-surface-card px-5 font-display text-sm font-medium text-ink transition duration-150 ease-brand hover:bg-surface-strong active:scale-97 disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-muted disabled:active:scale-100;
+    @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full bg-surface-strong px-5 text-sm font-medium text-ink transition duration-150 hover:bg-hairline active:scale-97 disabled:cursor-not-allowed disabled:bg-surface-card disabled:text-muted disabled:active:scale-100;
   }
-  /* a pílula branca: a ação principal, uma por superfície */
   .btn-primary {
-    @apply border-ink bg-ink text-canvas hover:bg-ink hover:opacity-90;
+    @apply bg-ink text-canvas hover:bg-ink hover:opacity-85;
   }
-  /* 16 px: abaixo disso o Safari do iPhone dá zoom na página ao focar o campo (carteira-layout.spec.ts) */
+  /* o campo do cadastro do Rallies (44 px, raio 8, o cinza do painel), com o fio que marca o lugar dele. 16 px: abaixo disso o Safari do
+     iPhone dá zoom na página ao focar o campo (carteira-layout.spec.ts) */
   .field {
-    @apply min-h-11 min-w-0 rounded-xl border border-hairline-strong bg-surface-card px-3 text-base text-ink placeholder:text-muted disabled:text-muted;
+    @apply min-h-11 min-w-0 rounded-lg border border-hairline bg-surface-card px-3 text-base text-ink placeholder:text-muted disabled:text-muted;
   }
-  /* A caixa de marcar e o radio: 44 por 44 px, o alvo de toque do projeto. Desmarcados, o contorno é o `muted` (5,7:1 sobre o cartão: a
-     WCAG 1.4.11 pede 3:1 para o que identifica o controle, e o fio das linhas daria 1,5:1, um buraco preto no celular); inválidos, o
-     vermelho do erro, como o campo de texto. Marcados, o fundo é a tinta e o glifo (✕ e ●) é texto: não dependem da cor, e o glifo
-     sobrevive ao alto contraste do sistema. O radio é redondo, para não se confundir com a caixa. */
+  /* O campo de data tem quatro paradas de Tab (o dia, o mês, o ano e o ícone do calendário): na do ícone o campo deixa de ser `:focus` (só
+     `:focus-within`) e o navegador punha o anel azul dele no ícone. O contorno do projeto vale no campo inteiro, em toda parada. */
+  input[type='date']:focus-within {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+  input[type='date']::-webkit-calendar-picker-indicator {
+    outline: none;
+  }
+  /* A caixa de marcar e o radio: 44 por 44 px, o alvo de toque do projeto. Desmarcados, o contorno é o `muted` (5,29:1 e 7,14:1: a WCAG
+     1.4.11 pede 3:1 para o que identifica o controle); inválidos, o vermelho do erro, como o campo de texto. Marcados, o fundo é a tinta e o
+     glifo (✕ e ●) é texto: não dependem da cor, e o glifo sobrevive ao alto contraste do sistema. O radio é redondo. */
   .check,
   .radio {
     @apply size-11 shrink-0 cursor-pointer appearance-none rounded-md border border-muted bg-canvas checked:border-ink checked:bg-ink disabled:cursor-not-allowed disabled:border-hairline;
@@ -169,22 +223,31 @@
   .radio:checked::before {
     content: '●';
   }
+  /* A tabela do Rallies, densa: a célula 13/400, o cabeçalho 11/500 em muted (em caixa normal: o e2e lê o texto), 8 px de cada lado (a
+     tabela de posições da carteira, de seis colunas, cabe inteira no painel do meio em 1440 px). */
   .tbl {
-    @apply w-full border-collapse text-left text-sm tabular-nums;
+    @apply w-full border-collapse text-left text-13 tabular-nums;
   }
   .th {
-    @apply px-1.5 py-2 text-xs font-normal whitespace-nowrap text-muted sm:px-3;
+    @apply px-2 py-2 text-11 font-medium tracking-[0.04em] whitespace-nowrap text-muted;
   }
   .td {
-    @apply px-1.5 py-2 whitespace-nowrap text-ink sm:px-3;
+    @apply px-2 py-2 whitespace-nowrap text-ink;
   }
   .row {
     @apply border-t border-hairline;
   }
+  /* A célula presa do competidor (tables.tsx): o logo fora do fluxo do texto, à esquerda e no meio da altura, para ele nunca ficar sozinho
+     numa linha acima do nome no celular. O respiro do lado dele é da célula; o texto que o e2e lê não muda. */
+  .celula-competidor > .logo {
+    position: absolute;
+    top: calc(50% - 0.75rem);
+    left: 0.5rem;
+  }
   /* A direção do número com sinal (tables.tsx, `direction`): o glifo ▲ ▼ ■ entra antes dele, com o texto alternativo vazio, e o texto (o que o
      leitor de tela e o e2e leem) não muda. A primeira declaração é a reserva do navegador que não aceita o texto alternativo. A cor vai só
      no glifo: o número continua na tinta, e o glifo e o sinal dizem a direção sem depender da cor. O espaço depois do glifo é o sem quebra
-     (\00a0): a linha nunca quebra entre o glifo e o número (a faixa do BOVA11 em 390 px quebrava). */
+     (\00a0): a linha nunca quebra entre o glifo e o número. */
   [data-dir]::before {
     color: var(--color-data-flat);
     content: '■\00a0';
@@ -204,140 +267,298 @@
     @apply text-sm text-muted;
   }
 
-  /* A pílula do anúncio do hero e o filtro em link: a caixa de 44 px, a pílula de 32 px desenhada por dentro. */
+  /* A pílula de contorno (o anúncio do hero, "Entrar", "Regras da arena") e o chip cinza (o ticker, o filtro em link): a caixa de 44 px, a
+     pílula de 32 px desenhada por dentro. O chip escolhido é a pílula preta, como o filtro do Rallies. */
   .pill,
   .chip {
-    @apply relative isolate inline-flex min-h-11 min-w-11 max-w-full items-center justify-center gap-1.5 px-3 text-sm text-body hover:text-ink;
+    @apply relative isolate inline-flex min-h-11 min-w-11 max-w-full items-center justify-center gap-1.5 px-3 text-sm text-ink;
   }
   .pill::before,
   .chip::before {
-    @apply absolute inset-x-0 inset-y-1.5 -z-10 rounded-full border border-hairline bg-surface-card content-[''];
+    @apply absolute inset-x-0 inset-y-1.5 -z-10 rounded-full content-[''];
   }
-  .pill:hover::before,
+  .pill::before {
+    @apply border border-hairline bg-canvas;
+  }
+  .pill:hover::before {
+    @apply bg-surface-card;
+  }
+  .chip::before {
+    @apply bg-surface-strong;
+  }
   .chip:hover::before {
-    @apply border-hairline-strong;
+    @apply bg-hairline;
   }
   .chip[aria-current='true'] {
-    @apply text-primary;
+    @apply text-canvas;
   }
   .chip[aria-current='true']::before {
-    @apply border-primary/40 bg-primary/10;
+    @apply bg-ink;
   }
   /* a etiqueta: 24 px, neutra, com o texto em muted */
   .badge {
     @apply inline-flex min-h-6 items-center rounded-full border border-hairline-strong px-2 align-middle font-sans text-xs leading-none font-normal whitespace-nowrap text-muted;
   }
-  /* a superfície de borda: sem sombra, o raio de superfície do Arc */
+  /* o cartão do app: o canvas com o fio, sem sombra, raio 8 */
   .card {
-    @apply min-w-0 rounded-surface border border-hairline bg-surface-card p-6;
+    @apply min-w-0 rounded-lg border border-hairline bg-canvas p-6;
   }
-  /* O que não tem dado ainda: o texto num contorno tracejado, com a grade fantasma da v1 no lugar do ícone (texto alternativo vazio:
-     o leitor de tela não a lê, e o textContent e o innerText não a contam). */
+  /* o que não tem dado ainda: o texto no cinza do painel */
   .vazio {
-    @apply rounded-panel border border-dashed border-hairline-strong p-6 text-body;
-  }
-  .vazio::before {
-    @apply mb-3 block font-mono text-[9px] leading-[1.2] whitespace-pre text-muted;
-    content: '. : .\A: ? :\A. : .' / '';
-  }
-  /* O ASCII que carrega dado: a mono do sistema (traz os blocos e os glifos de moldura com o mesmo avanço dos latinos), linha 1, sem
-     ligadura e sem quebra. */
-  .ascii-block {
-    @apply m-0 font-mono leading-none tracking-normal whitespace-pre;
-    font-variant-ligatures: none;
+    @apply rounded-lg bg-surface-card p-6 text-sm text-muted;
   }
 
-  /* A linha da moldura, de ponta a ponta da tela (o overflow-x: clip do layout corta o que passa da barra de rolagem), com o losango de
-     11 px onde ela cruza as laterais, a partir de 1202 px. Só vale como filho de quem ocupa a coluna inteira (o main ou o layout). */
-  .rule {
-    @apply relative ml-[calc(50%-50vw)] w-screen border-t border-hairline;
+  /* O segmentado (as sub-telas de uma área no celular, "Arena | Ranking | Último ciclo"): o trilho cinza de 40 px com 4 px de respiro e a
+     pílula do canvas escolhida, de 32 px; cada item é um link com a caixa de 44 px. O `-preto` é o filtro do feed: mono 12/500 e a pílula
+     preta escolhida. */
+  .segmentado {
+    @apply flex h-10 w-max max-w-full items-center rounded-full bg-surface-strong px-1;
   }
-  .rule::before,
-  .rule::after {
-    @apply absolute -top-1.5 hidden size-[11px] bg-hairline content-[''] min-[75.125rem]:block;
-    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  .segmentado a {
+    @apply relative isolate inline-flex min-h-11 min-w-11 items-center justify-center px-3 text-sm font-medium whitespace-nowrap text-muted hover:text-ink;
   }
-  .rule::before {
-    left: calc(50% - 606px);
+  .segmentado a::before {
+    @apply absolute inset-x-0 inset-y-1.5 -z-10 rounded-full content-[''];
   }
-  .rule::after {
-    left: calc(50% + 595px);
+  .segmentado a[aria-current] {
+    @apply text-ink;
+  }
+  .segmentado a[aria-current]::before {
+    @apply bg-canvas;
+  }
+  .segmentado-preto a {
+    @apply font-mono text-xs;
+  }
+  .segmentado-preto a[aria-current] {
+    @apply text-canvas;
+  }
+  .segmentado-preto a[aria-current]::before {
+    @apply bg-ink;
+  }
+  /* As abas do topo do principal ("Arena / Ranking / Último ciclo", 15/500) e os títulos de aba grandes do celular ("Decisões | Carteiras",
+     a Geist de 20): a escolhida na tinta, as outras em muted. */
+  .abas {
+    @apply flex flex-wrap items-center gap-x-5;
+  }
+  .abas a {
+    @apply inline-flex min-h-11 min-w-11 items-center text-15 font-medium text-muted hover:text-ink;
+  }
+  .abas-grandes a {
+    @apply font-display text-20 font-semibold;
+  }
+  .abas a[aria-current] {
+    @apply text-ink;
+  }
+  /* A trilha do celular ("Início › Arena", 14/400 muted): o último item é texto. */
+  .trilha {
+    @apply flex flex-wrap items-center gap-x-1.5 text-sm text-muted;
+  }
+  .trilha a {
+    @apply inline-flex min-h-11 min-w-11 items-center hover:text-ink;
   }
 
-  /* O menu principal. A partir de 1024 px: a cápsula centrada, a pílula branca "Carteira" e a ação quieta "Conta". Abaixo: uma folha
-     `popover` (sem JavaScript), aberta pelo botão "Menu", com uma linha de 52 px por tela. O popover fechado é `display: none` (a regra do
-     navegador), que a cápsula desfaz a partir de 1024 px. */
+  /* O logo do laboratório (components/competidor.tsx; os arquivos em public/laboratorios, com a procedência em docs/DEPENDENCIAS.md): o
+     desenho monocromático por máscara, pintado com a cor do texto (o tema pinta), num círculo cinza com fio. Sem laboratório, a inicial
+     (o Sorteio e as referências), pelo atributo e não por texto: fica fora do textContent e do innerText que os testes leem. A máscara é uma
+     imagem de prioridade baixa, pedida só quando um logo aparece. O tamanho é o da caixa (size-6, size-8, size-10). */
+  .logo {
+    @apply inline-grid size-6 shrink-0 place-items-center rounded-full border border-hairline bg-surface-card align-middle text-ink;
+    container-type: size;
+  }
+  .logo::before {
+    @apply size-[62%] bg-current content-[''];
+    mask: var(--logo) center / contain no-repeat;
+  }
+  .logo[data-inicial] {
+    @apply bg-surface-strong text-muted;
+  }
+  .logo[data-inicial]::before {
+    @apply size-auto bg-transparent font-sans leading-none font-semibold;
+    font-size: 46cqh;
+    content: attr(data-inicial);
+    mask: none;
+  }
+  .logo[data-lab='openai'] {
+    --logo: url(/laboratorios/openai.svg);
+  }
+  .logo[data-lab='anthropic'] {
+    --logo: url(/laboratorios/anthropic.svg);
+  }
+  .logo[data-lab='google'] {
+    --logo: url(/laboratorios/google.svg);
+  }
+  .logo[data-lab='xai'] {
+    --logo: url(/laboratorios/xai.svg);
+  }
+  .logo[data-lab='deepseek'] {
+    --logo: url(/laboratorios/deepseek.svg);
+  }
+  .logo[data-lab='qwen'] {
+    --logo: url(/laboratorios/qwen.svg);
+  }
+
+  /* A moldura da arte: escura nos dois temas (a arte é âmbar sobre preto, e invertida perderia a brasa). Dentro dela só moram a arte, a
+     legenda (`text-moldura-cinza`), a fita (`text-moldura-tinta`) e texto para o leitor de tela: o que segue o tema da página (o cartão
+     "Arena agora", as pílulas) fica fora dela, por cima. Um número com `[data-dir]` não entra aqui: o verde e o vermelho do claro não passam
+     o AA sobre o preto. */
+  .moldura {
+    background: var(--color-moldura);
+    color: var(--color-moldura-tinta);
+  }
+
+  /* A casca do site (components/site-chrome.tsx): o cabeçalho de 64 px, preso no topo. A partir de 1024 px, os links no meio e a pílula
+     "Entrar" à direita; abaixo, uma folha `popover` (sem JavaScript), aberta pelo botão "Menu", com uma linha de 52 px por link. O popover
+     fechado é `display: none` (a regra do navegador), que o desktop desfaz. */
   @media (width >= 64rem) {
     .menu {
       @apply static col-span-2 m-0 grid h-auto w-auto grid-cols-subgrid items-center overflow-visible border-0 bg-transparent p-0 text-inherit;
     }
-    .capsule {
-      @apply flex items-center gap-0.5 rounded-full border border-hairline bg-surface-strong p-[3px];
+    .menu-links {
+      @apply flex items-center gap-1;
     }
-    .capsule-item {
-      @apply relative isolate -my-1.5 inline-flex min-h-11 items-center px-3.5 font-display text-sm font-medium whitespace-nowrap text-body hover:text-ink;
-    }
-    .capsule-item::before {
-      @apply absolute inset-x-0 inset-y-1.5 -z-10 rounded-full border border-transparent content-[''];
-    }
-    .capsule-item:hover::before {
-      @apply border-hairline bg-surface-card;
+    .menu-links a {
+      @apply inline-flex min-h-11 items-center px-3 text-sm text-muted hover:text-ink;
     }
     .menu-acoes {
-      @apply flex items-center gap-2 justify-self-end;
-    }
-    .acao {
-      @apply relative isolate inline-flex min-h-11 items-center px-3.5 font-display text-sm font-medium whitespace-nowrap text-body hover:text-ink;
-    }
-    .acao::before {
-      @apply absolute inset-x-0 inset-y-1 -z-10 rounded-full content-[''];
-    }
-    .acao:hover::before {
-      @apply bg-surface-strong;
-    }
-    .acao-primaria,
-    .acao-primaria:hover {
-      @apply text-canvas;
-    }
-    .acao-primaria::before,
-    .acao-primaria:hover::before {
-      @apply bg-ink;
+      @apply justify-self-end;
     }
   }
   @media (width < 64rem) {
     /* A folha vai do cabeçalho até o pé da tela: o toque "fora" dos links cai no botão "Fechar o menu", que enche o resto dela, e não na
        página de baixo (o toque fora de um `popover` fecha e segue para o que está embaixo: no WebKit, o fechamento é no pointerdown). */
     .menu:popover-open {
-      @apply fixed inset-x-0 top-[calc(4rem+1px)] bottom-0 m-0 flex h-auto w-auto flex-col overflow-y-auto border-0 bg-canvas px-(--calha) pt-2 text-inherit;
+      @apply fixed inset-x-0 top-16 bottom-0 m-0 flex h-auto w-auto flex-col overflow-y-auto border-0 bg-canvas px-(--calha) pt-2 text-inherit;
     }
     .menu-fechar {
       @apply flex-1;
     }
-    .capsule-item {
-      @apply flex min-h-13 items-center border-b border-hairline font-display text-base font-medium text-ink;
+    .menu-links a {
+      @apply flex min-h-13 items-center border-b border-hairline text-base font-medium text-ink;
     }
     .menu-acoes {
-      @apply mt-5 grid grid-cols-2 gap-2;
+      @apply mt-5 flex;
     }
-    .acao {
-      @apply flex min-h-11 w-full items-center justify-center rounded-control border border-hairline bg-surface-card px-5 font-display text-sm font-medium text-ink;
-    }
-    .acao-primaria {
-      @apply border-ink bg-ink text-canvas;
+    .menu-acoes .pill {
+      @apply w-full;
     }
   }
-  /* Com a folha aberta, a página por baixo sai de vista e da ordem do Tab (o foco não some atrás da folha: depois de "Fechar o menu" ele
-     volta ao cabeçalho), e o botão "Menu" troca os traços pelo ✕. */
-  body:has(.menu:popover-open) > div {
+
+  /* A casca do app (components/app-shell.tsx). A partir de 1024 px: o trilho de 80 px à esquerda, fixo, com a marca no topo e os itens com o
+     ícone em cima e o rótulo de 12/500 embaixo, numa caixa de 58 × 54 com raio 16; o ativo com o círculo cheio atrás do ícone e o rótulo na
+     tinta. Abaixo: a marca numa linha no topo e a barra de abas fixa no pé, de 56 px mais a área segura do iPhone, com os seis itens. É a
+     mesma `nav`, desenhada de dois jeitos. */
+  .app-item {
+    @apply flex min-h-11 min-w-11 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl text-xs text-muted hover:text-ink;
+  }
+  .app-icone {
+    @apply grid size-8 place-items-center rounded-full;
+  }
+  .app-item:hover .app-icone {
+    @apply bg-surface-card;
+  }
+  .app-item[aria-current='page'] {
+    @apply text-ink;
+  }
+  .app-item[aria-current='page'] .app-icone {
+    @apply bg-surface-strong;
+  }
+  @media (width >= 64rem) {
+    .app-topo {
+      @apply fixed inset-y-0 left-0 z-30 flex w-20 flex-col items-center gap-3 overflow-y-auto border-r border-hairline bg-canvas py-3;
+    }
+    .app-nav,
+    .app-itens {
+      @apply flex flex-1 flex-col items-center gap-1.5;
+    }
+    .app-item {
+      @apply h-[54px] w-[58px] font-medium;
+    }
+    .app-buscar {
+      @apply mt-auto;
+    }
+    .app-coluna {
+      @apply pl-20;
+    }
+  }
+  @media (width < 64rem) {
+    .app-topo {
+      @apply flex h-14 items-center px-5;
+    }
+    .app-nav {
+      @apply fixed inset-x-0 bottom-0 z-30 border-t border-hairline bg-canvas pb-[env(safe-area-inset-bottom)];
+    }
+    .app-itens {
+      @apply flex h-14;
+    }
+    .app-itens > li {
+      @apply flex-1;
+    }
+    .app-item {
+      @apply size-full rounded-none;
+    }
+    .app-item[aria-current='page'] {
+      @apply font-semibold;
+    }
+    .app-buscar {
+      @apply hidden;
+    }
+    .app-coluna {
+      @apply pb-[calc(3.5rem+env(safe-area-inset-bottom))];
+    }
+  }
+  /* A folha "Mais". No celular, a tela inteira acima da barra de abas, como a folha do site: o título, o ✕ e a lista na própria folha, sem
+     vão (o toque na parte vazia dela não chega à página, e a barra de abas segue à vista). No desktop, um menu curto ao lado do item "Mais"
+     do trilho (ancorado nele; sem a âncora, na altura dele), que deixa a coluna do app à vista. */
+  .mais:popover-open {
+    @apply fixed m-0 flex h-auto w-auto max-w-none flex-col border-0 bg-canvas p-0 text-inherit;
+  }
+  .mais-folha a {
+    @apply flex items-center text-ink;
+  }
+  @media (width < 64rem) {
+    .mais:popover-open {
+      @apply inset-x-0 top-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] overflow-y-auto px-5;
+    }
+    .mais-topo {
+      @apply flex h-14 shrink-0 items-center justify-between;
+    }
+    .mais-folha a {
+      @apply min-h-13 border-b border-hairline text-base;
+    }
+  }
+  @media (width >= 64rem) {
+    .app-mais {
+      anchor-name: --mais;
+    }
+    .mais:popover-open {
+      @apply inset-auto top-77 left-22 w-60 rounded-lg border border-hairline p-1;
+      position-anchor: --mais;
+      top: anchor(top);
+    }
+    .mais-topo {
+      @apply hidden;
+    }
+    .mais-folha a {
+      @apply min-h-11 rounded-md px-3 text-sm hover:bg-surface-card;
+    }
+  }
+  /* Com uma folha aberta, o que ela cobre sai de vista e da ordem do Tab (o foco não some atrás dela): a página do site; no celular, a
+     coluna do app e a marca do topo. O botão "Menu" troca os traços pelo ✕. */
+  body:has(.menu:popover-open) .site-coluna {
     visibility: hidden;
+  }
+  @media (width < 64rem) {
+    body:has(.mais:popover-open) :is(.app-coluna, .app-topo > a) {
+      visibility: hidden;
+    }
   }
   .btn-menu:has(+ .menu:popover-open) .menu-abrir,
   .btn-menu:not(:has(+ .menu:popover-open)) .menu-x {
     display: none;
   }
-  /* Sem popover (o Safari antes do 17, o Firefox antes do 125) o botão não abre nada e a `nav` fica na página: abaixo de 1024 px os links vão
-     em linha, quebrando, como antes do ADR 0034, e o cabeçalho cresce e deixa de ficar preso no topo. O `!` vence o utilitário do próprio
-     elemento (a camada de utilitários vem depois desta). */
+  /* Sem popover (o Safari antes do 17, o Firefox antes do 125) o botão não abre nada: abaixo de 1024 px os links do site vão em linha,
+     quebrando, e o cabeçalho cresce e deixa de ficar preso no topo; o "Mais" do app some (os links dele também estão no Como funciona, no
+     rodapé e no Buscar). O `!` vence o utilitário do próprio elemento (a camada de utilitários vem depois desta). */
   @supports not selector(:popover-open) {
     @media (width < 64rem) {
       .topo {
@@ -350,21 +571,23 @@
       .menu-fechar {
         @apply hidden!;
       }
-      .capsule,
-      .menu-acoes {
+      .menu-links {
         @apply flex flex-wrap gap-x-4;
       }
-      .capsule-item,
-      .acao {
-        @apply w-auto border-0 bg-transparent px-0 text-ink;
+      .menu-links a {
+        @apply border-0;
       }
+    }
+    .app-mais,
+    .mais {
+      @apply hidden!;
     }
   }
 
   /* A fita do pé do hero: a mesma linha duas vezes num trilho, rolando um caractere por passo (8 por segundo), com as pontas dissolvidas.
      Sob movimento reduzido a regra global a para no começo. */
   .tape {
-    @apply w-full overflow-hidden font-mono text-[13px] leading-none whitespace-pre text-muted;
+    @apply w-full overflow-hidden font-mono text-13 leading-none whitespace-pre text-muted;
     mask-image: linear-gradient(to right, transparent, #000 15%, #000 85%, transparent);
   }
   .tape-trilho {
@@ -374,8 +597,9 @@
 
   /* A arte (components/arte.tsx): a grade de glifos do quadro 0, já com a brasa (o sprite do quadro, um pixel por célula), do tamanho da
      caixa por CSS (o `cover`: a maior das duas escalas; com `--linhas`, só as de baixo enchem a altura), sem JavaScript. A célula tem 1 em
-     em qualquer mono: o espaçamento completa o avanço do glifo (1ch) até 1 em, e o glifo fica no meio dela. O glifo veste a tinta do sprite (background-clip: text); o ladrilho é a
-     camada de baixo, a metade direita do sprite, com a máscara de quadrado arredondado em cada célula. */
+     em qualquer mono: o espaçamento completa o avanço do glifo (1ch) até 1 em, e o glifo fica no meio dela. O glifo veste a tinta do sprite
+     (background-clip: text); o ladrilho é a camada de baixo, a metade direita do sprite, com a máscara de quadrado arredondado em cada
+     célula. Ela mora na moldura escura (`.moldura`), nos dois temas. */
   .arte {
     @apply pointer-events-none absolute inset-0 overflow-hidden select-none;
     container-type: size;
@@ -429,5 +653,55 @@
   23%,
   100% {
     background: var(--color-dot-off-card);
+  }
+}
+
+/* landing (T2a): as classes que se repetem na landing e no rodapé do site (docs/redesign-rallies/plano.md, seção d). Moram aqui, e não em cada
+   elemento, pelo peso do documento: o mesmo texto iria duas vezes por página, no HTML e no payload do React. */
+@layer components {
+  /* o ladrilho da faixa dos laboratórios (d.4): o cinza do painel, raio 6, o logo de 32 px, o nome e a etiqueta "simulado" embaixo dele */
+  .ladrilho {
+    @apply flex min-w-0 flex-col items-center gap-3 rounded-md bg-surface-card px-2 py-5 text-center text-13 font-semibold text-ink;
+  }
+  /* o nome em cima e a etiqueta no pé: com o nome em duas linhas, a etiqueta não desce sozinha, e a linha de ladrilhos fica alinhada */
+  .ladrilho > span:last-child {
+    @apply flex flex-1 flex-col items-center gap-2 text-balance;
+  }
+  .ladrilho .badge {
+    @apply mt-auto;
+  }
+  /* o recorte de UI (d.3 e d.5): o canvas com o fio, raio 8, e a sombra do recorte do Rallies */
+  .recorte {
+    @apply min-w-0 rounded-lg border border-hairline bg-canvas p-4 shadow-[0_24px_64px_-24px_rgb(0_0_0/0.45)] sm:p-5;
+  }
+  /* o painel de recurso (d.5): o cinza do painel, raio 6; as duas colunas (a partir de 1024 px) quando há recorte */
+  .painel {
+    @apply grid items-center gap-8 rounded-md bg-surface-card p-4 sm:p-10 lg:gap-12 lg:p-12;
+  }
+  /* o "Saiba mais ›" do Rallies (13/600), na caixa de 44 px */
+  .saiba-mais {
+    @apply inline-flex min-h-11 min-w-11 items-center gap-1.5 text-13 font-semibold text-ink hover:underline;
+  }
+  /* o rodapé grande do site (d.8): as colunas (o título 16/500, os links 14/400 em muted, cada um na caixa de 44 px) e a marca à direita */
+  .mapa {
+    @apply grid grid-cols-2 gap-x-8 gap-y-10 md:grid-cols-[repeat(4,minmax(0,1fr))_auto];
+  }
+  .mapa h2 {
+    @apply pb-2 text-base font-medium;
+  }
+  .mapa a {
+    @apply inline-flex min-h-11 min-w-11 items-center text-sm text-muted hover:text-ink;
+  }
+  .mapa-marca {
+    @apply max-md:hidden;
+  }
+  /* o nome gigante, cortado no pé: a Geist 600 na tinta a 6%, decorativo. O texto mora aqui, fora do que o leitor de tela e o axe leem (o
+     contraste dele é o de enfeite: a WCAG 1.4.3 o deixa de fora, e o nome está no cabeçalho). Em 360 px ele cabe na largura. */
+  .nome-gigante {
+    @apply pointer-events-none mt-12 block h-[0.72em] overflow-hidden text-center font-display text-gigante font-semibold select-none;
+  }
+  .nome-gigante::before {
+    content: 'Alvesting';
+    color: color-mix(in oklab, var(--color-ink) 6%, transparent);
   }
 }

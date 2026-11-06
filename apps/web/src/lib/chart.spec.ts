@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alignBand, layoutCandles, layoutEquity, niceTicks, type Bar } from './chart';
+import { alignBand, layoutCandles, layoutEquity, niceTicks, spreadLabels, type Bar } from './chart';
 
 // A geometria dos gráficos SVG (sem biblioteca): escalas, rótulos de eixo e caminhos. Função pura: o componente só desenha o que
 // sai daqui. Valores em centavo inteiro; a coordenada y cresce para baixo, então quem tem mais patrimônio tem y menor.
@@ -107,6 +107,26 @@ describe('layoutEquity', () => {
     expect(wide.xLabels.at(-1)!.label).toBe('20/11');
   });
 
+  // Em 360 px o desenho do patrimônio tem uns 200 px: cinco datas encostam umas nas outras ("03/11 10/11"). As que não são a primeira, a do
+  // meio nem a última levam `minor`, e o gráfico as esconde no celular (charts.tsx).
+  it('rótulos do eixo x: no desenho estreito ficam a primeira, a do meio e a última; as outras levam `minor`', () => {
+    const minors = (n: number) =>
+      layoutEquity(
+        {
+          dates: Array.from({ length: n }, (_, i) => `2026-11-${String(i + 1).padStart(2, '0')}`),
+          series: [{ key: 'a', cents: Array.from({ length: n }, () => 10_000_000) }],
+          band: null,
+        },
+        size,
+      ).xLabels.map((l) => l.minor);
+    expect(minors(20)).toEqual([false, true, false, true, false]);
+    // sem data no meio (quatro), ficam só as pontas
+    expect(minors(4)).toEqual([false, true, true, false]);
+    expect(minors(3)).toEqual([false, false, false]);
+    expect(minors(2)).toEqual([false, false]);
+    expect(minors(1)).toEqual([false]);
+  });
+
   it('uma data só (a primeira liquidação): um ponto por linha, no meio, e a faixa vira uma barra', () => {
     const one = layoutEquity(
       {
@@ -139,6 +159,57 @@ describe('layoutEquity', () => {
     expect(() =>
       layoutEquity({ dates, series: [{ key: 'a', cents: [1, 2] }], band: null }, size),
     ).toThrow(RangeError);
+  });
+
+  // O gráfico da arena (charts.tsx) não tem rótulo de eixo dentro do SVG (as datas vão em HTML, embaixo): a margem é a dele, e a linha vai
+  // até a borda direita, onde o logo do fim da linha fica.
+  it('a margem pode ser outra: a área do desenho segue ela, e a linha termina na borda direita', () => {
+    const margin = { left: 0, top: 12, right: 0, bottom: 12 };
+    const layout = layoutEquity(input, { width: 1000, height: 280 }, margin);
+    expect(layout.plot).toEqual({ left: 0, top: 12, right: 1000, bottom: 268 });
+    for (const line of layout.lines) expect(line.end.x).toBe(1000);
+    for (const tick of layout.yTicks) {
+      expect(tick.y).toBeGreaterThanOrEqual(12);
+      expect(tick.y).toBeLessThanOrEqual(268);
+    }
+  });
+});
+
+describe('spreadLabels', () => {
+  // os rótulos do fim das linhas: 20 de altura, a área de 0 a 280
+  const spread = (ys: number[]) => spreadLabels(ys, 20, 0, 280);
+
+  it('rótulos longe um do outro ficam onde a linha termina', () => {
+    expect(spread([40, 120, 200])).toEqual([40, 120, 200]);
+  });
+
+  it('o que fica a menos de uma altura do de cima desce até caber, na ordem da altura (não na da lista)', () => {
+    // a lista vem na ordem das séries: o segundo é o de cima, e o primeiro desce
+    expect(spread([110, 100])).toEqual([120, 100]);
+    // três empatados viram uma escada
+    expect(spread([50, 50, 50])).toEqual([50, 70, 90]);
+  });
+
+  it('nenhum par fica a menos de uma altura, com qualquer entrada', () => {
+    const ys = [12, 15, 15.5, 90, 91, 92, 270];
+    const out = spread(ys);
+    const sorted = [...out].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i += 1) {
+      expect(sorted[i]! - sorted[i - 1]!).toBeGreaterThanOrEqual(20);
+    }
+  });
+
+  it('o que passaria do pé sobe, e empurra para cima os de cima dele', () => {
+    expect(spread([260, 275, 280])).toEqual([240, 260, 280]);
+    // e o de cima não sai do topo
+    expect(spread([0, 5])).toEqual([0, 20]);
+  });
+
+  it('sem rótulo, nada; um só fica onde está, preso à área', () => {
+    expect(spread([])).toEqual([]);
+    expect(spread([130])).toEqual([130]);
+    expect(spread([-8])).toEqual([0]);
+    expect(spread([290])).toEqual([280]);
   });
 });
 

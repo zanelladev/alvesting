@@ -93,66 +93,62 @@ async function open(
 
 for (const screen of SCREENS) {
   test.describe(`tela ${screen.name} (/admin)`, () => {
-    test('em 360 px não rola na horizontal, o cabeçalho cabe e os alvos de toque têm pelo menos 44 px', async ({
-      page,
-      request,
-      ip,
-      deadLetter,
-      longDeadLetter,
-    }) => {
-      await page.setViewportSize({ width: 360, height: 800 });
-      await open(page, screen, { request, ip, deadLetter, longDeadLetter });
+    test(
+      'em 360 px não rola na horizontal, o cabeçalho cabe e os alvos de toque têm pelo menos 44 px',
+      { tag: '@tema' },
+      async ({ page, request, ip, deadLetter, longDeadLetter }) => {
+        await page.setViewportSize({ width: 360, height: 800 });
+        await open(page, screen, { request, ip, deadLetter, longDeadLetter });
 
-      const { scrollWidth, clientWidth, bodyWidth } = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth,
-        bodyWidth: document.body.scrollWidth,
-      }));
-      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-      expect(bodyWidth).toBeLessThanOrEqual(clientWidth);
+        const { scrollWidth, clientWidth, bodyWidth } = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+          bodyWidth: document.body.scrollWidth,
+        }));
+        expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+        expect(bodyWidth).toBeLessThanOrEqual(clientWidth);
 
-      // o cabeçalho cabe na largura, e a folha do menu abre com os sete links dentro dela, cada um com 44 px de altura (ADR 0034: em 360 px o
-      // menu é a folha que o botão "Menu" abre, uma linha por tela; o mesmo do carteira-layout.spec.ts). A contagem vem antes das medidas: sem
-      // ela o laço passaria em vazio se o cabeçalho sumisse
-      await abrirMenu(page);
-      const bannerLinks = await page.getByRole('banner').getByRole('link').all();
-      expect(bannerLinks.length).toBeGreaterThanOrEqual(8);
-      for (const link of bannerLinks) {
-        const box = (await link.boundingBox())!;
-        expect(box.x, await link.innerText()).toBeGreaterThanOrEqual(0);
-        expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(360);
-        expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
-      }
-      await page.keyboard.press('Escape');
-      await expect(page.getByRole('navigation', { name: 'Principal' })).toBeHidden();
+        // a barra de abas da casca do app (ADR 0035; o painel é da área da conta) fica na tela e cabe na largura: a marca e os cinco links (o
+        // sexto alvo é o botão "Mais"), cada um com 44 px de altura. A contagem vem antes das medidas: sem ela o laço passaria em vazio se o
+        // cabeçalho sumisse
+        await abrirMenu(page);
+        const bannerLinks = await page.getByRole('banner').getByRole('link').all();
+        expect(bannerLinks.length).toBeGreaterThanOrEqual(6);
+        for (const link of bannerLinks) {
+          const box = (await link.boundingBox())!;
+          expect(box.x, await link.innerText()).toBeGreaterThanOrEqual(0);
+          expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(360);
+          expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
+        }
 
-      // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante
-      const small = await page.evaluate(() => {
-        const selector =
-          'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]';
-        return [...document.querySelectorAll(selector)]
-          .filter((element) => {
-            const style = getComputedStyle(element);
-            const box = element.getBoundingClientRect();
-            return (
-              style.visibility !== 'hidden' &&
-              style.display !== 'none' &&
-              box.width > 0 &&
-              box.height > 0
-            );
-          })
-          .map((element) => {
-            const box = element.getBoundingClientRect();
-            return {
-              element: `${element.tagName.toLowerCase()} "${(element.textContent ?? '').trim().slice(0, 30)}"`,
-              width: box.width,
-              height: box.height,
-            };
-          })
-          .filter(({ width, height }) => width < 43.95 || height < 43.95);
-      });
-      expect(small).toEqual([]);
-    });
+        // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante
+        const small = await page.evaluate(() => {
+          const selector =
+            'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]';
+          return [...document.querySelectorAll(selector)]
+            .filter((element) => {
+              const style = getComputedStyle(element);
+              const box = element.getBoundingClientRect();
+              return (
+                style.visibility !== 'hidden' &&
+                style.display !== 'none' &&
+                box.width > 0 &&
+                box.height > 0
+              );
+            })
+            .map((element) => {
+              const box = element.getBoundingClientRect();
+              return {
+                element: `${element.tagName.toLowerCase()} "${(element.textContent ?? '').trim().slice(0, 30)}"`,
+                width: box.width,
+                height: box.height,
+              };
+            })
+            .filter(({ width, height }) => width < 43.95 || height < 43.95);
+        });
+        expect(small).toEqual([]);
+      },
+    );
 
     test('não deixa erro no console nem exceção na página, e leva o aviso fixo e as atribuições', async ({
       page,
@@ -203,44 +199,44 @@ for (const screen of SCREENS) {
       for (const body of bodies) expect(body).not.toContain('ZodError');
     });
 
-    test('acessibilidade (axe): nenhuma violação séria ou crítica', async ({
-      page,
-      request,
-      ip,
-      deadLetter,
-      longDeadLetter,
-    }) => {
-      await open(page, screen, { request, ip, deadLetter, longDeadLetter });
-      const { violations } = await new AxeBuilder({ page }).analyze();
-      const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
-      expect(
-        serious,
-        JSON.stringify(
-          serious.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target) })),
-        ),
-      ).toEqual([]);
-    });
+    test(
+      'acessibilidade (axe): nenhuma violação séria ou crítica',
+      { tag: '@tema' },
+      async ({ page, request, ip, deadLetter, longDeadLetter }) => {
+        await open(page, screen, { request, ip, deadLetter, longDeadLetter });
+        const { violations } = await new AxeBuilder({ page }).analyze();
+        const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+        expect(
+          serious,
+          JSON.stringify(
+            serious.map((v) => ({
+              id: v.id,
+              impact: v.impact,
+              nodes: v.nodes.map((n) => n.target),
+            })),
+          ),
+        ).toEqual([]);
+      },
+    );
 
-    test('acessibilidade (axe) em 360 px: nenhuma violação, de qualquer impacto', async ({
-      page,
-      request,
-      ip,
-      deadLetter,
-      longDeadLetter,
-    }) => {
-      await page.setViewportSize({ width: 360, height: 800 });
-      await open(page, screen, { request, ip, deadLetter, longDeadLetter });
-      const { violations } = await new AxeBuilder({ page }).analyze();
-      expect(
-        violations,
-        JSON.stringify(
-          violations.map((v) => ({
-            id: v.id,
-            impact: v.impact,
-            nodes: v.nodes.map((n) => n.target),
-          })),
-        ),
-      ).toEqual([]);
-    });
+    test(
+      'acessibilidade (axe) em 360 px: nenhuma violação, de qualquer impacto',
+      { tag: '@tema' },
+      async ({ page, request, ip, deadLetter, longDeadLetter }) => {
+        await page.setViewportSize({ width: 360, height: 800 });
+        await open(page, screen, { request, ip, deadLetter, longDeadLetter });
+        const { violations } = await new AxeBuilder({ page }).analyze();
+        expect(
+          violations,
+          JSON.stringify(
+            violations.map((v) => ({
+              id: v.id,
+              impact: v.impact,
+              nodes: v.nodes.map((n) => n.target),
+            })),
+          ),
+        ).toEqual([]);
+      },
+    );
   });
 }

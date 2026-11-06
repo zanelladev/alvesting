@@ -1,15 +1,23 @@
-import type { DropReason, HoldReason } from '@alvesting/contracts';
-import { formatConfidence, formatDate, formatPercentValue } from '../lib/format';
-import { LINK, NavLink, SimulatedTag } from './ui';
+import type { DropReason, HoldReason, PublicCompetitor } from '@alvesting/contracts';
+import { formatBps, formatConfidence, formatDate, formatPercentValue } from '../lib/format';
+import { Logo } from './competidor';
+import { LINK, NavLink, SimulatedTag, direction } from './ui';
 
-// A decisão de um modelo num pregão, como o feed da home, a página do modelo e a do ciclo a mostram. O texto do modelo (resumo e
+// A decisão de um modelo num pregão, como o feed da arena, a página do modelo, a do ciclo e a landing a mostram. O texto do modelo (resumo e
 // justificativa) é dado de terceiro: já passou pela limpeza e pelo filtro de vazamento na api (docs/METODOLOGIA.md) e aqui entra como
 // TEXTO, nunca como HTML nem como link (o React o escapa). Do item descartado só a posição e o motivo; o conteúdo nunca sai.
 
 export type Action = 'BUY' | 'SELL' | 'HOLD';
 
 export interface DecisionCardData {
-  competitor: { slug: string; name: string };
+  // o tipo, o provedor e o modelo vêm no feed (o competidor público) e não no ciclo: o logo os usa quando há
+  competitor: {
+    slug: string;
+    name: string;
+    type?: PublicCompetitor['type'];
+    provider?: PublicCompetitor['provider'];
+    modelId?: PublicCompetitor['modelId'];
+  };
   status: 'DECIDED' | 'FORCED_HOLD';
   holdReason: HoldReason | null;
   marketView: 'otimista' | 'pessimista' | 'neutro' | null;
@@ -67,59 +75,102 @@ const percentOf = (action: Action, percent: number | null): string | null =>
     ? null
     : `${formatPercentValue(percent)} ${action === 'BUY' ? 'do patrimônio' : 'da posição'}`;
 
-// `date`: a data do pregão, como link para o ciclo (não vai na página do ciclo, que já é ele). `by`: o que dá o título do cartão, o
-// modelo (no feed e no ciclo) ou a data (na página do próprio modelo, que já mostra o nome). `simulated`: a decisão veio do provedor
-// fake, e o nome do modelo leva a etiqueta (ui.tsx, SimulatedTag).
+// O nome e a data do cabeçalho: links sem o sublinhado (o desenho do feed do Rallies), na caixa de 44 px do `link`.
+const HEAD_LINK = `${LINK} no-underline hover:underline`;
+
+// O item do feed do Rallies (plano do redesenho, e.5): no cabeçalho o logo do laboratório, o nome do modelo, o retorno dele na temporada
+// (`returnBps`, do ranking: quem não o tem não o mostra) e a data do pregão; o resumo do modelo como o título do item; cada ordem com a
+// etiqueta, o ticker num chip, o percentual, a confiança e a justificativa; os itens descartados recuados, como uma resposta. Um item por
+// vez, separado do de cima por um fio (o primeiro da lista, sem). `date`: a data do pregão, como link para o ciclo (não vai na página do
+// ciclo, que já é ele). `by`: o que dá o título do item, o modelo (no feed e no ciclo) ou a data (na página do próprio modelo, que já
+// mostra o nome e o logo). `simulated`: a decisão veio do provedor fake, e o nome do modelo leva a etiqueta (ui.tsx, SimulatedTag).
+// O contrato de DOM que os testes leem fica: o `article`, o `h3` com o link do modelo ou da data, um `p` só no cabeçalho (a data e a visão de
+// mercado), o resumo como o único `p` direto do item e um `li` por ordem, com o `[data-action]` e o link do ticker.
 export function DecisionCard({
   decision,
   date,
   by,
   simulated = false,
+  returnBps,
 }: {
   decision: DecisionCardData;
   date?: string;
   by: 'model' | 'date';
   simulated?: boolean;
+  returnBps?: number | null;
 }) {
+  const { competitor } = decision;
   const modelLink = (
     <>
-      <NavLink href={`/modelos/${decision.competitor.slug}`} className={LINK}>
-        {decision.competitor.name}
+      <NavLink href={`/modelos/${competitor.slug}`} className={HEAD_LINK}>
+        {competitor.name}
       </NavLink>
       {simulated ? <SimulatedTag /> : null}
     </>
   );
-  const dateLink = date ? (
-    <NavLink href={`/ciclos/${date}`} className={LINK}>
-      {formatDate(date)}
-    </NavLink>
-  ) : null;
+  // a data na linha de baixo do cabeçalho vai em muted; como título do item (na página do modelo), na tinta do h3
+  const dateLink = (muted: boolean) =>
+    date ? (
+      <NavLink
+        href={`/ciclos/${date}`}
+        className={muted ? `${HEAD_LINK} text-muted hover:text-ink` : HEAD_LINK}
+      >
+        {formatDate(date)}
+      </NavLink>
+    ) : null;
 
   return (
-    <article className="card space-y-3">
-      <header>
-        <h3 className="font-display text-title">{by === 'model' ? modelLink : dateLink}</h3>
-        <p className="flex flex-wrap items-center gap-x-3 muted">
-          {by === 'model' ? dateLink : null}
-          {decision.marketView ? <span>{MARKET_VIEW[decision.marketView]}</span> : null}
-        </p>
+    <article className="min-w-0 space-y-3 border-t border-hairline py-6 first:border-t-0 first:pt-0">
+      <header className="flex min-w-0 items-center gap-3">
+        {/* só modelo decide: o laboratório sai do tipo e do modelo quando o dado os traz (o feed), e senão do slug (o ciclo) */}
+        {by === 'model' ? (
+          <Logo
+            competitor={{
+              slug: competitor.slug,
+              name: competitor.name,
+              type: competitor.type ?? 'MODEL',
+              provider: competitor.provider ?? null,
+              modelId: competitor.modelId ?? null,
+            }}
+            className="size-10"
+          />
+        ) : null}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3">
+          <h3 className="text-15 font-semibold text-ink">
+            {by === 'model' ? modelLink : dateLink(false)}
+          </h3>
+          {returnBps === undefined || returnBps === null ? null : (
+            <span
+              data-dir={direction(returnBps)}
+              className="text-sm font-semibold text-ink tabular-nums"
+            >
+              {formatBps(returnBps)}
+            </span>
+          )}
+          <p className="flex flex-wrap items-center gap-x-3 text-xs text-muted">
+            {by === 'model' ? dateLink(true) : null}
+            {decision.marketView ? <span>{MARKET_VIEW[decision.marketView]}</span> : null}
+          </p>
+        </div>
       </header>
 
       {decision.status === 'FORCED_HOLD' ? (
-        <p className="font-display font-medium text-ink">
+        <p className="text-18 font-semibold text-ink">
           HOLD forçado{decision.holdReason ? `: ${HOLD_REASON[decision.holdReason]}` : ''}
         </p>
       ) : null}
-      {decision.summary ? <p>{decision.summary}</p> : null}
+      {decision.summary ? (
+        <p className="text-18 font-semibold text-pretty text-ink">{decision.summary}</p>
+      ) : null}
 
       {decision.items.length > 0 ? (
-        <ul className="space-y-2">
+        <ul className="space-y-3">
           {decision.items.map((item) => {
             const percent = percentOf(item.action, item.percent);
             return (
-              <li key={item.position} className="flex flex-wrap items-center gap-x-3">
+              <li key={item.position} className="flex flex-wrap items-center gap-x-2">
                 <ActionBadge action={item.action} />
-                <NavLink href={`/acoes/${item.ticker}`} className={`${LINK} font-mono`}>
+                <NavLink href={`/acoes/${item.ticker}`} className="chip font-mono">
                   {item.ticker}
                 </NavLink>
                 {percent ? <span className="text-sm text-ink tabular-nums">{percent}</span> : null}
@@ -128,23 +179,32 @@ export function DecisionCard({
                 )}
                 {/* a justificativa é do modelo e pode ter uma palavra sem espaço: o item flex precisa poder encolher (min-w-0) para o
                     `break-word` do html quebrá-la, senão ela alarga a página em 360 px */}
-                <p className="min-w-0 basis-full text-sm">{item.rationale}</p>
+                <p className="min-w-0 basis-full text-sm leading-relaxed text-body">
+                  {item.rationale}
+                </p>
               </li>
             );
           })}
         </ul>
       ) : null}
 
+      {/* os descartados, recuados com a quina, como a resposta de um item do feed do Rallies */}
       {decision.dropped.length > 0 ? (
-        <div className="text-sm">
-          <p className="font-display font-medium text-ink">Itens descartados</p>
-          <ul aria-label="Itens descartados" className="list-disc pl-6">
-            {decision.dropped.map((drop) => (
-              <li key={drop.position}>
-                Item {drop.position + 1}: {DROP_REASON[drop.reason]}
-              </li>
-            ))}
-          </ul>
+        <div className="flex gap-3 pl-1 text-sm">
+          <span
+            aria-hidden="true"
+            className="mt-1 size-3 shrink-0 rounded-bl-sm border-b border-l border-hairline-strong"
+          />
+          <div className="min-w-0 space-y-1">
+            <p className="font-medium text-ink">Itens descartados</p>
+            <ul aria-label="Itens descartados" className="space-y-1 text-muted">
+              {decision.dropped.map((drop) => (
+                <li key={drop.position}>
+                  Item {drop.position + 1}: {DROP_REASON[drop.reason]}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       ) : null}
     </article>

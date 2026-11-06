@@ -1,18 +1,16 @@
 import type { Metadata, Viewport } from 'next';
 import { Geist } from 'next/font/google';
 import type { ReactNode } from 'react';
-import { SiteFooter, SiteHeader } from '../components/site-chrome';
-import { Rule } from '../components/ui';
 import './globals.css';
 
-// O next/font baixa a fonte no build e a serve do nosso domínio: o navegador não fala com o Google. Uma fonte só, num peso (ADR 0034): a
-// Geist no 500 (títulos, números grandes, botões, a cápsula do menu, o negrito); com dois pesos o Google serveria a fonte variável, com o
-// dobro do tamanho. O texto, as células e os rótulos usam a fonte do sistema, e a mono também (globals.css): a Inter 400 do plano saiu
-// porque o LCP simulado da home passou do teto com ela (cada fonte baixada é um pedido de alta prioridade no caminho crítico; a medida está
-// em docs/TELAS.md, seção 5).
+// O next/font baixa a fonte no build e a serve do nosso domínio: o navegador não fala com o Google. Uma fonte só, num peso (ADR 0035): a
+// Geist no 600 (títulos, nomes, números grandes e o nome gigante do rodapé), no lugar da FK Grotesk do Rallies, que é paga; com dois pesos o
+// Google serviria a fonte variável, com o dobro do tamanho, no caminho do LCP. O texto, as células, os botões e os rótulos usam a fonte do
+// sistema, e a mono também (globals.css): cada fonte baixada é um pedido de alta prioridade no caminho crítico da home (docs/TELAS.md,
+// seção 5).
 const display = Geist({
   subsets: ['latin'],
-  weight: ['500'],
+  weight: ['600'],
   variable: '--font-geist',
   display: 'swap',
 });
@@ -27,37 +25,27 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false, address: false, email: false },
 };
 
-// Sem maximumScale nem userScalable: o usuário pode dar zoom. O site é escuro (o canvas preto): o navegador já pinta o fundo e os controles
-// nativos no escuro antes do CSS.
+// Sem maximumScale nem userScalable: o usuário pode dar zoom. Os dois temas seguem o sistema (globals.css): o `color-scheme` deixa o
+// navegador pintar o fundo e os controles nativos no tema certo antes do CSS, e a cor da barra do navegador acompanha o canvas de cada um.
+// `viewportFit: 'cover'`: a barra de abas do app fica no pé, e no iPhone ela usa a área segura (`env(safe-area-inset-bottom)`).
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#000000',
-  colorScheme: 'dark',
+  viewportFit: 'cover',
+  colorScheme: 'light dark',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#171717' },
+  ],
 };
 
-// A casca de toda tela, sem JavaScript: o cabeçalho, a moldura (as laterais de 1 px na coluna de 1200, a partir de 1202 px, por cima do
-// conteúdo para cruzar a arte e as faixas de largura total, e abaixo do cabeçalho), o main na coluna e a linha da moldura antes do rodapé.
-// As laterais são duas linhas de 1 px, e não uma caixa de 1202 px com borda: a caixa ficava por cima de todo o texto da coluna, e o axe não
-// achava o fundo dele (o contraste do desktop virava "incompleto", sem violação nem aprovação). O `overflow-x: clip` corta o que passa da
-// barra de rolagem nas linhas de ponta a ponta (a Rule e o hero têm 100vw).
-const MOLDURA =
-  'pointer-events-none absolute inset-y-0 z-20 hidden w-px bg-hairline min-[75.125rem]:block';
+// O layout raiz não tem casca: cada grupo de rota tem a dele (o site em (site), a tela dividida em (entrar) e (auth), o app nas áreas de
+// (app); a 404 traz a do site).
+// Um layout raiz só (o html, o body e a fonte) deixa a navegação suave entre os grupos funcionando.
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR" className={display.variable}>
-      <body className="flex min-h-dvh flex-col antialiased">
-        <SiteHeader />
-        <div className="relative flex min-w-0 flex-1 flex-col overflow-x-clip">
-          <div aria-hidden="true" data-moldura="" className={`${MOLDURA} left-[calc(50%-601px)]`} />
-          <div aria-hidden="true" data-moldura="" className={`${MOLDURA} left-[calc(50%+600px)]`} />
-          <main className="mx-auto w-full max-w-[1200px] flex-1 space-y-8 px-(--calha) pt-6 pb-12">
-            {children}
-          </main>
-          <Rule />
-          <SiteFooter />
-        </div>
-      </body>
+      <body className="flex min-h-dvh flex-col antialiased">{children}</body>
     </html>
   );
 }

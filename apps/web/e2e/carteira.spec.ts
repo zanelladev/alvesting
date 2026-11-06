@@ -49,14 +49,15 @@ function positionCells(p: Position): string[] {
   ];
 }
 
+// a coluna da carteira, na ordem do Today do Rallies (docs/redesign-rallies/plano.md, f.3): o valor estimado, o resultado e o custo total
 function summaryValues(t: Totals): string[] {
   const priced = t.valueCents !== null;
   return [
-    brl(t.costCents),
     priced ? brl(t.valueCents!) : 'sem cotação',
     priced
       ? `${signed(t.pnlCents!)} (${t.pnlBps === null ? 'sem percentual' : percent(t.pnlBps)}, ${pnlWord(t.pnlCents!)})`
       : 'sem cotação',
+    brl(t.costCents),
   ];
 }
 
@@ -162,7 +163,7 @@ test.describe('quem pode abrir a carteira', () => {
   }) => {
     const user = await registerVerifiedUser(request, ip, 'carteira-entrar');
     await page.goto('/ranking');
-    // o cabeçalho não lê a sessão: o link é o mesmo com ou sem login (abaixo de 1024 px, na folha que o botão "Menu" abre)
+    // a casca do app não lê a sessão: o link é o mesmo com ou sem login (o trilho no desktop, a barra de abas no pé no celular)
     await abrirMenu(page);
     await page.getByRole('banner').getByRole('link', { name: 'Carteira', exact: true }).click();
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/entrar?proximo=%2Fcarteira`);
@@ -256,6 +257,13 @@ test.describe('lançar uma compra', () => {
     await settled(region(page, 'Posições')).toHaveCount(0);
     // sem lançamentos o formulário está logo abaixo: não há atalho para ele
     await expect(region(page, 'Lançamentos').getByRole('link')).toHaveCount(0);
+
+    // o painel "Perguntar" (o chat desligado; docs/redesign-rallies/plano.md, f.3): a frase e o link para o /chat, e nada para digitar nem tocar
+    const ask = region(page, 'Perguntar');
+    await expect(ask).toContainText('O chat sobre a sua carteira ainda está desligado');
+    await expect(ask.getByRole('link', { name: 'Abrir o chat' })).toHaveAttribute('href', '/chat');
+    await expect(ask.getByRole('button')).toHaveCount(0);
+    await expect(ask.getByRole('textbox')).toHaveCount(0);
 
     // o formulário: o modo "preço por ação" já vem marcado, a data é opcional e o campo de valor diz o que pede
     const f = fields(createForm(page));
@@ -351,7 +359,8 @@ test.describe('lançar uma compra', () => {
     ]);
     await expectPositions(page, page.request);
     await expectSummary(page, page.request);
-    await expect(region(page, 'Resumo').locator('dd').first()).toHaveText('R$ 7.100,00');
+    // o custo total é o último par da coluna (o valor estimado vem primeiro, como no Today)
+    await expect(region(page, 'Resumo').locator('dd').last()).toHaveText('R$ 7.100,00');
   });
 
   // O mesmo custo para os mesmos números, com valores que pedem milhar e centavos: o produto é feito em centavos inteiros, nunca em float.
@@ -1017,7 +1026,7 @@ test.describe('por toque', () => {
     await expect(f.unit).not.toBeChecked();
     // marcado, o radio não depende da cor: é um disco na cor da tinta com um ponto (texto, que sobrevive ao modo de alto contraste do sistema), e
     // o vazio é um círculo no fundo da página sem ponto; os dois são redondos, para não se confundir com a caixa de marcar (um quadrado com um
-    // X). No tema escuro (ADR 0034) a tinta é a clara e o fundo é o preto.
+    // X). O e2e roda no tema claro (ADR 0035): a tinta é a quase preta e o fundo, o branco.
     const look = (radio: Element) => ({
       mark: getComputedStyle(radio, '::before').content,
       background: getComputedStyle(radio).backgroundColor,
@@ -1025,8 +1034,8 @@ test.describe('por toque', () => {
     });
     const painted = await f.total.evaluate(look);
     const empty = await f.unit.evaluate(look);
-    expect(painted).toMatchObject({ mark: '"●"', background: 'rgb(245, 245, 245)' });
-    expect(empty).toMatchObject({ mark: 'none', background: 'rgb(0, 0, 0)' });
+    expect(painted).toMatchObject({ mark: '"●"', background: 'rgb(10, 10, 10)' });
+    expect(empty).toMatchObject({ mark: 'none', background: 'rgb(255, 255, 255)' });
     expect(painted.radius).not.toBe('0px');
     expect(empty.radius).not.toBe('0px');
     await f.value.fill('3550');

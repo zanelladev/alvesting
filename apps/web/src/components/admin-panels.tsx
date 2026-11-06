@@ -11,6 +11,8 @@ import { Aviso, CAIXA_ERRO, Empty, Fact, Facts, ROW, TABLE, TD, TableScroll } fr
 // O nome da linha fica preso à esquerda quando a tabela rola dentro da própria caixa: o cabeçalho de coluna e a célula presa são os das tabelas
 // da arena (tables.tsx). O tipo do job vai na mono (é um identificador); o competidor e o dia, não.
 const WRAP = 'break-all';
+// o item dentro do cartão da seção (uma mensagem da DLQ, uma temporada): o fio e o raio do cartão, com menos respiro, sem cartão dentro de cartão
+const BOX = 'min-w-0 rounded-lg border border-hairline p-4';
 
 const STATUS: Record<string, string> = {
   RUNNING: 'rodando',
@@ -63,7 +65,7 @@ export function JobsPanel({ jobs }: { jobs: AdminJobs }) {
       )}
       {jobs.failures.length > 0 ? (
         <>
-          <h3 className="pt-4 font-display text-title">Falhas recentes</h3>
+          <h3 className="pt-4 font-display text-base">Falhas recentes</h3>
           <ul className="space-y-2">
             {jobs.failures.map((run) => (
               <li
@@ -82,7 +84,7 @@ export function JobsPanel({ jobs }: { jobs: AdminJobs }) {
           </ul>
         </>
       ) : null}
-      <h3 className="pt-4 font-display text-title">Arquivos da CVM</h3>
+      <h3 className="pt-4 font-display text-base">Arquivos da CVM</h3>
       {jobs.fetchStates.length === 0 ? (
         <Empty>Nenhum arquivo da CVM foi conferido ainda.</Empty>
       ) : (
@@ -141,7 +143,7 @@ export function QueuesPanel({ queues }: { queues: AdminJobs['queues'] }) {
                     {deadLetters.messages.map((message, index) => {
                       const id = `dlq-${queue}-${index}`;
                       return (
-                        <li key={`${message.messageId}:${index}`} className="card">
+                        <li key={`${message.messageId}:${index}`} className={BOX}>
                           {/* a posição entra no nome do formulário (aria-labelledby aponta para cá): a mesma mensagem pode estar duas
                             vezes na DLQ (o MessageId é determinístico e o Service Bus Basic não detecta duplicata), e dois formulários
                             com o mesmo nome violam o landmark único */}
@@ -301,8 +303,8 @@ function SeasonCard({ season }: { season: AdminSeason }) {
   const base = `temporada-${season.id}`;
   const draft = season.status === 'DRAFT';
   return (
-    <li className="card space-y-4">
-      <h3 id={base} className={`font-display text-title ${WRAP}`}>
+    <li className={`${BOX} space-y-4`}>
+      <h3 id={base} className={`font-display text-base ${WRAP}`}>
         {season.name}
       </h3>
       <Facts dense>
@@ -371,12 +373,10 @@ export function SeasonsPanel({ seasons }: { seasons: AdminSeasons }) {
           ))}
         </ul>
       )}
-      <h3 id="temporada-nova" className="pt-4 font-display text-title">
+      <h3 id="temporada-nova" className="pt-4 font-display text-base">
         Nova temporada
       </h3>
-      <div className="card max-w-md">
-        <CreateSeasonForm labelledBy="temporada-nova" />
-      </div>
+      <CreateSeasonForm labelledBy="temporada-nova" />
     </>
   );
 }

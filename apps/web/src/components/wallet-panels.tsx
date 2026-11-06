@@ -1,7 +1,7 @@
 import type { Position, Totals } from '@alvesting/contracts';
 import { formatBRL, formatBRLSigned, formatBps, formatDate, formatQuantity } from '../lib/format';
 import { STICKY, Th, direction } from './tables';
-import { ROW, StripItem, TABLE, TD, TableScroll } from './ui';
+import { ROW, TABLE, TD, TableScroll } from './ui';
 
 // O resumo e as posições da carteira (etapa 12, parte 2; docs/TELAS.md, seção 9): Server Components, sem JavaScript no navegador. Os números
 // vêm prontos da api (`GET /api/v1/me/portfolio`, docs/API.md, seção 9), em centavos e pontos-base inteiros: aqui só se formata. O resultado
@@ -36,18 +36,33 @@ function priced(p: Position) {
   };
 }
 
-// O resumo é a faixa de números da home (a `stats-band` do Arc): as três células divididas por um fio, numa caixa de borda; uma embaixo da outra
-// no celular, lado a lado a partir de 768 px. O percentual e a palavra vão embaixo do resultado, menores, como a data na faixa da home.
-export function WalletSummary({ totals }: { totals: Totals }) {
+// A coluna da carteira (o "Portfolio" do Today do Rallies; docs/redesign-rallies/plano.md, f.3): o valor estimado na Geist de 20, o resultado
+// com o sinal, o percentual e a palavra, e o custo total; as posições numa lista curta (o ticker, o percentual e o último fechamento com a
+// data: a mesma informação da tabela, nunca nova, e só a partir de 1024 px, onde a tabela fica ao lado; no celular a tabela vem logo abaixo) e,
+// no pé, a pílula preta "Lançar compra", que leva ao formulário (no celular ele fica no fim da tela). Os três números são os pares termo/valor
+// da região "Resumo", nesta ordem, que o e2e confere contra a api.
+export function WalletSummary({
+  totals,
+  positions = [],
+}: {
+  totals: Totals;
+  positions?: readonly Position[];
+}) {
   return (
-    <>
-      <div className="overflow-hidden rounded-panel border border-hairline">
-        <dl className="grid gap-px bg-hairline md:grid-cols-3">
-          <StripItem term="Custo total">{formatBRL(totals.costCents)}</StripItem>
-          <StripItem term="Valor estimado">
+    <section id="resumo" aria-labelledby="resumo-titulo" className="min-w-0 space-y-5">
+      <h2 id="resumo-titulo" className="text-15 font-medium text-ink">
+        Resumo
+      </h2>
+      <dl className="space-y-3">
+        <div>
+          <dt className="text-13 text-muted">Valor estimado</dt>
+          <dd className="font-display text-20 font-semibold text-ink tabular-nums">
             {totals.valueCents === null ? NO_QUOTE : formatBRL(totals.valueCents)}
-          </StripItem>
-          <StripItem term="Resultado">
+          </dd>
+        </div>
+        <div>
+          <dt className="text-13 text-muted">Resultado</dt>
+          <dd className="text-sm text-ink tabular-nums">
             {totals.pnlCents === null ? (
               NO_QUOTE
             ) : (
@@ -55,24 +70,74 @@ export function WalletSummary({ totals }: { totals: Totals }) {
                 <span data-dir={direction(totals.pnlCents)}>
                   {formatBRLSigned(totals.pnlCents)}
                 </span>{' '}
-                <span className="block font-sans text-xs font-normal text-muted">
+                <span className="text-muted">
                   {`(${percent(totals.pnlBps)}, ${verdict(totals.pnlCents)})`}
                 </span>
               </>
             )}
-          </StripItem>
-        </dl>
-      </div>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-13 text-muted">Custo total</dt>
+          <dd className="text-sm text-ink tabular-nums">{formatBRL(totals.costCents)}</dd>
+        </div>
+      </dl>
       {totals.unpriced > 0 ? (
-        <p className="muted max-w-prose">
+        <p className="muted">
           {totals.unpriced === 1
             ? '1 posição está sem cotação: fica fora do valor estimado e do resultado, mas o custo dela está no custo total.'
             : `${totals.unpriced} posições estão sem cotação: ficam fora do valor estimado e do resultado, mas o custo delas está no custo total.`}
         </p>
       ) : null}
-    </>
+      {positions.length > 0 ? (
+        <div className="hidden lg:block">
+          <h3 className="pb-1 text-13 font-medium text-muted">Por ação</h3>
+          <ul className="divide-y divide-hairline border-y border-hairline">
+            {positions.map((p) => {
+              const close = priced(p);
+              return (
+                <li key={p.ticker} className="flex items-baseline justify-between gap-3 py-2.5">
+                  <span className="font-mono text-sm font-semibold text-ink">{p.ticker}</span>
+                  {close ? (
+                    <span className="min-w-0 text-right">
+                      <span
+                        data-dir={direction(close.pnlCents)}
+                        className="block text-sm text-ink tabular-nums"
+                      >
+                        {percent(p.pnlBps)}
+                      </span>
+                      <span className="block text-xs text-muted">
+                        {`${formatBRL(close.closeCents)} em ${formatDate(close.closeDate)}`}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted">{NO_QUOTE}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+      <a href="#lancar" className="btn btn-primary">
+        Lançar compra
+      </a>
+    </section>
   );
 }
+
+// A mesma coluna com a carteira vazia: sem números (não há o que somar) e sem a região "Resumo"; a frase e a pílula que leva ao formulário.
+export const WalletEmpty = () => (
+  <div className="min-w-0 space-y-4">
+    <p className="font-display text-20 font-semibold text-ink">Nenhuma compra ainda</p>
+    <p className="muted">
+      Lance a primeira e aqui aparecem o valor estimado, o resultado e o custo total da carteira.
+    </p>
+    <a href="#lancar" className="btn btn-primary">
+      Lançar compra
+    </a>
+  </div>
+);
 
 // Uma linha por ticker. As colunas que mais dizem vêm primeiro (ação, valor e resultado), para caberem em 360 px sem rolar; o resto fica à
 // direita, na rolagem da própria caixa (docs/TELAS.md, seção 3). O fechamento leva a data DELE: um papel parado tem data mais antiga que os outros.

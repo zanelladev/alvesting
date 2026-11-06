@@ -16,7 +16,8 @@ import { BUTTON, CAIXA, CAIXA_ERRO, INPUT } from './ui';
 
 // As peças dos formulários da conta (etapa 11, parte 2): campo com rótulo, erro ligado ao campo por aria-describedby, foco no primeiro
 // erro, aviso de status e o botão. Os campos são não controlados (o valor mora no DOM), o envio lê o FormData, e quem manda é a api: a
-// conferência daqui só poupa a ida. O sistema visual ascii-ui (src/app/globals.css; ADR 0034).
+// conferência daqui só poupa a ida. O sistema visual do Rallies (src/app/globals.css; ADR 0035): o campo do cadastro deles (44 px, raio 8, o
+// cinza do painel, com o fio) e o envio na pílula preta.
 //
 // Sem JavaScript o formulário não pode se enviar: um <form> sem handler faria um GET com a senha na URL (histórico, log da borda). Por isso o
 // <fieldset> nasce desativado e só é ativado depois da hidratação (os campos e o botão ficam inertes), e o <noscript> diz por quê.
@@ -58,6 +59,7 @@ export function AccountForm({
   labelledBy,
   noscript = true,
   primary = false,
+  largo = false,
 }: {
   submit: string;
   // `via` é o `value` do botão que enviou (o do Google), ou null para o botão principal. Devolve o resultado de uma falha ou de um aviso;
@@ -67,9 +69,11 @@ export function AccountForm({
   actions?: ReactNode;
   labelledBy?: string;
   noscript?: boolean;
-  // o envio é a ação principal da superfície: a pílula branca (uma por superfície). Sair, excluir a conta e as ações do painel ficam no
-  // botão escuro
+  // o envio é a ação principal da superfície: a pílula preta (uma por superfície). Sair, excluir a conta e as ações do painel ficam na
+  // pílula cinza
   primary?: boolean;
+  // os botões na largura da coluna, um embaixo do outro: o envio do cadastro do Rallies, nas telas de entrar e criar conta (a tela dividida)
+  largo?: boolean;
 }) {
   const hydrated = useHydrated();
   const form = useRef<HTMLFormElement>(null);
@@ -156,7 +160,7 @@ export function AccountForm({
       ) : null}
       <fieldset disabled={!hydrated || busy} className="min-w-0 space-y-4">
         <Errors.Provider value={{ errors, clear }}>{children}</Errors.Provider>
-        <div className="flex flex-wrap gap-3">
+        <div className={largo ? 'flex flex-col gap-3 *:w-full' : 'flex flex-wrap gap-3'}>
           <button type="submit" className={primary ? `${BUTTON} btn-primary` : BUTTON}>
             {busy ? (
               <>
@@ -219,7 +223,7 @@ export function TextField({
   const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ');
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="font-display text-sm font-medium text-ink">
+      <label htmlFor={id} className="text-sm font-medium text-ink">
         {label}
       </label>
       {hint ? (
@@ -273,7 +277,7 @@ export function TextAreaField({
   const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ');
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="font-display text-sm font-medium text-ink">
+      <label htmlFor={id} className="text-sm font-medium text-ink">
         {label}
       </label>
       {hint ? (
@@ -316,7 +320,7 @@ export function SelectField({
   const errorId = `${id}-erro`;
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="font-display text-sm font-medium text-ink">
+      <label htmlFor={id} className="text-sm font-medium text-ink">
         {label}
       </label>
       {/* appearance-none: o <select> nativo do WebKit (iPhone) ignora a altura mínima de 44 px (medido: 27 px); sem a seta nativa, o
@@ -373,7 +377,7 @@ export function RadioField({
   const hintId = `${useId()}-dica`;
   return (
     <fieldset aria-describedby={hint ? hintId : undefined} className="min-w-0 space-y-1">
-      <legend className="font-display text-sm font-medium text-ink">{legend}</legend>
+      <legend className="text-sm font-medium text-ink">{legend}</legend>
       {hint ? (
         <p id={hintId} className="muted">
           {hint}
@@ -426,9 +430,11 @@ export function CheckField({ name, children }: { name: string; children: ReactNo
   );
 }
 
+// `role="alert"`: o erro que aparece depois do envio é anunciado, cada um, e não só o do primeiro campo (o foco vai a ele, e o leitor de
+// tela lê o erro dele pelo aria-describedby); sem isso, quem usa leitor de tela acharia os outros andando campo a campo.
 function FieldError({ id, children }: { id: string; children: ReactNode }) {
   return (
-    <p id={id} className="border-l-2 border-semantic-error pl-2 text-sm text-ink">
+    <p id={id} role="alert" className="border-l-2 border-semantic-error pl-2 text-sm text-ink">
       {children}
     </p>
   );

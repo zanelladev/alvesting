@@ -68,6 +68,25 @@ test.describe('trava de origem', () => {
     }
   });
 
+  // O 308 do feed de antes (o `/?filtro=` e o `/?cursor=` da home, que foi para a /arena) vem DEPOIS da trava (src/proxy.ts): não é exceção.
+  // Sem o cabeçalho é 403, como qualquer caminho; com ele, o redirecionamento, com a query inteira.
+  test('o /?filtro= de antes é 403 sem o cabeçalho e 308 para a /arena com ele', async ({
+    request,
+  }) => {
+    for (const path of ['/?filtro=SELL', '/?cursor=AAAA']) {
+      const refused = await request.get(`${LOCKED_URL}${path}`, { maxRedirects: 0 });
+      expect(refused.status(), path).toBe(403);
+      expect(refused.headers()['location'], path).toBeUndefined();
+      const moved = await request.get(`${LOCKED_URL}${path}`, {
+        headers: withId,
+        maxRedirects: 0,
+      });
+      expect(moved.status(), path).toBe(308);
+      const location = new URL(moved.headers()['location']!, LOCKED_URL);
+      expect(`${location.pathname}${location.search}`, path).toBe(`/arena${path.slice(1)}`);
+    }
+  });
+
   // O Container Apps sonda o /health sem cabeçalho, e o smoke do deploy chama a revisão direto. É a única exceção.
   test('o /health fica fora da trava, em GET e HEAD, mesmo com query', async ({ request }) => {
     const get = await request.get(`${LOCKED_URL}/health`);

@@ -2,28 +2,26 @@
 
 import { useEffect } from 'react';
 
-// O laço da arte (ADR 0034), o único JavaScript dela: só a partir de 1024 px, sem `prefers-reduced-motion` e sem economia de dados (Save-Data),
-// e só depois do `load`, quando o navegador está à toa. Aí busca o arquivo inteiro (o JSON com os quadros e o sprite de todos eles) e troca o
-// texto do quadro e a posição do sprite a cada passo, a 12 quadros por segundo; para fora da tela e com a aba oculta. Não desenha nada: o
-// quadro 0, com a brasa, já veio do servidor (arte.tsx). No celular, nada além de conferir a largura: nenhum pedido.
+// O JavaScript da arte (ADR 0034), só depois do `load`, quando o navegador está à toa. Não desenha nada: o quadro 0 com a brasa (ou, no urso,
+// o quadro de espera com os ladrilhos) já veio do servidor (arte.tsx). Duas tarefas:
+// - `quadro0`: o quadro 0 que o servidor não mandou (o urso da 404), do arquivo pequeno `<nome>-q0.json`, em toda largura;
+// - o laço: só a partir de 1024 px, sem `prefers-reduced-motion` e sem economia de dados (Save-Data). Busca o arquivo inteiro (o JSON com os
+//   quadros e o sprite de todos eles) e troca o texto do quadro e a posição do sprite a cada passo, a 12 quadros por segundo; para fora da tela
+//   e com a aba oculta.
+// No celular, sem `quadro0`, nada além de conferir a largura: nenhum pedido.
 type Quadros = { fps: number; rows: number; frames: string[] };
 
-export function ArteViva({ nome }: { nome: string }) {
+export function ArteViva({ nome, quadro0 = false }: { nome: string; quadro0?: boolean }) {
   useEffect(() => {
     const host = document.querySelector<HTMLElement>(`[data-arte="${nome}"]`);
     const pre = host?.querySelector('pre');
     const tiles = host?.querySelector<HTMLElement>('.arte-ladrilho');
     const connection = (navigator as Navigator & { connection?: { saveData?: boolean } })
       .connection;
-    if (
-      !host ||
-      !pre ||
-      !tiles ||
-      !matchMedia('(min-width: 1024px) and (prefers-reduced-motion: no-preference)').matches ||
-      connection?.saveData
-    ) {
-      return;
-    }
+    const loop =
+      matchMedia('(min-width: 1024px) and (prefers-reduced-motion: no-preference)').matches &&
+      !connection?.saveData;
+    if (!host || !pre || !tiles || (!loop && !quadro0)) return;
 
     let stopped = false;
     let frame = 0;
@@ -32,6 +30,11 @@ export function ArteViva({ nome }: { nome: string }) {
       visible = entry?.isIntersecting ?? true;
     });
     watcher.observe(host);
+
+    const fill = async () => {
+      const art = (await (await fetch(`/ascii/arte/${nome}-q0.json`)).json()) as Quadros;
+      if (!stopped && art.frames[0]) pre.textContent = art.frames[0];
+    };
 
     const play = async () => {
       const sprite = `/ascii/arte/${nome}.png`;
@@ -61,11 +64,15 @@ export function ArteViva({ nome }: { nome: string }) {
       frame = requestAnimationFrame(tick);
     };
 
-    // o laço é enfeite: se a busca falhar, a arte fica no quadro 0, que já está na tela. Quem saiu da página (uma navegação suave) entre o
-    // `load` e o ócio do navegador não baixa o arquivo inteiro para uma página que não está mais na tela.
+    // a arte é enfeite: se uma busca falhar, fica o que já está na tela (o quadro 0, ou o quadro de espera). Quem saiu da página (uma
+    // navegação suave) entre o `load` e o ócio do navegador não baixa nada para uma página que não está mais na tela.
     const begin = () => {
       const run = () => {
-        if (!stopped) void play().catch(() => undefined);
+        if (stopped) return;
+        void (async () => {
+          if (quadro0) await fill().catch(() => undefined);
+          if (loop && !stopped) await play();
+        })().catch(() => undefined);
       };
       if ('requestIdleCallback' in window) requestIdleCallback(run);
       else setTimeout(run, 200);
@@ -79,6 +86,6 @@ export function ArteViva({ nome }: { nome: string }) {
       watcher.disconnect();
       window.removeEventListener('load', begin);
     };
-  }, [nome]);
+  }, [nome, quadro0]);
   return null;
 }

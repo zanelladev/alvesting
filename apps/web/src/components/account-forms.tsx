@@ -92,6 +92,7 @@ export function SignInForm({ next, google }: { next: string; google: boolean }) 
       submit="Entrar"
       run={run}
       primary
+      largo
       actions={google ? <GoogleButton>Entrar com o Google</GoogleButton> : undefined}
     >
       <TextField name="email" label="E-mail" type="email" autoComplete="email" />
@@ -155,6 +156,7 @@ export function SignUpForm({
       submit="Criar conta"
       run={run}
       primary
+      largo
       actions={google ? <GoogleButton>Cadastrar com o Google</GoogleButton> : undefined}
     >
       <TextField name="name" label="Nome" autoComplete="name" />
@@ -173,7 +175,7 @@ export function SignUpForm({
         hint={`Pelo menos ${ACCOUNT_LIMITS.passwordMin} caracteres.`}
       />
       <fieldset className="min-w-0 space-y-2">
-        <legend className="font-display text-sm font-medium text-ink">Aceite</legend>
+        <legend className="text-sm font-medium text-ink">Aceite</legend>
         <CheckField name="terms">{`Li e aceito os termos de uso (versão ${terms}).`}</CheckField>
         <ReadLink href="/termos">Ler os termos de uso</ReadLink>
         <CheckField name="privacy">
@@ -199,7 +201,7 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <AccountForm submit="Enviar o link" run={run} primary>
+    <AccountForm submit="Enviar o link" run={run} primary largo>
       <TextField name="email" label="E-mail" type="email" autoComplete="email" />
     </AccountForm>
   );
@@ -233,7 +235,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
   }
 
   return (
-    <AccountForm submit="Salvar a nova senha" run={run} primary>
+    <AccountForm submit="Salvar a nova senha" run={run} primary largo>
       <TextField
         name="password"
         label="Nova senha"
@@ -262,7 +264,7 @@ export function ResendVerificationForm() {
   }
 
   return (
-    <AccountForm submit="Reenviar o link" run={run} primary>
+    <AccountForm submit="Reenviar o link" run={run} primary largo>
       <TextField name="email" label="E-mail do cadastro" type="email" autoComplete="email" />
     </AccountForm>
   );

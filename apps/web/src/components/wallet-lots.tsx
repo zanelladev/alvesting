@@ -330,7 +330,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
     if (editing === lot.id) {
       return (
         <>
-          <h3 id={`editar-${lot.id}`} className="font-display text-title">
+          <h3 id={`editar-${lot.id}`} className="font-display text-base">
             {`Editar lançamento de ${describeLot(lot)}`}
           </h3>
           <LotForm
@@ -347,7 +347,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
     }
     return (
       <>
-        <p className="font-mono text-lg text-ink">{lot.ticker}</p>
+        <p className="font-mono text-base font-semibold text-ink">{lot.ticker}</p>
         <Facts dense>
           <Fact term="Quantidade">{formatQuantity(lot.quantity)}</Fact>
           <Fact term="Custo total">{formatBRL(lot.costCents)}</Fact>
@@ -359,13 +359,13 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
           <div
             role="group"
             aria-labelledby={`apagar-${lot.id}`}
-            className="space-y-3 rounded-xl border border-dashed border-hairline-strong p-4"
+            className="space-y-3 rounded-lg border border-dashed border-hairline-strong p-4"
           >
             <p
               id={`apagar-${lot.id}`}
               tabIndex={-1}
               data-question=""
-              className="font-display font-medium text-ink"
+              className="font-medium text-ink"
             >
               {`Apagar o lançamento de ${name}? Não dá para desfazer.`}
             </p>
@@ -450,7 +450,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
         ) : (
           <ul className="max-w-2xl space-y-3">
             {lots.map((lot) => (
-              <li key={lot.id} data-lot={lot.id} className="card space-y-4">
+              <li key={lot.id} data-lot={lot.id} className="card space-y-4 p-4 sm:p-5">
                 {card(lot)}
               </li>
             ))}
@@ -469,7 +469,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
             <span className="sr-only"> (abre em outra aba)</span>
           </a>
         </p>
-        <div className="card max-w-md">
+        <div className="card max-w-md p-4 sm:p-6">
           <LotForm
             key={createKey}
             today={today}

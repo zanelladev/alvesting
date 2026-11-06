@@ -8,64 +8,142 @@ import { ApiError } from '../lib/api';
 const { readBars } = vi.hoisted(() => ({ readBars: vi.fn().mockResolvedValue([]) }));
 vi.mock('../lib/quotes', () => ({ REFERENCE_TICKER: 'BOVA11', readBars }));
 vi.mock('next/server', () => ({ connection: () => Promise.resolve() }));
-const { QuotesDate, SiteFooter, SiteHeader } = await import('./site-chrome');
+const { SiteHeader } = await import('./site-chrome');
+const { AppShell } = await import('./app-shell');
+const { QuotesDate, Rodape } = await import('./rodape');
 
-// O cabeçalho (etapa 12, parte 2; o sistema visual ascii-ui, ADR 0034): os links fixos, na ordem. Ele não lê a sessão (as páginas públicas
-// da arena são estáticas, com cache de dados, e o LCP da home tem pouca folga contra o teto de 2,5 s), então a Carteira e a Conta são o
-// mesmo link com ou sem login. O e2e (layout.spec.ts) confere a folha do menu em 360 px e a cápsula em 1280 px.
-describe('SiteHeader', () => {
-  const out = renderToStaticMarkup(<SiteHeader />);
-  // (a ordem dos atributos do <a> é do `Link` do Next: o endereço é lido pelo nome; o texto, sem o SVG da marca)
-  const links = [...out.matchAll(/<a\b([^>]*)>(.*?)<\/a>/g)].map((m) => [
+// os links de um pedaço de HTML: [texto sem as tags, endereço] (a ordem dos atributos do <a> do `Link` do Next é outra: o endereço é lido
+// pelo nome)
+const linksOf = (html: string) =>
+  [...html.matchAll(/<a\b([^>]*)>(.*?)<\/a>/gs)].map((m) => [
     m[2]!.replace(/<[^>]+>/g, ''),
     /href="([^"]*)"/.exec(m[1]!)?.[1],
   ]);
 
-  it('a marca e os sete links do menu, na ordem, com a Carteira antes da Conta', () => {
-    expect(links).toEqual([
+// O cabeçalho do site (ADR 0035; o do Rallies): a marca, os links no meio e a pílula "Entrar". Ele não lê a sessão (as páginas públicas da
+// arena são dinâmicas com cache de dados, e o LCP da home tem pouca folga contra o teto de 2,5 s): os links são os mesmos com ou sem login.
+// O e2e (layout.spec.ts) confere a folha do menu em 360 px e os links em 1280 px.
+describe('SiteHeader', () => {
+  const out = renderToStaticMarkup(<SiteHeader />);
+
+  it('a marca, os quatro links do site e a pílula "Entrar", na ordem', () => {
+    expect(linksOf(out)).toEqual([
       ['Alvesting', '/'],
-      ['Início', '/'],
+      ['Arena', '/arena'],
       ['Ranking', '/ranking'],
-      ['Notícias', '/noticias'],
-      ['Ações', '/acoes'],
+      ['Explorar', '/explorar'],
       ['Como funciona', '/como-funciona'],
-      ['Carteira', '/carteira'],
-      ['Conta', '/conta'],
+      ['Entrar', '/entrar'],
     ]);
+    expect(out).toContain('<a href="/entrar" class="pill">Entrar</a>');
   });
 
-  // Abaixo de 1024 px o menu é uma folha `popover` aberta pelo botão "Menu", sem JavaScript; a partir de 1024 px, a cápsula. As classes dão
-  // a cada link a caixa de 44 px (globals.css), com a pílula visível por dentro.
-  it('o menu tem nome, é a folha que o botão "Menu" abre, e os links têm as classes da cápsula e das ações', () => {
+  // Abaixo de 1024 px o menu é uma folha `popover` aberta pelo botão "Menu", sem JavaScript; a partir de 1024 px, os links na linha.
+  it('o menu tem nome e é a folha que o botão "Menu" abre, com o "Fechar o menu" que enche o resto', () => {
     expect(out).toContain('<nav id="menu" popover="auto" aria-label="Principal" class="menu">');
     expect(out).toMatch(
       /<button type="button" popoverTarget="menu"[^>]*>.*<span class="sr-only">Menu<\/span><\/button>/,
     );
-    expect(out.match(/class="capsule-item"/g)).toHaveLength(5);
-    expect(out).toContain('<a href="/carteira" class="acao acao-primaria">Carteira</a>');
-    expect(out).toContain('<a href="/conta" class="acao">Conta</a>');
+    expect(out).toMatch(
+      /<button type="button" popoverTarget="menu" popoverTargetAction="hide" aria-label="Fechar o menu"/,
+    );
   });
 
-  // O cabeçalho é do layout, que não remonta numa navegação suave: com o `Link` do Next a folha aberta ficaria aberta sobre a página nova.
-  // Os links do menu são `<a>` comuns (o do Next leva o `prefetch` e vem com os atributos em outra ordem).
+  // Com o `Link` do Next a folha aberta ficaria aberta sobre a página nova numa navegação suave: os links do menu são `<a>` comuns (o do
+  // Next leva o `prefetch` e vem com os atributos em outra ordem).
   it('os links do menu são <a> comuns: a navegação inteira fecha a folha', () => {
     const menu = /<nav id="menu"[^>]*>(.*)<\/nav>/.exec(out)![1]!;
-    expect(menu.match(/<a href="[^"]+" class="[^"]+">/g)).toHaveLength(7);
+    expect(menu.match(/<a href="[^"]+"( class="[^"]+")?>/g)).toHaveLength(5);
   });
 
-  it('não lê a sessão nem o cookie: nada de login ou de nome de usuário no cabeçalho', () => {
-    expect(out).not.toMatch(/cookie|sessão|session|Sair|Entrar/i);
+  it('não lê a sessão nem o cookie: nada de nome de usuário nem de "Sair" no cabeçalho', () => {
+    expect(out).not.toMatch(/cookie|sessão|session|Sair/i);
   });
 });
 
-// O rodapé (docs/API.md, seção 6; ADR 0033): as cotações vêm da brapi, e o crédito é "Cotações: brapi.dev", com link. A data do pregão chega
-// por streaming (lê a rota interna de cotações) e some se a leitura falhar; o e2e confere a frase inteira com a data (layout.spec.ts).
-describe('SiteFooter', () => {
-  const out = renderToStaticMarkup(<SiteFooter />);
-  const links = [...out.matchAll(/<a\b([^>]*)>(.*?)<\/a>/gs)].map((m) => [
-    /href="([^"]*)"/.exec(m[1]!)?.[1],
-    m[2]!.replace(/<[^>]+>/g, ''),
-  ]);
+// A casca do app (ADR 0035): o trilho no desktop e a barra de abas no celular são a mesma `nav "Principal"`, dentro do `banner`; o item da
+// área leva `aria-current="page"` sem JavaScript (cada área tem o seu layout). O "Mais" abre a folha das telas de apoio.
+describe('AppShell', () => {
+  const out = renderToStaticMarkup(
+    <AppShell area="carteira">
+      <p>conteúdo da tela</p>
+    </AppShell>,
+  );
+  const header = /<header[^>]*>(.*)<\/header>/s.exec(out)![1]!;
+  const nav = /<nav aria-label="Principal"[^>]*>(.*)<\/nav>/s.exec(header)![1]!;
+  const sheet = nav.slice(nav.indexOf('<div id="mais"'));
+  const items = nav.slice(0, nav.indexOf('<div id="mais"'));
+
+  it('o banner tem a marca, e a navegação os itens na ordem do Rallies adaptada: Arena, Explorar, Carteira, Chat, Mais, Buscar e Conta', () => {
+    expect(linksOf(header)[0]).toEqual(['Alvesting', '/']);
+    expect(linksOf(items)).toEqual([
+      ['Arena', '/arena'],
+      ['Explorar', '/explorar'],
+      ['Carteira', '/carteira'],
+      ['Chat', '/chat'],
+      ['Buscar', '/acoes'],
+      ['Conta', '/conta'],
+    ]);
+    // o "Mais" é um botão que abre a folha, entre o Chat e o Buscar
+    expect(items).toMatch(
+      /Chat<\/a><\/li><li><button type="button" popoverTarget="mais" class="app-item app-mais">.*Mais<\/button><\/li><li class="app-buscar">/s,
+    );
+  });
+
+  it('só o item da área leva aria-current="page", e cada área marca o seu', () => {
+    expect(nav.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(nav).toContain('<a href="/carteira" aria-current="page" class="app-item">');
+    for (const area of ['arena', 'explorar', 'carteira', 'chat', 'conta'] as const) {
+      const html = renderToStaticMarkup(<AppShell area={area}>x</AppShell>);
+      expect(html).toContain(`<a href="/${area}" aria-current="page" class="app-item">`);
+      expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+    }
+  });
+
+  // a folha é a do site (QA da onda Rallies, achado 1): o título e o ✕ na própria folha, antes dos links, e nada de botão vazio enchendo o
+  // resto da tela
+  it('a folha "Mais" é um popover com o título, o ✕ e as telas de apoio', () => {
+    expect(sheet).toMatch(
+      /^<div id="mais" popover="auto" class="mais"><div class="mais-topo"><p[^>]*>Mais<\/p><button type="button" popoverTarget="mais" popoverTargetAction="hide" aria-label="Fechar o menu"[^>]*>.*?<\/button><\/div><ul class="mais-folha">/s,
+    );
+    expect(linksOf(sheet)).toEqual([
+      ['Como funciona', '/como-funciona'],
+      ['Notícias', '/noticias'],
+      ['Ações', '/acoes'],
+      ['Termos de uso', '/termos'],
+      ['Política de privacidade', '/privacidade'],
+    ]);
+    expect(sheet).not.toContain('mais-fechar');
+  });
+
+  // os itens e os links da folha são <a> comuns, como os do site: a folha aberta não fica aberta sobre a página nova (a marca e o "Buscar",
+  // fora da folha, são o Link do Next)
+  it('os itens da barra e os links da folha são <a> comuns, sem o Link do Next', () => {
+    for (const href of ['/arena', '/explorar', '/carteira', '/chat', '/conta']) {
+      expect(items).toMatch(
+        new RegExp(`<a href="${href}"( aria-current="page")? class="app-item">`),
+      );
+    }
+    expect(sheet.match(/<a href="[^"]+">/g)).toHaveLength(5);
+  });
+
+  it('o conteúdo vai no main e o aviso fixo no rodapé, fora dele; nada lê a sessão', () => {
+    expect(out).toMatch(/<main[^>]*><p>conteúdo da tela<\/p><\/main><footer/);
+    expect(out).toContain('Arena acadêmica com dinheiro fictício');
+    expect(header).not.toMatch(/cookie|sessão|session|Sair/i);
+  });
+});
+
+// O rodapé das duas cascas (docs/API.md, seção 6; ADR 0033): as cotações vêm da brapi, e o crédito é "Cotações: brapi.dev", com link. A data
+// do pregão chega por streaming (lê a rota interna de cotações) e some se a leitura falhar; o e2e confere a frase inteira com a data
+// (layout.spec.ts).
+describe('Rodape', () => {
+  const out = renderToStaticMarkup(<Rodape className="rodape" />);
+  const links = linksOf(out).map(([text, href]) => [href, text]);
+
+  it('é o contentinfo da página, com a classe que a casca escolhe', () => {
+    expect(out).toMatch(/^<footer class="rodape">/);
+  });
 
   it('credita as cotações à brapi, com o link, e não à B3', () => {
     expect(out).toMatch(/Cotações:\s*<a [^>]*href="https:\/\/brapi\.dev\/"/);
@@ -79,10 +157,13 @@ describe('SiteFooter', () => {
     expect(brapi).toContain('rel="noopener noreferrer"');
   });
 
-  it('mantém o aviso fixo e as outras atribuições', () => {
+  it('mantém o aviso fixo e as outras atribuições, e diz que as marcas dos modelos são dos donos', () => {
     expect(out).toContain('Arena acadêmica com dinheiro fictício');
     expect(out).toContain('Contém dados da CVM');
     expect(out).toContain('Fonte: Banco Central do Brasil');
+    expect(out).toContain(
+      'Os nomes e os logos dos modelos são marcas dos seus donos (OpenAI, Anthropic, Google, xAI, DeepSeek e Alibaba Cloud); a Alvesting não tem relação com eles.',
+    );
   });
 });
 

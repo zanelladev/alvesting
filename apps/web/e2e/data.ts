@@ -29,7 +29,7 @@ export const CAST = [
   'Qwen3.8 Max (0902)',
 ] as const;
 export const TICKER = 'MOVE3';
-// quantas decisões o feed da home mostra por página (apps/web/src/app/page.tsx, FEED_LIMIT)
+// quantas decisões o feed da arena mostra por página (apps/web/src/app/(app)/(arena)/arena/page.tsx, FEED_LIMIT)
 export const FEED_PAGE = 5;
 
 export async function fetchApi<S extends z.ZodType>(
@@ -95,6 +95,11 @@ export function pct(bps: number, signed = true): string {
   const sign = bps < 0 ? '-' : signed && bps > 0 ? '+' : '';
   return `${sign}${Math.floor(abs / 100)},${two(abs % 100)}%`;
 }
+// o resultado de uma posição, com o sinal do ganho: "+R$ 2.000,00", "-R$ 40,00", "R$ 0,00"
+export const brlSigned = (cents: number) => `${cents > 0 ? '+' : ''}${brl(cents)}`;
+// a parte sobre o todo em pontos-base inteiros, o meio para longe do zero (a regra do projeto): a alocação e o resultado % das carteiras
+export const ratioBps = (part: number, whole: number) =>
+  Math.sign(part) * Math.round((Math.abs(part) * 10_000) / whole);
 // percentil de 0 a 10.000 bps -> "72,0"
 export function pctl(bps: number): string {
   const tenths = Math.floor((bps + 5) / 10);
@@ -148,7 +153,10 @@ export const stockDecisionText = (
 // As telas que o e2e de layout e de acessibilidade percorre (layout.spec.ts).
 export const ROUTES = [
   '/',
-  '/?filtro=SELL#feed',
+  '/arena',
+  '/arena?filtro=SELL#feed',
+  '/explorar',
+  '/chat',
   '/ranking',
   `/modelos/${MODEL}`,
   `/ciclos/${CYCLE_DAY}`,

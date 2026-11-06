@@ -1,0 +1,29 @@
+Os seis arquivos desta pasta (openai.svg, anthropic.svg, google.svg, xai.svg, deepseek.svg e qwen.svg) são cópias, sem alteração no
+desenho, de icons/openai.svg, icons/claude.svg, icons/gemini.svg, icons/grok.svg, icons/deepseek.svg e icons/qwen.svg do pacote npm
+@lobehub/icons-static-svg 1.102.0 (https://github.com/lobehub/lobe-icons), com um comentário de procedência no topo. O pacote declara a
+licença MIT no package.json e no README ("Copyright © 2023 LobeHub. This project is MIT licensed."); o tarball não traz o arquivo
+LICENSE, e o texto abaixo é o da MIT (SPDX: MIT) com essa linha de copyright. A licença cobre os arquivos, não as marcas: os nomes e os
+logos dos modelos são marcas dos seus donos (OpenAI, Anthropic, Google, xAI, DeepSeek e Alibaba Cloud), e a Alvesting não tem relação
+com eles. Procedência e SHA-256 em docs/DEPENDENCIAS.md.
+
+MIT License
+
+Copyright (c) 2023 LobeHub
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

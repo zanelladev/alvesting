@@ -1,9 +1,12 @@
 import type { InternalTape, Macro } from '@alvesting/contracts';
-import { glyphOf } from './ascii';
 import { formatBps, formatDate, formatDecimalString, formatPrice, variationBps } from './format';
 
-// O texto da fita do pé do hero (components/fita.tsx; ADR 0034). É exibir a cotação, o que a licença da brapi permite, com o crédito na
-// legenda e no rodapé (docs/API.md, seção 6). Nada de float: o fechamento é centavo inteiro e a variação, ponto-base inteiro.
+// O texto da fita do pé da moldura da landing (components/fita.tsx; ADR 0034). É exibir a cotação, o que a licença da brapi permite, com o
+// crédito na legenda e no rodapé (docs/API.md, seção 6). Nada de float: o fechamento é centavo inteiro e a variação, ponto-base inteiro.
+
+// A direção de cada papel na fita vai no texto (a fita é uma linha só, sem elemento por papel para o `[data-dir]` do CSS): sob protanopia o
+// verde e o vermelho convergem, e o glifo diz a direção sem a cor.
+const glyphOf = (bps: number): string => (bps > 0 ? '▲' : bps < 0 ? '▼' : '■');
 
 export const TAPE_SEPARATOR = '   ·   ';
 export const NO_QUOTES = 'sem cotações ainda';

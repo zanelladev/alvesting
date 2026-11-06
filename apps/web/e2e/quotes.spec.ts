@@ -185,7 +185,16 @@ test.describe('o segredo das cotações não vaza do servidor do site', () => {
   }
 
   test('nem na página, nem nos scripts e estilos que ela carrega', async ({ request }) => {
-    for (const page of ['/', `/acoes/${TICKER}`, '/ranking', '/noticias', '/como-funciona']) {
+    // a arena e o explorar também leem a rota interna no servidor (o BOVA11 e a fita do universo da semana)
+    for (const page of [
+      '/',
+      '/arena',
+      '/explorar',
+      `/acoes/${TICKER}`,
+      '/ranking',
+      '/noticias',
+      '/como-funciona',
+    ]) {
       const response = await request.get(page);
       expect(response.status(), page).toBe(200);
       const html = await response.text();

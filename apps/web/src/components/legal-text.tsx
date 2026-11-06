@@ -65,18 +65,19 @@ export function LegalText({ text }: { text: string }) {
   const parts = blocks(text);
   if (parts.length === 0) return null;
   return (
-    <div className="max-w-prose space-y-4 text-prose-md break-words">
+    // a prosa até 65 caracteres por linha (max-w-prose), 16/1,6, com os subtítulos na Geist de 22 e 18 (docs/redesign-rallies/plano.md, f.5)
+    <div className="max-w-prose space-y-4 text-base leading-[1.6] break-words">
       {parts.map((block, index) => {
         switch (block.kind) {
           case 'h2':
             return (
-              <h2 key={index} className="pt-6 font-display text-display-sm">
+              <h2 key={index} className="pt-6 font-display text-22">
                 {inline(block.text)}
               </h2>
             );
           case 'h3':
             return (
-              <h3 key={index} className="pt-2 font-display text-title">
+              <h3 key={index} className="pt-2 font-display text-18">
                 {inline(block.text)}
               </h3>
             );
