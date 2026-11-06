@@ -91,6 +91,7 @@ export function SignInForm({ next, google }: { next: string; google: boolean }) 
     <AccountForm
       submit="Entrar"
       run={run}
+      primary
       actions={google ? <GoogleButton>Entrar com o Google</GoogleButton> : undefined}
     >
       <TextField name="email" label="E-mail" type="email" autoComplete="email" />
@@ -153,6 +154,7 @@ export function SignUpForm({
     <AccountForm
       submit="Criar conta"
       run={run}
+      primary
       actions={google ? <GoogleButton>Cadastrar com o Google</GoogleButton> : undefined}
     >
       <TextField name="name" label="Nome" autoComplete="name" />
@@ -171,7 +173,7 @@ export function SignUpForm({
         hint={`Pelo menos ${ACCOUNT_LIMITS.passwordMin} caracteres.`}
       />
       <fieldset className="min-w-0 space-y-2">
-        <legend className="font-mono text-sm font-semibold">Aceite</legend>
+        <legend className="font-display text-sm font-medium text-ink">Aceite</legend>
         <CheckField name="terms">{`Li e aceito os termos de uso (versão ${terms}).`}</CheckField>
         <ReadLink href="/termos">Ler os termos de uso</ReadLink>
         <CheckField name="privacy">
@@ -197,7 +199,7 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <AccountForm submit="Enviar o link" run={run}>
+    <AccountForm submit="Enviar o link" run={run} primary>
       <TextField name="email" label="E-mail" type="email" autoComplete="email" />
     </AccountForm>
   );
@@ -231,7 +233,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
   }
 
   return (
-    <AccountForm submit="Salvar a nova senha" run={run}>
+    <AccountForm submit="Salvar a nova senha" run={run} primary>
       <TextField
         name="password"
         label="Nova senha"
@@ -260,7 +262,7 @@ export function ResendVerificationForm() {
   }
 
   return (
-    <AccountForm submit="Reenviar o link" run={run}>
+    <AccountForm submit="Reenviar o link" run={run} primary>
       <TextField name="email" label="E-mail do cadastro" type="email" autoComplete="email" />
     </AccountForm>
   );
@@ -303,6 +305,7 @@ export function AcceptConsentsForm({
       run={run}
       labelledBy={labelledBy}
       noscript={false}
+      primary
     >
       <CheckField name="terms">{`Li e aceito os termos de uso (versão ${terms}).`}</CheckField>
       <CheckField name="privacy">{`Li e aceito a política de privacidade (versão ${privacy}).`}</CheckField>

@@ -160,6 +160,29 @@ describe('WalletPositions', () => {
     expect(out).toMatch(/<th scope="row"[^>]*>MOVE3<\/th>/);
   });
 
+  // O mesmo número das posições dos modelos (/modelos e /acoes, tables.tsx): o glifo ▲ ▼ ■ vem do CSS (`[data-dir]::before`, com o texto
+  // alternativo vazio), então o texto que a pessoa, o leitor de tela e o e2e leem não muda. O ticker sem cotação (o traço) fica sem.
+  it('o resultado leva a direção para o glifo ▲ ▼ ■ (data-dir), fora do texto; o traço não leva', () => {
+    const out = html(
+      <WalletPositions
+        positions={[
+          position(),
+          position({ ticker: 'PAUS3', pnlCents: -120_000, pnlBps: -1_690 }),
+          position({ ticker: 'ZERO3', pnlCents: 0, pnlBps: 0 }),
+          position({ ticker: 'NADA3', ...SEM_FECHAMENTO }),
+        ]}
+      />,
+    );
+    // a segunda célula de cada linha do corpo é a do resultado
+    const body = /<tbody>(.*)<\/tbody>/s.exec(out)![1]!;
+    const result = [...body.matchAll(/<tr[^>]*>(.*?)<\/tr>/gs)].map((row) => {
+      const cell = [...row[1]!.matchAll(/<td([^>]*)>/g)][1]![1]!;
+      return /data-dir="(\w+)"/.exec(cell)?.[1] ?? null;
+    });
+    expect(result).toEqual(['up', 'down', 'flat', null]);
+    expect(out).not.toMatch(/[▲▼■]/);
+  });
+
   it('o ticker é texto: o resultado nunca depende de cor nem de classe de cor', () => {
     const out = html(<WalletPositions positions={[position({ pnlCents: -5, pnlBps: -1 })]} />);
     expect(out).not.toMatch(/text-(red|green|emerald|rose)|bg-(red|green)/);
@@ -178,6 +201,15 @@ describe('WalletSummary', () => {
     expect(dts(out)).toEqual(['Custo total', 'Valor estimado', 'Resultado']);
     expect(dds(out)).toEqual(['R$ 7.100,00', 'R$ 8.000,00', '+R$ 900,00 (+12,68%, ganho)']);
     expect(out).not.toContain('sem cotação');
+  });
+
+  it('o resultado leva a direção para o glifo (data-dir), fora do texto', () => {
+    const dir = (t: Totals) => /data-dir="(\w+)"/.exec(html(<WalletSummary totals={t} />))?.[1];
+    expect(dir(totals())).toBe('up');
+    expect(dir(totals({ pnlCents: -120_000, pnlBps: -1_690 }))).toBe('down');
+    expect(dir(totals({ pnlCents: 0, pnlBps: 0 }))).toBe('flat');
+    expect(dir(totals({ valueCents: null, pnlCents: null, pnlBps: null }))).toBeUndefined();
+    expect(html(<WalletSummary totals={totals()} />)).not.toMatch(/[▲▼■]/);
   });
 
   it('a perda e o percentual que falta', () => {

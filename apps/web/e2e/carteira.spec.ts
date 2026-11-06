@@ -10,6 +10,7 @@ import {
 } from './account-support';
 import { FRONT_DOOR_URL } from './api-server';
 import { ORIGIN, addLot, wallet } from './carteira-support';
+import { abrirMenu } from './menu';
 import { brl, dmy } from './data';
 
 // A tela da carteira (etapa 12, parte 2; docs/TELAS.md, seção 9), em pixel-7, iphone-15 (WebKit) e desktop, como todo e2e. O navegador fala com
@@ -161,7 +162,8 @@ test.describe('quem pode abrir a carteira', () => {
   }) => {
     const user = await registerVerifiedUser(request, ip, 'carteira-entrar');
     await page.goto('/ranking');
-    // o cabeçalho não lê a sessão: o link é o mesmo com ou sem login
+    // o cabeçalho não lê a sessão: o link é o mesmo com ou sem login (abaixo de 1024 px, na folha que o botão "Menu" abre)
+    await abrirMenu(page);
     await page.getByRole('banner').getByRole('link', { name: 'Carteira', exact: true }).click();
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/entrar?proximo=%2Fcarteira`);
 
@@ -1013,8 +1015,9 @@ test.describe('por toque', () => {
     await form.getByText('Valor total pago', { exact: true }).tap();
     await expect(f.total).toBeChecked();
     await expect(f.unit).not.toBeChecked();
-    // marcado, o radio não depende da cor: é um disco preto com um ponto (texto, que sobrevive ao modo de alto contraste do sistema), e o vazio é um
-    // círculo de papel sem ponto; os dois são redondos, para não se confundir com a caixa de marcar (um quadrado com um X)
+    // marcado, o radio não depende da cor: é um disco na cor da tinta com um ponto (texto, que sobrevive ao modo de alto contraste do sistema), e
+    // o vazio é um círculo no fundo da página sem ponto; os dois são redondos, para não se confundir com a caixa de marcar (um quadrado com um
+    // X). No tema escuro (ADR 0034) a tinta é a clara e o fundo é o preto.
     const look = (radio: Element) => ({
       mark: getComputedStyle(radio, '::before').content,
       background: getComputedStyle(radio).backgroundColor,
@@ -1022,8 +1025,8 @@ test.describe('por toque', () => {
     });
     const painted = await f.total.evaluate(look);
     const empty = await f.unit.evaluate(look);
-    expect(painted).toMatchObject({ mark: '"●"', background: 'rgb(0, 0, 0)' });
-    expect(empty).toMatchObject({ mark: 'none', background: 'rgb(242, 239, 230)' });
+    expect(painted).toMatchObject({ mark: '"●"', background: 'rgb(245, 245, 245)' });
+    expect(empty).toMatchObject({ mark: 'none', background: 'rgb(0, 0, 0)' });
     expect(painted.radius).not.toBe('0px');
     expect(empty.radius).not.toBe('0px');
     await f.value.fill('3550');

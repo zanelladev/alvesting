@@ -83,52 +83,12 @@ export const ENSAIO_PROMPT_VERSION = createHash('sha256')
   .digest('hex')
   .slice(0, 32);
 
-// A falha passageira do provedor: o fake/contrarian responde 500 na primeira chamada do 2º pregão, e a fila reentrega 10 minutos
-// depois (ADR 0015). Mostra o caminho de nova tentativa com o handler de verdade, sem DLQ e sem HOLD.
-const TRANSIENT_FAILURE = { model: 'fake/contrarian', session: 1 } as const;
+// Nenhuma falha de modelo é injetada: o elenco do ensaio leva o nome dos modelos da Temporada 1, e falha simulada não vai para o nome
+// de um modelo de verdade. O reparo e a nova tentativa da fila têm os testes de integração (docs/ENSAIO.md, seção 3).
+
 // A barra do 2º pregão só sai na brapi às 22:10, depois do sched-eod das 21:30: o eod vê que o BOVA11 não tem a barra do dia, se reagenda
 // +60 min (22:30) e então busca o conjunto. Os outros pregões saem às 20:45 (fake-brapi.ts).
 const LATE_BARS = { session: 1, at: '22:10' } as const;
-
-type Fetch = ReturnType<typeof createFakeFetch>;
-
-// Primeira chamada de um modelo num pregão: 500. Os pregões são contados pela ordem em que o SHA-256 do briefing aparece (o briefing
-// é um por pregão e igual para todos os modelos).
-function transientFailure(base: Fetch): Fetch {
-  const briefings: string[] = [];
-  const failed = new Set<string>();
-  return (input, init) => {
-    const body = typeof init?.body === 'string' ? init.body : '';
-    let model = '';
-    try {
-      const parsed = JSON.parse(body) as { model?: unknown };
-      model = typeof parsed.model === 'string' ? parsed.model : '';
-    } catch {
-      // corpo torto: o fake responde 400
-    }
-    const sha = /\[\[BRIEFING sha256=([0-9a-f]{64})\]\]/.exec(body)?.[1];
-    if (sha && !briefings.includes(sha)) briefings.push(sha);
-    const key = `${model}|${sha}`;
-    if (
-      model === TRANSIENT_FAILURE.model &&
-      sha &&
-      briefings.indexOf(sha) === TRANSIENT_FAILURE.session &&
-      !failed.has(key)
-    ) {
-      failed.add(key);
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({ error: { message: 'falha passageira simulada do provedor' } }),
-          {
-            status: 500,
-            headers: { 'content-type': 'application/json' },
-          },
-        ),
-      );
-    }
-    return base(input, init);
-  };
-}
 
 // Os containers do ensaio têm o prefixo "ensaio-": o Azurite de dev (briefings, llm-io) não é tocado. As classes de arquivo só
 // usam getContainerClient.
@@ -288,10 +248,10 @@ export function createWorld(options: WorldOptions): World {
     },
   ).handle;
 
-  // --- decisões: o gateway de verdade, com o provedor fake (e a falha passageira) no lugar da rede ---
+  // --- decisões: o gateway de verdade, com o provedor fake no lugar da rede ---
   const gateway = new LlmGateway(
     { OPENROUTER_API_KEY: undefined, AZURE_OPENAI_ENDPOINT: undefined },
-    { fetch: transientFailure(createFakeFetch()) },
+    { fetch: createFakeFetch() },
   );
   queueHandlers.decisions = new DecideHandler({
     jobs,

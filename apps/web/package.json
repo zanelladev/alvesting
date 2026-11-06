@@ -7,7 +7,7 @@
   "scripts": {
     "build": "NEXT_TELEMETRY_DISABLED=1 next build",
     "dev": "NEXT_TELEMETRY_DISABLED=1 next dev --hostname 127.0.0.1 --port 4300",
-    "start": "cp -R .next/static .next/standalone/apps/web/.next/ && node .next/standalone/apps/web/server.js",
+    "start": "cp -R .next/static .next/standalone/apps/web/.next/ && cp -R public .next/standalone/apps/web/ && node .next/standalone/apps/web/server.js",
     "lint": "eslint .",
     "typecheck": "NEXT_TELEMETRY_DISABLED=1 next typegen && tsc --noEmit",
     "test": "vitest run --dir src",

@@ -56,6 +56,8 @@ test.describe('API pública sobre a temporada sintética', () => {
       'MODEL',
       'MODEL',
       'MODEL',
+      'MODEL',
+      'MODEL',
       'RANDOM',
     ]);
     const equity = envelopeSchema(equitySchema).parse(
@@ -80,8 +82,8 @@ test.describe('API pública sobre a temporada sintética', () => {
       seen.push(...page.data.rows.map((r) => `${r.date}:${r.competitor.slug}`));
       cursor = page.data.nextCursor;
     } while (cursor);
-    expect(seen).toHaveLength(20); // 5 pregões x 4 modelos
-    expect(new Set(seen).size).toBe(20);
+    expect(seen).toHaveLength(30); // 5 pregões x 6 modelos
+    expect(new Set(seen).size).toBe(30);
     const buys = envelopeSchema(decisionsPageSchema).parse(
       await (await request.get(api('/decisions?action=BUY&limit=100'))).json(),
     );
@@ -118,7 +120,7 @@ test.describe('API pública sobre a temporada sintética', () => {
       '/arena/current',
       '/seasons',
       '/seasons/ensaio/leaderboard',
-      '/competitors/fake-contrarian',
+      '/competitors/gpt-6-1-sol',
       '/cycles/2026-11-04',
       '/decisions?limit=100',
       '/news?limit=100',

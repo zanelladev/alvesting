@@ -647,7 +647,7 @@ Versões conferidas no npm e em nodejs.org em 31/10/2026.
 | `yauzl` (no lugar do `fflate`), `fast-xml-parser`, `csv-parse` | etapas 4–5 | ZIP da CVM (o do COTAHIST saiu), RSS, CSV da CVM. O `fflate` falhou no anual de 2026 (`unexpected EOF`); ver `docs/DEPENDENCIAS.md` |
 | Vitest / Playwright / axe / Lighthouse CI / ESLint | 5.0.5 / 1.64.1 / 4.14.0 / 0.15.1 / 10.14.0 | Testes e lint |
 | Emulador do Service Bus (imagem Docker oficial) | etapa 1 | Filas no dev e no CI |
-| IBM Plex Mono e Sans | `next/font` (OFL) | Tipografia |
+| Geist (só o 500); o texto e a mono são as fontes do sistema | `next/font` (OFL) | Tipografia do sistema visual ascii-ui (ADR 0034, 04/11/2026; a Inter do plano do porte saiu pelo LCP da home). Até então, IBM Plex Mono e Sans (a estética crua) |
 | **Serviços** | | Azure (5.3), OpenRouter, Azure OpenAI, Google OAuth, GitHub Actions |
 | **Dados** | | brapi (as cotações, fonte única), CVM IPE e FCA, BCB SGS, feeds RSS (InfoMoney, Money Times, Seu Dinheiro, Agência Brasil); a lista de feriados da B3, escrita à mão |
 
@@ -726,6 +726,7 @@ Ligar a Temporada 0 em produção com provedores fake e acompanhar 5 pregões se
 ### Etapa 9: API pública e telas da arena, mobile primeiro
 
 Implementar a API pública com cache e as telas da arena na estética crua: início (cotações, gráfico SVG, ranking com Sorteio e percentil, feed com filtro BUY/SELL/HOLD, contagem), ranking, modelo, ciclo, notícias (título e link), ação e Como funciona, com purge do Front Door após a liquidação.
+**Nota de 04/11/2026:** o visual mudou. As telas saíram da estética crua para o sistema ascii-ui da v1, com o código da v2 (§17, item 7; ADR 0034; `docs/TELAS.md`, "Sistema visual (ascii-ui)").
 **Aceite:** Playwright verde em Pixel 7, iPhone 15 (WebKit) e desktop; sem rolagem horizontal em 360 px; LCP <= 2,5 s no Lighthouse mobile da home.
 **Fora do escopo:** login, carteira, chat.
 
@@ -776,7 +777,7 @@ Fechar a Temporada 1: conferir dados contra a B3, calcular o percentil de cada m
 4. **Prompt:** oculto na temporada e revelado no fim (recomendo) ou oculto para sempre.
 5. **Repositório:** repo novo `alvesting` (recomendo) ou branch órfã no `ainvesting`.
 6. **LLMs:** OpenRouter no cartão para a arena e Azure OpenAI no crédito para o chat (recomendo).
-7. **Visual:** estética crua do Alpha Arena (recomendo) ou ascii-ui da v1.
+7. **Visual:** estética crua do Alpha Arena (recomendo) ou ascii-ui da v1. **Decidido em 04/11/2026: o ascii-ui da v1, com o código da v2** (o pedido do Artur; ADR 0034). Pendência dele antes de publicar o repositório: conferir os termos vigentes da API do Higgsfield, de onde vem a arte do hero.
 8. **Confirmar padrões:** R$ 100 mil, 20 pregões, CDI no caixa, East US 2, filtro de liquidez.
 
 ---

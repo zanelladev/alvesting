@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { CorporateEventForm, RerunCycleForm } from '../../components/admin-forms';
 import { CostsPanel, JobsPanel, QueuesPanel, SeasonsPanel } from '../../components/admin-panels';
-import { Section } from '../../components/ui';
+import { CAIXA, PageHead, Section } from '../../components/ui';
 import { authCookieHeader, readMe } from '../../lib/account';
 import { readAdmin, type AdminData } from '../../lib/admin';
 import { ApiError } from '../../lib/api';
@@ -49,19 +49,18 @@ export default withApiDown(async function AdminPage() {
 
   return (
     <>
-      <header className="space-y-2">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">Painel da arena</h1>
-        <p className="max-w-prose">
+      <PageHead title="Painel da arena">
+        <p className="max-w-prose text-lead text-pretty">
           A operação da arena: jobs, filas, custos e temporadas. Só o admin vê esta página. Cada
           ação pede uma confirmação explícita e fica na trilha de auditoria com o seu código.
         </p>
         <noscript>
-          <p className="max-w-prose border-2 border-ink p-3 font-mono font-semibold">
+          <p className={`max-w-prose ${CAIXA}`}>
             As ações do painel precisam de JavaScript. Ative o JavaScript no navegador e recarregue
             a página.
           </p>
         </noscript>
-      </header>
+      </PageHead>
 
       <Section id="jobs" title="Jobs">
         <JobsPanel jobs={data.jobs} />
@@ -86,7 +85,9 @@ export default withApiDown(async function AdminPage() {
           (o worker leva um tempo para pegar a mensagem). Depois disso não publica nada, e uma
           decisão já gravada nunca muda.
         </p>
-        <RerunCycleForm defaultDate={today} labelledBy="ciclo-titulo" />
+        <div className="card max-w-md">
+          <RerunCycleForm defaultDate={today} labelledBy="ciclo-titulo" />
+        </div>
       </Section>
 
       <Section id="evento" title="Evento corporativo">
@@ -96,7 +97,9 @@ export default withApiDown(async function AdminPage() {
           minutos, e isso muda resultados já publicados. O cache público leva até 5 minutos, depois
           disso, para mostrar o número novo.
         </p>
-        <CorporateEventForm labelledBy="evento-titulo" />
+        <div className="card max-w-md">
+          <CorporateEventForm labelledBy="evento-titulo" />
+        </div>
       </Section>
     </>
   );

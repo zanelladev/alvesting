@@ -1,13 +1,23 @@
 import type { Metadata } from 'next';
 import { tickerParamSchema } from '@alvesting/contracts';
 import { NewsList } from '../../components/news-list';
-import { Empty, LINK, NavLink, SearchForm } from '../../components/ui';
+import {
+  BUTTON,
+  CAIXA_ERRO,
+  Empty,
+  LINK,
+  NavLink,
+  PageHead,
+  SearchForm,
+  Section,
+} from '../../components/ui';
 import { api } from '../../lib/api';
 import { cursorOf, first, orNotFound, type SearchParams } from '../../lib/page';
 import { withApiDown } from '../../lib/with-api-down';
 
-// As notícias (plano §3): título, fonte, hora, tickers e o link para o site de origem, da mais nova à mais antiga, com filtro por
-// ticker. O filtro e a paginação são links e um formulário GET, então funcionam sem JavaScript. O trecho nunca é mostrado.
+// As notícias (plano §3; o desenho é o da v1, ADR 0034): título, fonte, hora, tickers e o link para o site de origem, da mais nova à mais
+// antiga, com filtro por ticker. O filtro e a paginação são links e um formulário GET, então funcionam sem JavaScript. O trecho nunca é
+// mostrado.
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Notícias' };
 
@@ -34,9 +44,8 @@ export default withApiDown(async function NewsPage({
 
   return (
     <>
-      <header className="space-y-3">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">Notícias</h1>
-        <p className="max-w-prose">
+      <PageHead title="Notícias">
+        <p className="max-w-prose text-lead text-pretty">
           Título, fonte, hora de Brasília e o link para o site de origem. O texto da notícia é do
           site que a publicou: aqui não há trecho nem cópia.
         </p>
@@ -55,30 +64,32 @@ export default withApiDown(async function NewsPage({
             Limpar filtro
           </NavLink>
         ) : null}
-      </header>
+        {/* o aviso fica junto do campo, no tom do erro de formulário (form-kit.tsx) */}
+        {invalid ? (
+          <p id="aviso-ticker" role="alert" className={`max-w-md ${CAIXA_ERRO}`}>
+            Ticker inválido: use quatro letras ou números e o número da classe, como PETR4.
+          </p>
+        ) : null}
+      </PageHead>
 
-      {invalid ? (
-        <p
-          id="aviso-ticker"
-          role="alert"
-          className="border-2 border-ink p-3 font-mono font-semibold"
-        >
-          Ticker inválido: use quatro letras ou números e o número da classe, como PETR4.
-        </p>
-      ) : page && page.rows.length > 0 ? (
-        <>
-          <NewsList rows={page.rows} />
-          {older ? (
-            <NavLink href={older} className={LINK}>
-              Mais antigas
-            </NavLink>
-          ) : null}
-        </>
-      ) : (
-        <Empty>
-          {ticker ? `Nenhuma notícia encontrada com ${ticker}.` : 'Nenhuma notícia ainda.'}
-        </Empty>
-      )}
+      {page ? (
+        <Section id="lista" title={ticker ? `Notícias de ${ticker}` : 'Todas as notícias'}>
+          {page.rows.length > 0 ? (
+            <>
+              <NewsList rows={page.rows} />
+              {older ? (
+                <NavLink href={older} className={BUTTON}>
+                  Mais antigas
+                </NavLink>
+              ) : null}
+            </>
+          ) : (
+            <Empty>
+              {ticker ? `Nenhuma notícia encontrada com ${ticker}.` : 'Nenhuma notícia ainda.'}
+            </Empty>
+          )}
+        </Section>
+      ) : null}
     </>
   );
 });

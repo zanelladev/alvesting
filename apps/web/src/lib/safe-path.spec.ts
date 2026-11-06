@@ -7,7 +7,7 @@ describe('safeInternalPath', () => {
   it.each([
     ['/conta'],
     ['/termos'],
-    ['/modelos/fake-contrarian'],
+    ['/modelos/gpt-6-1-sol'],
     ['/acoes?q=PETR'],
     ['/conta#dados'],
     ['/'],

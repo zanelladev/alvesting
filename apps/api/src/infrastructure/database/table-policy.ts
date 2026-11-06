@@ -192,13 +192,13 @@ export const TABLE_POLICY: Readonly<Record<string, TablePolicy>> = {
   },
   universe_snapshot: {
     personal: false,
-    api: none,
-    why: 'nenhuma rota da api lê o universo; o worker o congela',
+    api: ['SELECT'],
+    why: 'a fita da home (GET /interno/fita) acha o universo da semana do último ciclo; o worker o congela (migration 20261104120000_api_role_universe_read)',
   },
   universe_member: {
     personal: false,
-    api: none,
-    why: 'nenhuma rota da api lê o universo; o worker o congela',
+    api: ['SELECT'],
+    why: 'a fita da home (GET /interno/fita) lê os papéis do universo, na ordem dele; o worker os congela (migration 20261104120000_api_role_universe_read)',
   },
   news_item: {
     personal: false,

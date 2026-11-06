@@ -1,20 +1,15 @@
 import type { AdminCosts, AdminJobs, AdminSeason, AdminSeasons } from '@alvesting/contracts';
 import { formatBps, formatDate, formatDateTime, formatUsdMicro } from '../lib/format';
 import { CreateSeasonForm, EditSeasonForm, ResubmitDlqForm, StartSeasonForm } from './admin-forms';
-import { Empty, Fact, Facts, ROW, TABLE, TD, TH, TableScroll } from './ui';
+import { STICKY, Th } from './tables';
+import { Aviso, CAIXA_ERRO, Empty, Fact, Facts, ROW, TABLE, TD, TableScroll } from './ui';
 
 // As seções do painel de admin que só mostram (etapa 10, parte 2; docs/TELAS.md, seção 8). Server Components: lêem o que a api de admin
 // devolveu, validado pelo contrato, e montam o HTML. Os formulários (admin-forms.tsx) são os únicos pedaços que vão ao navegador. Texto
 // que vem do banco ou de terceiros (o nome da temporada, o motivo de uma falha, o MessageId) é texto: o React o escapa.
 
-const Th = ({ children }: { children: string }) => (
-  <th scope="col" className={TH}>
-    {children}
-  </th>
-);
-// o nome da linha fica preso à esquerda quando a tabela rola dentro da própria caixa (a mesma regra das tabelas da arena)
-const STICKY =
-  'sticky left-0 min-w-24 bg-paper px-1.5 py-1 text-left font-mono font-normal sm:px-2';
+// O nome da linha fica preso à esquerda quando a tabela rola dentro da própria caixa: o cabeçalho de coluna e a célula presa são os das tabelas
+// da arena (tables.tsx). O tipo do job vai na mono (é um identificador); o competidor e o dia, não.
 const WRAP = 'break-all';
 
 const STATUS: Record<string, string> = {
@@ -51,7 +46,7 @@ export function JobsPanel({ jobs }: { jobs: AdminJobs }) {
             <tbody>
               {jobs.jobs.map((job) => (
                 <tr key={job.type} className={ROW}>
-                  <th scope="row" className={STICKY}>
+                  <th scope="row" className={`${STICKY} font-mono`}>
                     {job.type}
                   </th>
                   <td className={TD}>{STATUS[job.latest.status] ?? job.latest.status}</td>
@@ -68,11 +63,14 @@ export function JobsPanel({ jobs }: { jobs: AdminJobs }) {
       )}
       {jobs.failures.length > 0 ? (
         <>
-          <h3 className="font-mono text-base font-semibold">Falhas recentes</h3>
+          <h3 className="pt-4 font-display text-title">Falhas recentes</h3>
           <ul className="space-y-2">
             {jobs.failures.map((run) => (
-              <li key={`${run.type}:${run.key}`} className="min-w-0 border-l-4 border-ink pl-2">
-                <p className={`font-mono text-sm font-semibold ${WRAP}`}>
+              <li
+                key={`${run.type}:${run.key}`}
+                className="min-w-0 border-l-2 border-semantic-error pl-2"
+              >
+                <p className={`font-mono text-sm text-ink ${WRAP}`}>
                   {run.type} {run.key}
                 </p>
                 <p className="muted">
@@ -84,7 +82,7 @@ export function JobsPanel({ jobs }: { jobs: AdminJobs }) {
           </ul>
         </>
       ) : null}
-      <h3 className="font-mono text-base font-semibold">Arquivos da CVM</h3>
+      <h3 className="pt-4 font-display text-title">Arquivos da CVM</h3>
       {jobs.fetchStates.length === 0 ? (
         <Empty>Nenhum arquivo da CVM foi conferido ainda.</Empty>
       ) : (
@@ -103,7 +101,13 @@ export function JobsPanel({ jobs }: { jobs: AdminJobs }) {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+// A DLQ que não deu para ler é erro de leitura, e não "ainda não há nada": a caixa de erro, e não o vazio. Todas sem leitura (o Service Bus
+// fora, ou a api sem ele) são o mesmo motivo: uma frase só para a seção, e não a mesma seis vezes.
+const UNREAD =
+  '(o Service Bus não respondeu ou a api não está configurada para ele). Tente de novo; o painel não pede outro papel por isso.';
+
 export function QueuesPanel({ queues }: { queues: AdminJobs['queues'] }) {
+  const unread = queues.length > 0 && queues.every((q) => q.deadLetters.status === 'unavailable');
   return (
     <>
       <p className="max-w-prose">
@@ -111,75 +115,77 @@ export function QueuesPanel({ queues }: { queues: AdminJobs['queues'] }) {
         mesmo MessageId e é idempotente: o que já saiu da DLQ não sai de novo. Corrija a causa
         antes.
       </p>
-      <ul className="space-y-6">
-        {queues.map(({ queue, deadLetters }) => (
-          <li key={queue} className="min-w-0 space-y-2">
-            <h3 className="font-mono text-base font-semibold">{queue}</h3>
-            {deadLetters.status === 'unavailable' ? (
-              <Empty>
-                Não deu para ler a DLQ desta fila agora (o Service Bus não respondeu ou a api não
-                está configurada para ele). Tente de novo; o painel não pede outro papel por isso.
-              </Empty>
-            ) : deadLetters.count === 0 ? (
-              <p>DLQ vazia.</p>
-            ) : (
-              <>
-                <p className="font-semibold">
-                  {deadLetters.capped
-                    ? `${deadLetters.count} ou mais mensagens na DLQ`
-                    : plural(deadLetters.count, 'mensagem na DLQ', 'mensagens na DLQ')}
+      {unread ? (
+        <p className={`max-w-prose ${CAIXA_ERRO}`}>
+          Não deu para ler a DLQ de nenhuma fila agora {UNREAD}
+        </p>
+      ) : (
+        <ul className="space-y-6">
+          {queues.map(({ queue, deadLetters }) => (
+            <li key={queue} className="min-w-0 space-y-2">
+              <h3 className="font-mono text-base">{queue}</h3>
+              {deadLetters.status === 'unavailable' ? (
+                <p className={`max-w-prose ${CAIXA_ERRO}`}>
+                  Não deu para ler a DLQ desta fila agora {UNREAD}
                 </p>
-                <ul className="space-y-4">
-                  {deadLetters.messages.map((message, index) => {
-                    const id = `dlq-${queue}-${index}`;
-                    return (
-                      <li
-                        key={`${message.messageId}:${index}`}
-                        className="min-w-0 border-2 border-ink p-3"
-                      >
-                        {/* a posição entra no nome do formulário (aria-labelledby aponta para cá): a mesma mensagem pode estar duas
+              ) : deadLetters.count === 0 ? (
+                <p>DLQ vazia.</p>
+              ) : (
+                <>
+                  <p className="text-ink">
+                    {deadLetters.capped
+                      ? `${deadLetters.count} ou mais mensagens na DLQ`
+                      : plural(deadLetters.count, 'mensagem na DLQ', 'mensagens na DLQ')}
+                  </p>
+                  <ul className="space-y-4">
+                    {deadLetters.messages.map((message, index) => {
+                      const id = `dlq-${queue}-${index}`;
+                      return (
+                        <li key={`${message.messageId}:${index}`} className="card">
+                          {/* a posição entra no nome do formulário (aria-labelledby aponta para cá): a mesma mensagem pode estar duas
                             vezes na DLQ (o MessageId é determinístico e o Service Bus Basic não detecta duplicata), e dois formulários
                             com o mesmo nome violam o landmark único */}
-                        <p id={id} className={`font-mono text-sm font-semibold ${WRAP}`}>
-                          {message.messageId}
-                          <span className="sr-only">
-                            {` (mensagem ${index + 1} de ${deadLetters.messages.length})`}
-                          </span>
-                        </p>
-                        <p className="muted">
-                          {plural(message.deliveryCount, 'entrega', 'entregas')}
-                          {message.reason ? `, motivo ${message.reason}` : ''}
-                          {message.enqueuedAt
-                            ? `, desde ${formatDateTime(message.enqueuedAt)}`
-                            : ''}
-                        </p>
-                        {message.description ? (
-                          <p className="muted">{message.description}</p>
-                        ) : null}
-                        {message.resubmittable ? (
-                          <div className="mt-2">
-                            <ResubmitDlqForm
-                              queue={queue}
-                              messageId={message.messageId}
-                              labelledBy={id}
-                            />
-                          </div>
-                        ) : (
-                          <p className="muted mt-2">
-                            O MessageId está fora do padrão da arena (outra ferramenta pôs a
-                            mensagem aqui): ela fica na lista para ser vista e não se reenvia por
-                            este painel.
+                          <p id={id} className={`font-mono text-sm text-ink ${WRAP}`}>
+                            {message.messageId}
+                            <span className="sr-only">
+                              {` (mensagem ${index + 1} de ${deadLetters.messages.length})`}
+                            </span>
                           </p>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
+                          <p className="muted">
+                            {plural(message.deliveryCount, 'entrega', 'entregas')}
+                            {message.reason ? `, motivo ${message.reason}` : ''}
+                            {message.enqueuedAt
+                              ? `, desde ${formatDateTime(message.enqueuedAt)}`
+                              : ''}
+                          </p>
+                          {message.description ? (
+                            <p className="muted">{message.description}</p>
+                          ) : null}
+                          {message.resubmittable ? (
+                            <div className="mt-2">
+                              <ResubmitDlqForm
+                                queue={queue}
+                                messageId={message.messageId}
+                                labelledBy={id}
+                              />
+                            </div>
+                          ) : (
+                            <p className="muted mt-2">
+                              O MessageId está fora do padrão da arena (outra ferramenta pôs a
+                              mensagem aqui): ela fica na lista para ser vista e não se reenvia por
+                              este painel.
+                            </p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }
@@ -221,10 +227,10 @@ export function CostsPanel({ costs }: { costs: AdminCosts }) {
         {used ? <Fact term="Usado do teto">{used}</Fact> : null}
       </Facts>
       {costs.capMicroUsd === null ? (
-        <p className="max-w-prose border-2 border-ink p-3 font-mono font-semibold">
+        <Aviso>
           Teto não configurado: sem ele o ciclo com modelo pago é pulado (os modelos fake custam
           zero e não dependem dele).
-        </p>
+        </Aviso>
       ) : null}
       <p className="muted">
         A mesma soma que o agendador compara com o teto antes de abrir o ciclo: o custo das decisões
@@ -295,8 +301,8 @@ function SeasonCard({ season }: { season: AdminSeason }) {
   const base = `temporada-${season.id}`;
   const draft = season.status === 'DRAFT';
   return (
-    <li className="min-w-0 space-y-3 border-2 border-ink p-3">
-      <h3 id={base} className={`font-mono text-base font-semibold ${WRAP}`}>
+    <li className="card space-y-4">
+      <h3 id={base} className={`font-display text-title ${WRAP}`}>
         {season.name}
       </h3>
       <Facts dense>
@@ -321,7 +327,7 @@ function SeasonCard({ season }: { season: AdminSeason }) {
       {draft ? (
         <>
           {/* o nome do formulário leva o slug: dois rascunhos não podem ter dois formulários com o mesmo nome (landmark único, axe) */}
-          <h4 id={`${base}-editar`} className={`font-mono text-sm font-semibold ${WRAP}`}>
+          <h4 id={`${base}-editar`} className={`font-display text-sm font-medium text-ink ${WRAP}`}>
             Editar o rascunho {season.slug}
           </h4>
           <EditSeasonForm
@@ -333,7 +339,10 @@ function SeasonCard({ season }: { season: AdminSeason }) {
               2,
             )}
           />
-          <h4 id={`${base}-iniciar`} className={`font-mono text-sm font-semibold ${WRAP}`}>
+          <h4
+            id={`${base}-iniciar`}
+            className={`font-display text-sm font-medium text-ink ${WRAP}`}
+          >
             Iniciar o rascunho {season.slug}
           </h4>
           <StartSeasonForm id={season.id} slug={season.slug} labelledBy={`${base}-iniciar`} />
@@ -362,10 +371,12 @@ export function SeasonsPanel({ seasons }: { seasons: AdminSeasons }) {
           ))}
         </ul>
       )}
-      <h3 id="temporada-nova" className="font-mono text-base font-semibold">
+      <h3 id="temporada-nova" className="pt-4 font-display text-title">
         Nova temporada
       </h3>
-      <CreateSeasonForm labelledBy="temporada-nova" />
+      <div className="card max-w-md">
+        <CreateSeasonForm labelledBy="temporada-nova" />
+      </div>
     </>
   );
 }

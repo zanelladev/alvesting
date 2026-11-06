@@ -6,7 +6,6 @@ import {
   openTestDatabase,
   testDatabaseUrl,
 } from '../infrastructure/database/test-database.fixture.js';
-import { ALERT_LOG } from '../telemetry/alert-logs.js';
 import {
   ENSAIO_CANARY,
   FIRST_DAY,
@@ -61,6 +60,10 @@ describe.skipIf(!ready)(title, () => {
       expect(result.ok).toBe(true);
       expect(result.bus.deadLettered).toBe(0);
       expect(result.blockedNetwork).toEqual([]);
+      // nenhuma falha é injetada no elenco (os modelos levam o nome dos da Temporada 1): nenhuma nova tentativa, nenhum aviso nem erro
+      expect(result.bus.retried).toBe(0);
+      expect(result.logLines).toEqual([]);
+      expect(result.text).toContain('avisos nos logs: 0 | erros nos logs: 0');
       // o relatório fala dos três pregões e traz o ranking e o Monte Carlo
       expect(result.text).toContain(`PREGÃO ${D1}`);
       expect(result.text).toContain(`PREGÃO ${D3}`);
@@ -78,9 +81,9 @@ describe.skipIf(!ready)(title, () => {
       expect(season.finishedAt).not.toBeNull();
 
       const competitors = await prisma.competitor.findMany({ where: { seasonId: season.id } });
-      expect(competitors).toHaveLength(8);
+      expect(competitors).toHaveLength(10);
       const models = competitors.filter((c) => c.kind === 'MODEL');
-      expect(models).toHaveLength(4);
+      expect(models).toHaveLength(6);
 
       const cycles = await prisma.cycle.findMany({
         where: { seasonId: season.id },
@@ -96,8 +99,11 @@ describe.skipIf(!ready)(title, () => {
         expect(cycle.decisions.map((d) => d.competitorId).sort()).toEqual(
           models.map((m) => m.id).sort(),
         );
-        // sem HOLD forçado: nada falhou de verdade
+        // sem HOLD forçado e sem reparo: a estratégia simulada de cada modelo acerta o JSON de primeira
         expect(cycle.decisions.every((d) => d.status === 'DECIDED')).toBe(true);
+        expect(cycle.decisions.map((d) => (d.usage as { calls: number }).calls)).toEqual(
+          models.map(() => 1),
+        );
       }
 
       for (const date of [D1, D2, D3]) {
@@ -109,39 +115,6 @@ describe.skipIf(!ready)(title, () => {
         );
       }
       expect(await prisma.jobRun.count({ where: { status: { not: 'SUCCEEDED' } } })).toBe(0);
-    }, 180_000);
-
-    it('o reparo do JSON aparece: o fake/flaky-json erra o primeiro e acerta o segundo (duas chamadas)', async () => {
-      await run();
-      const flaky = await prisma.competitor.findFirstOrThrow({ where: { slug: 'fake-flaky' } });
-      const decisions = await prisma.decision.findMany({
-        where: { competitorId: flaky.id },
-        include: { cycle: true },
-        orderBy: { cycle: { date: 'asc' } },
-      });
-      const calls = decisions.map((d) => (d.usage as { calls: number }).calls);
-      // dia ímpar do mês (03/11 e 05/11): o JSON quebra e o reparo conserta; 04/11 acerta de primeira
-      expect(calls).toEqual([2, 1, 2]);
-      expect(decisions.every((d) => d.status === 'DECIDED')).toBe(true);
-    }, 180_000);
-
-    it('a falha passageira do provedor vira nova tentativa agendada (10 minutos depois), não DLQ nem HOLD', async () => {
-      const result = await run();
-      expect(result.bus.retried).toBeGreaterThanOrEqual(1);
-      expect(result.bus.deadLettered).toBe(0);
-      const contrarian = await prisma.competitor.findFirstOrThrow({
-        where: { slug: 'fake-contrarian' },
-      });
-      const job = await prisma.jobRun.findFirstOrThrow({
-        where: { type: 'decide', idempotencyKey: { endsWith: `:${contrarian.id}` } },
-        orderBy: { attempts: 'desc' },
-      });
-      expect(job).toMatchObject({ status: 'SUCCEEDED', attempts: 2 });
-      // A tentativa que falhou escreveu a linha do alerta de job falho (etapa 10). Ela fica anotada para quem lê a saída do comando, mas
-      // fora da contagem de erros do relatório: repete um fato que o relatório já conta (a nova tentativa agendada), e o relatório da
-      // Temporada 0 não pode mudar por causa de um sinal que existe para a Azure.
-      expect(result.logLines.some((line) => line.includes(ALERT_LOG.jobFailed))).toBe(true);
-      expect(result.text).toContain('avisos nos logs: 0 | erros nos logs: 0');
     }, 180_000);
 
     it('o dia sem negócio: SECA3 não negocia em 04/11, e a compra dela não executa nem mexe no caixa', async () => {
@@ -174,14 +147,14 @@ describe.skipIf(!ready)(title, () => {
         where: { ticker: 'PAUS3', date: day(D3) },
         include: { fill: true, competitor: true },
       });
-      // nenhuma ordem sobre ela executa (compra ou venda, de modelo ou do Sorteio), e o contrário tenta realizar o ganho de 5% do dia anterior
+      // nenhuma ordem sobre ela executa (compra ou venda, de modelo ou do Sorteio), e o contrário (GPT-6.1 Sol) tenta realizar o ganho de 5% do dia anterior
       for (const order of orders) {
         expect(order).toMatchObject({ status: 'NOT_EXECUTED', reason: 'no_bar' });
         expect(order.fill).toBeNull();
       }
-      expect(
-        orders.some((o) => o.action === 'SELL' && o.competitor.slug === 'fake-contrarian'),
-      ).toBe(true);
+      expect(orders.some((o) => o.action === 'SELL' && o.competitor.slug === 'gpt-6-1-sol')).toBe(
+        true,
+      );
       const stale = await prisma.position.findMany({ where: { ticker: 'PAUS3', date: day(D3) } });
       expect(stale.length).toBeGreaterThan(0);
       const before = await prisma.position.findMany({ where: { ticker: 'PAUS3', date: day(D2) } });
@@ -241,7 +214,7 @@ describe.skipIf(!ready)(title, () => {
     it('o modelo que só segura rende como o CDI, centavo a centavo, todos os dias', async () => {
       await run();
       const hold = await prisma.equitySnapshot.findMany({
-        where: { competitor: { slug: 'fake-hold' } },
+        where: { competitor: { slug: 'gemini-4-argon' } },
         orderBy: { date: 'asc' },
       });
       const cdi = await prisma.equitySnapshot.findMany({
@@ -276,9 +249,9 @@ describe.skipIf(!ready)(title, () => {
     const before = await Promise.all(plain.map(count));
     await run();
     expect(await Promise.all(plain.map(count))).toEqual(before);
-    // o que o ensaio gravou: 3 briefings e 4 modelos x 3 arquivos de IO bruto por pregão; as cotações não vão ao Blob
+    // o que o ensaio gravou: 3 briefings e 6 modelos x 3 arquivos de IO bruto por pregão; as cotações não vão ao Blob
     expect(await count('ensaio-briefings')).toBe(3);
-    expect(await count('ensaio-llm-io')).toBe(3 * 4 * 3);
+    expect(await count('ensaio-llm-io')).toBe(3 * 6 * 3);
   }, 180_000);
 
   it('a brapi falsa é servida pelo cliente de verdade, e as requisições seguem o plano: uma por papel que falta, só quem não veio é pedido de novo', async () => {

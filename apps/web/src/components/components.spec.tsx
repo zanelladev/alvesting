@@ -7,7 +7,7 @@ import { Countdown } from './countdown';
 import { DecisionCard, type DecisionCardData } from './decisions';
 import { NewsList } from './news-list';
 import { LeaderboardTable, PositionsTable } from './tables';
-import { SearchForm } from './ui';
+import { SearchForm, isSimulated } from './ui';
 
 // A página "Como funciona" lê a api para os números da temporada: o teste dela troca o cliente de dados por um que falha.
 vi.mock('../lib/api', () => ({ api: { arenaCurrent: vi.fn() } }));
@@ -93,7 +93,7 @@ describe('NewsList', () => {
 });
 
 const decision = (over: Partial<DecisionCardData> = {}): DecisionCardData => ({
-  competitor: { slug: 'fake-hold', name: 'Fake Hold' },
+  competitor: { slug: 'gemini-4-argon', name: 'Gemini 4 Argon' },
   status: 'DECIDED',
   holdReason: null,
   marketView: 'neutro',
@@ -206,13 +206,37 @@ describe('DecisionCard', () => {
     expect(out).toMatch(/<p class="min-w-0 basis-full text-sm">W{100}<\/p>/);
   });
 
+  // "neutro" é o valor do contrato (o que o modelo responde); a frase concorda com "visão": "visão neutra" (otimista e pessimista servem
+  // aos dois gêneros)
+  it('a visão de mercado concorda com "visão": neutra, otimista, pessimista; sem visão, sem a frase', () => {
+    const view = (marketView: DecisionCardData['marketView']) =>
+      /<span>(visão [^<]*)<\/span>/.exec(
+        html(<DecisionCard by="model" decision={decision({ marketView })} />),
+      )?.[1];
+    expect(view('neutro')).toBe('visão neutra');
+    expect(view('otimista')).toBe('visão otimista');
+    expect(view('pessimista')).toBe('visão pessimista');
+    expect(view(null)).toBeUndefined();
+  });
+
   it('na página do modelo o título é a data, link para o ciclo; no feed é o modelo', () => {
     const byDate = html(<DecisionCard by="date" date="2026-11-09" decision={decision()} />);
     expect(byDate).toContain(
-      '<h3 class="font-mono text-base font-semibold"><a class="link" href="/ciclos/2026-11-09">09/11/2026</a></h3>',
+      '<h3 class="font-display text-title"><a class="link" href="/ciclos/2026-11-09">09/11/2026</a></h3>',
     );
     const byModel = html(<DecisionCard by="model" date="2026-11-09" decision={decision()} />);
-    expect(byModel).toContain('href="/modelos/fake-hold"');
+    expect(byModel).toContain('href="/modelos/gemini-4-argon"');
+  });
+
+  it('a decisão simulada leva a etiqueta logo depois do nome do modelo; na página do modelo (título é a data) não', () => {
+    const simulated = html(<DecisionCard by="model" decision={decision()} simulated />);
+    expect(simulated).toMatch(
+      /<h3[^>]*><a class="link" href="\/modelos\/gemini-4-argon">Gemini 4 Argon<\/a> <span class="[^"]*border-dashed[^"]*">simulado<\/span><\/h3>/,
+    );
+    expect(html(<DecisionCard by="model" decision={decision()} />)).not.toContain('simulado');
+    expect(
+      html(<DecisionCard by="date" date="2026-11-09" decision={decision()} simulated />),
+    ).not.toContain('simulado');
   });
 });
 
@@ -257,6 +281,55 @@ describe('tabelas', () => {
     );
   });
 
+  it('o modelo do provedor fake leva a etiqueta "simulado" no cabeçalho da linha, fora do link; o resto não', () => {
+    const out = html(
+      <LeaderboardTable
+        rows={[
+          row({
+            competitor: {
+              slug: 'claude-opus-5-5',
+              name: 'Claude Opus 5.5',
+              type: 'MODEL',
+              provider: 'fake',
+              modelId: 'fake/momentum',
+            },
+          }),
+          row(),
+        ]}
+        label="Ranking"
+      />,
+    );
+    expect(out).toMatch(
+      /<th scope="row"[^>]*><a class="[^"]*" href="\/modelos\/claude-opus-5-5">Claude Opus 5.5<\/a> <span class="[^"]*">simulado<\/span><\/th>/,
+    );
+    expect(out.match(/simulado/g)).toHaveLength(1);
+  });
+
+  it('quem tem a ação e é modelo simulado leva a etiqueta; a ação na carteira do modelo, não', () => {
+    const position = {
+      key: 'A',
+      href: '/modelos/gpt-6-1-sol',
+      quantity: 10,
+      avgPriceCents: 1_000,
+      valueCents: 10_000,
+      pnlCents: 0,
+      stale: false,
+    };
+    const holders = html(
+      <PositionsTable
+        first="Competidor"
+        label="Quem tem"
+        rows={[{ ...position, label: 'GPT-6.1 Sol', simulated: true }]}
+      />,
+    );
+    expect(holders).toContain('GPT-6.1 Sol</a> <span');
+    expect(holders).toContain('>simulado</span></th>');
+    const wallet = html(
+      <PositionsTable first="Ação" label="Posições" rows={[{ ...position, label: 'MOVE3' }]} />,
+    );
+    expect(wallet).not.toContain('simulado');
+  });
+
   it('a posição sem negócio no dia leva o aviso, e o resultado leva o sinal', () => {
     const out = html(
       <PositionsTable
@@ -279,6 +352,65 @@ describe('tabelas', () => {
     expect(out).toContain('sem negócio no dia');
     expect(out).toContain('-R$\u00a040,00');
     expect(out).toContain('1.234');
+  });
+
+  // O glifo ▲ ▼ ■ é do CSS (globals.css, `[data-dir]`), com o texto alternativo vazio: no HTML só vai a direção, e o texto da célula (o que o
+  // leitor de tela e o e2e leem) continua sendo o número com o sinal.
+  it('o número com sinal leva a direção para o glifo, fora do texto; o que não existe ("—") e o que não tem sinal não levam', () => {
+    const board = html(
+      <LeaderboardTable
+        rows={[
+          row({ returnBps: 20, excessEqualWeightBps: -15, excessCdiBps: 0 }),
+          row({
+            competitor: {
+              slug: 'sorteio',
+              name: 'Sorteio',
+              type: 'RANDOM',
+              provider: null,
+              modelId: null,
+            },
+            returnBps: -30,
+          }),
+        ]}
+        label="Ranking"
+      />,
+    );
+    expect(board).toContain('<td class="td" data-dir="up">+0,20%</td>');
+    expect(board).toContain('<td class="td" data-dir="down">-0,15%</td>');
+    expect(board).toContain('<td class="td" data-dir="flat">0,00%</td>');
+    expect(board).toContain('<td class="td" data-dir="down">-0,30%</td>');
+    // o excesso que não existe, o percentil, o drawdown (sem sinal) e o acerto ficam sem direção: só as colunas com sinal
+    expect(board.match(/data-dir=/g)).toHaveLength(4);
+    expect(board).not.toMatch(/[▲▼■]/);
+
+    const positions = html(
+      <PositionsTable
+        first="Ação"
+        label="Posições"
+        rows={[-4_000, 0].map((pnlCents, i) => ({
+          key: String(i),
+          label: `PAUS${i + 3}`,
+          href: `/acoes/PAUS${i + 3}`,
+          quantity: 1,
+          avgPriceCents: 1_000,
+          valueCents: 1_000,
+          pnlCents,
+          stale: false,
+        }))}
+      />,
+    );
+    expect(positions).toContain('<td class="td" data-dir="down">-R$ 40,00</td>');
+    expect(positions).toContain('<td class="td" data-dir="flat">R$ 0,00</td>');
+  });
+});
+
+describe('isSimulated', () => {
+  it('só o modelo do provedor fake é simulado: o de verdade, o Sorteio e as referências não', () => {
+    expect(isSimulated({ type: 'MODEL', provider: 'fake' })).toBe(true);
+    expect(isSimulated({ type: 'MODEL', provider: 'openrouter' })).toBe(false);
+    expect(isSimulated({ type: 'MODEL', provider: 'azure-openai' })).toBe(false);
+    expect(isSimulated({ type: 'RANDOM', provider: null })).toBe(false);
+    expect(isSimulated({ type: 'CDI', provider: null })).toBe(false);
   });
 });
 
@@ -310,6 +442,22 @@ describe('gráficos', () => {
     // a tabela para o leitor de tela vem antes da legenda: o figcaption só pode ser o primeiro ou o último filho
     expect(out.indexOf('<table')).toBeLessThan(out.indexOf('<figcaption'));
     expect(out.endsWith('</figcaption></figure>')).toBe(true);
+  });
+
+  // A etiqueta "simulado" segue o nome onde ele aparece (plano, seção 4.5): na legenda também, depois do nome; a tabela para o leitor de
+  // tela fica só com o nome (o cabeçalho de coluna é o nome da série, e a etiqueta já está na legenda e no ranking)
+  it('na legenda, o modelo simulado leva a etiqueta depois do nome; o resto não', () => {
+    const out = html(
+      <EquityChart
+        {...props}
+        series={[{ ...props.series[0]!, simulated: true }, props.series[1]!]}
+      />,
+    );
+    const legend = /<figcaption.*<\/figcaption>/s.exec(out)![0];
+    expect(legend).toMatch(/Modelo A <span class="[^"]*border-dashed[^"]*">simulado<\/span><\/li>/);
+    expect(legend).toMatch(/<\/svg>Sorteio<\/li>/);
+    expect(legend.match(/simulado/g)).toHaveLength(1);
+    expect(/<table.*<\/table>/s.exec(out)![0]).not.toContain('simulado');
   });
 
   it('sem faixa do Monte Carlo não há faixa nem as colunas p5 e p95', () => {

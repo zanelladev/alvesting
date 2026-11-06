@@ -12,12 +12,15 @@ import type { ClientOptions } from 'openai';
 //   fake/echo-prompt          devolve o prompt de sistema inteiro no resumo e nos motivos (o teste de canário)
 //   fake/momentum             compra as duas maiores altas do último pregão (10% do patrimônio cada) e vende a posição que está
 //                             abaixo do custo médio
+//   fake/momentum-focused     o momentum concentrado: só a maior alta, com 20% do patrimônio
 //   fake/contrarian           o contrário: compra as duas maiores quedas e realiza a posição que ganhou 2% ou mais
+//   fake/contrarian-spread    o contrário espalhado: as três maiores quedas, com 5% do patrimônio cada
 //   fake/hold-only            só segura (um HOLD): rende como o CDI
-//   fake/flaky-json           a decisão de sempre, mas nos pregões de dia ímpar a 1ª chamada devolve texto que não é JSON e o
-//                             reparo acerta (o caminho do reparo, dentro da Temporada 0)
-//   qualquer outro            uma decisão válida e determinística, a mesma para o mesmo modelo e o mesmo pregão
-// As estratégias leem só o briefing e a carteira que o modelo recebe, como um modelo de verdade (apps/api/seasons/ensaio.json).
+//   qualquer outro            uma decisão válida e determinística, a mesma para o mesmo modelo e o mesmo pregão (o ensaio usa
+//                             fake/hash-picks)
+// As estratégias leem só o briefing e a carteira que o modelo recebe, como um modelo de verdade. O elenco do ensaio
+// (apps/api/seasons/ensaio.json) leva o nome dos modelos da Temporada 1 e só usa estratégias que nunca falham: a falha simulada
+// (always-fail, invalid-json-*, echo-prompt) é dos testes, com um ID de teste, e nunca vai para o nome de um modelo de verdade.
 
 type Fetch = NonNullable<ClientOptions['fetch']>;
 
@@ -149,11 +152,26 @@ function positionsOf(own: unknown): Array<{ ticker: string; avg: number; last: n
     : [];
 }
 
-// momentum e contrarian são a mesma estrutura com o sinal trocado. Os dois leem só o que o modelo recebe: a variação do último
-// pregão na tabela do briefing e o preço médio e o último fechamento da carteira. Compram duas ações (10% do patrimônio cada) que
-// ainda não têm e saem (100%) de até duas posições: o momentum, das que estão abaixo do custo; o contrário, das que ganharam 2% ou mais.
-function trend(kind: 'momentum' | 'contrarian', turns: Turn[]): unknown {
-  const momentum = kind === 'momentum';
+// momentum e contrarian são a mesma estrutura com o sinal trocado, e cada variante muda só quantas ações compra (`picks`) e quanto do
+// patrimônio põe em cada uma (`percent`).
+interface Trend {
+  momentum: boolean;
+  picks: number;
+  percent: number;
+}
+const TRENDS = {
+  momentum: { momentum: true, picks: 2, percent: 10 },
+  'momentum-focused': { momentum: true, picks: 1, percent: 20 },
+  contrarian: { momentum: false, picks: 2, percent: 10 },
+  'contrarian-spread': { momentum: false, picks: 3, percent: 5 },
+} satisfies Record<string, Trend>;
+const isTrend = (behavior: string): behavior is keyof typeof TRENDS =>
+  Object.hasOwn(TRENDS, behavior);
+
+// Todas leem só o que o modelo recebe: a variação do último pregão na tabela do briefing e o preço médio e o último fechamento da
+// carteira. Compram `picks` ações que ainda não têm e saem (100%) de até duas posições: o momentum, das que estão abaixo do custo; o
+// contrário, das que ganharam 2% ou mais.
+function trend({ momentum, picks, percent }: Trend, turns: Turn[]): unknown {
   const ranked = changesOf(blockOf(turns, 'BRIEFING'))
     .filter((row) => row.changeBps !== null)
     .sort(
@@ -184,11 +202,11 @@ function trend(kind: 'momentum' | 'contrarian', turns: Turn[]): unknown {
     })),
     ...ranked
       .filter((row) => !owned.has(row.ticker))
-      .slice(0, 2)
+      .slice(0, picks)
       .map((row) => ({
         ticker: row.ticker,
         action: 'BUY',
-        percent_of_equity: 10,
+        percent_of_equity: percent,
         confidence: 0.6,
         rationale: `${momentum ? 'Maior alta' : 'Maior queda'} do último pregão (${row.changeBps} pontos-base), provedor fake.`,
       })),
@@ -201,10 +219,15 @@ function trend(kind: 'momentum' | 'contrarian', turns: Turn[]): unknown {
       rationale: 'Nada a fazer hoje (provedor fake).',
     });
   }
+  const what = momentum
+    ? picks === 1
+      ? 'a maior alta'
+      : 'as maiores altas'
+    : picks === 1
+      ? 'a maior queda'
+      : 'as maiores quedas';
   return {
-    summary: momentum
-      ? 'Segue a alta: compra as maiores altas do último pregão (provedor fake).'
-      : 'Contra a maré: compra as maiores quedas do último pregão (provedor fake).',
+    summary: `${momentum ? 'Segue a alta' : 'Contra a maré'}: compra ${what} do último pregão (provedor fake).`,
     market_view: momentum ? 'otimista' : 'pessimista',
     decisions,
   };
@@ -219,12 +242,6 @@ function holdOnly(turns: Turn[]): unknown {
     decisions: [{ ticker: first, action: 'HOLD', rationale: 'Segura o caixa (provedor fake).' }],
   };
 }
-
-// Dia de pregão de dia ímpar do mês (03, 05, 09...): quando o fake/flaky-json quebra o JSON da primeira chamada.
-const oddDay = (turns: Turn[]): boolean => {
-  const date = text((blockOf(turns, 'BRIEFING') as { date?: unknown } | undefined)?.date);
-  return Number(date.slice(8)) % 2 === 1;
-};
 
 // O prompt inteiro no resumo e nos motivos de uma compra e de uma manutenção (se o texto cabe nos limites do contrato).
 function echoPrompt(system: string, turns: Turn[]): unknown {
@@ -291,14 +308,13 @@ export function createFakeFetch(): Fetch {
       return Promise.resolve(json(500, { error: { message: 'falha simulada do provedor fake' } }));
     } else if (
       behavior === 'invalid-json-always' ||
-      (behavior === 'invalid-json-once' && !repaired) ||
-      (behavior === 'flaky-json' && !repaired && oddDay(turns))
+      (behavior === 'invalid-json-once' && !repaired)
     ) {
       content = 'Não consegui montar o JSON agora, desculpe.';
     } else if (behavior === 'echo-prompt') {
       content = JSON.stringify(echoPrompt(system, turns));
-    } else if (behavior === 'momentum' || behavior === 'contrarian') {
-      content = JSON.stringify(trend(behavior, turns));
+    } else if (isTrend(behavior)) {
+      content = JSON.stringify(trend(TRENDS[behavior], turns));
     } else if (behavior === 'hold-only') {
       content = JSON.stringify(holdOnly(turns));
     } else {

@@ -30,6 +30,16 @@ O elenco (`competitor`) tem três tipos: `MODEL` (provedor `openrouter`, `azure-
 conta própria, e qualquer sufixo de variante (`:online`, `:nitro`, `:floor`, `:free`, `:batch`) são recusados. O Azure OpenAI exige a
 tabela de preços (seção 7).
 
+**O elenco aparece simulado até a integração.** A temporada sintética (`apps/api/seasons/ensaio.json`: a do `arena:ensaio`, da demo local
+e da semente do e2e) já tem o elenco da Temporada 1 (seção 8), com os mesmos nomes e slugs, mas com o provedor `fake`: as chaves ainda não
+existem, e quem decide por cada modelo é uma estratégia simples e determinística do provedor fake, que nunca falha (`docs/ENSAIO.md`,
+seção 3). O site marca todo competidor `MODEL` de provedor `fake` com a etiqueta **"simulado"** junto do nome, onde o nome aparece (ranking,
+cartões de decisão, página do modelo, do ciclo e da ação); a página do modelo mostra a estratégia (o `modelId` `fake/...`, como
+"Estratégia simulada") e a home avisa que as decisões são simuladas enquanto a temporada exibida tiver um modelo assim. A tela não guarda
+lista de nomes: a regra é o provedor que a API pública já devolve (`publicCompetitorSchema`), e no ciclo, o provedor que respondeu a decisão
+(`applied.provider`). No dia da integração a temporada de verdade nasce com o provedor `openrouter` e o ID do rascunho, e a etiqueta e o
+aviso somem sozinhos.
+
 Comandos (rodam com o banco do ambiente, sem fila e sem LLM; em dev, `pnpm --filter @alvesting/api <comando>`):
 
 | Comando | O que faz |
@@ -230,7 +240,7 @@ da temporada (`capabilities`), conferidos na lista pública de modelos.
 |---|---|---|
 | `openrouter` | `https://openrouter.ai/api/v1`, chave `OPENROUTER_API_KEY` | `max_tokens`; `provider: { require_parameters: true, data_collection: "deny" }` |
 | `azure-openai` | `AzureOpenAI` com `DefaultAzureCredential`, escopo `https://cognitiveservices.azure.com/.default`, **sem chave** | `max_completion_tokens`; endpoint em `AZURE_OPENAI_ENDPOINT`; ID do modelo = nome da implantação |
-| `fake` | `fetch` do SDK trocado por um LLM falso dentro do processo | determinístico; o ID escolhe o comportamento (`fake/always-fail`, `fake/invalid-json-once`, `fake/invalid-json-always`, `fake/echo-prompt`, e as estratégias do ensaio: `fake/momentum`, `fake/contrarian`, `fake/hold-only` e `fake/flaky-json`; `docs/ENSAIO.md`) |
+| `fake` | `fetch` do SDK trocado por um LLM falso dentro do processo | determinístico; o ID escolhe o comportamento: as falhas dos testes (`fake/always-fail`, `fake/invalid-json-once`, `fake/invalid-json-always`, `fake/echo-prompt`), que nunca vão para o elenco, e as estratégias do elenco simulado, que nunca falham (`fake/momentum`, `fake/momentum-focused`, `fake/contrarian`, `fake/contrarian-spread`, `fake/hold-only` e, para qualquer outro ID, a escolha por SHA-256, como o `fake/hash-picks`; `docs/ENSAIO.md`, seção 3) |
 
 **OpenRouter, a política de dados** (documentação consultada em 01/11/2026): `require_parameters: true` roteia só para provedores que
 aceitam todos os parâmetros pedidos ("the request won't even be routed to that provider",
@@ -272,6 +282,10 @@ resposta, já paga, vira HOLD com o IO e o custo, em vez de se perder na nova te
 Um modelo de topo por laboratório, conferido na lista pública (`GET https://openrouter.ai/api/v1/models`, sem chave) em **01/11/2026**.
 "Topo" é o que a própria descrição na lista chama de principal; as variantes `-pro` (modo de raciocínio mais caro) e os `:batch` ficam
 de fora. O arquivo é `apps/api/seasons/temporada-1.rascunho.json`.
+
+**Até a integração, este elenco aparece simulado** (seção 1): a temporada sintética usa os mesmos seis nomes e slugs com o provedor `fake`
+e uma estratégia fake para cada um (`docs/ENSAIO.md`, seção 3), e o site marca cada um como "simulado". O rascunho continua com o
+`openrouter` e os IDs abaixo: no dia, é ele que vira a temporada, e a etiqueta some sozinha.
 
 | Laboratório | ID | US$ / M entrada | US$ / M saída | JSON Schema | Esforço `medium` |
 |---|---|---|---|---|---|
@@ -354,9 +368,10 @@ leitura em vez de sair na resposta. A API pública completa (cache, rotas por da
   tem acesso ao banco", e o Postgres de produção é privado; os JSON de `apps/api/seasons/` não estão na imagem. O caminho na Azure é o painel
   `/admin` (`POST /admin/seasons` e `PATCH /admin/seasons/:id`, `docs/API.md`, seção 8), com o mesmo arquivo; o primeiro admin nasce pelo
   `account:promote` como uma execução do `job-migrate` (`docs/INFRA.md`, seção 8.6). **A parte local da etapa 8 já existe**: `arena:ensaio` cria e inicia a
-  temporada de `apps/api/seasons/ensaio.json` (quatro modelos fake com comportamentos diferentes, o Sorteio e as referências) pelos
-  mesmos `SeasonService.create` e `start` dos comandos, e roda 5 pregões seguidos sem rede (`docs/ENSAIO.md`). Os comportamentos novos do
-  provedor fake (`fake/momentum`, `fake/contrarian`, `fake/hold-only` e `fake/flaky-json`) valem também para a Temporada 0 de produção.
+  temporada de `apps/api/seasons/ensaio.json` (desde 04/11/2026, os seis modelos do elenco da Temporada 1 com estratégias do provedor
+  fake, o Sorteio e as referências; seção 1) pelos mesmos `SeasonService.create` e `start` dos comandos, e roda 5 pregões seguidos sem
+  rede (`docs/ENSAIO.md`). As estratégias do provedor fake (`fake/momentum`, `fake/momentum-focused`, `fake/contrarian`,
+  `fake/contrarian-spread` e `fake/hold-only`) valem também para a Temporada 0 de produção.
 - **As regras do briefing vêm da temporada.** O bloco `rules` do briefing (capital, duração, posições, custo e horários) é lido
   de `season.params` pelo `freeze` (`rulesOfSeasons`): o ensaio de 5 pregões anuncia 5, não 20. O limite de ordens e as faixas de
   BUY e SELL seguem vindo do contrato. Sem temporada RUNNING valem as constantes da Temporada 1 (o mesmo documento de antes, e os

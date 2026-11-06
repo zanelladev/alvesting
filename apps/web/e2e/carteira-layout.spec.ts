@@ -3,9 +3,10 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { registerVerifiedUser, signInViaApi, test } from './account-support';
 import { FIXTURE_WEB_URL, FRONT_DOOR_URL } from './api-server';
 import { addLot, type NewLot } from './carteira-support';
+import { abrirMenu } from './menu';
 
 // Mobile primeiro (plano §13) na tela da carteira (etapa 12, parte 2; docs/TELAS.md, seção 9), com o molde do conta-layout.spec.ts: em pixel-7,
-// iphone-15 e desktop, sem rolagem horizontal em 360 px, o cabeçalho em no máximo duas linhas, alvos de toque de pelo menos 44 px (os campos, os
+// iphone-15 e desktop, sem rolagem horizontal em 360 px, a folha do menu dentro da largura, alvos de toque de pelo menos 44 px (os campos, os
 // radios e os botões de cada lançamento também), nenhum erro no console, o zod fora do JavaScript da tela e acessibilidade (axe) sem violação
 // séria ou crítica, e sem nenhuma violação de qualquer impacto em 360 px. Cada estado vale por si, porque é onde a tela mais muda: vazia, com
 // lançamentos, com os erros do formulário, editando, confirmando o apagar e com os valores nos tetos. O desktop também roda em 360 px: o que
@@ -133,7 +134,7 @@ for (const screen of SCREENS) {
   test.describe(`carteira ${screen.name}`, () => {
     test.use({ baseURL: screen.fixture ? FIXTURE_WEB_URL : FRONT_DOOR_URL });
 
-    test('em 360 px não rola na horizontal, o cabeçalho cabe em duas linhas e os alvos de toque têm pelo menos 44 px', async ({
+    test('em 360 px não rola na horizontal, a folha do menu cabe na largura e os alvos de toque têm pelo menos 44 px', async ({
       page,
       request,
       ip,
@@ -149,23 +150,23 @@ for (const screen of SCREENS) {
       expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
       expect(bodyWidth).toBeLessThanOrEqual(clientWidth);
 
-      // o cabeçalho cabe na largura, e o menu (com o link "Carteira") fica em no máximo duas linhas. As contagens vêm antes das medidas: sem
-      // elas os laços passariam em vazio se o cabeçalho sumisse (o endereço de cada link é conferido no layout.spec.ts)
+      // o cabeçalho cabe na largura, e a folha do menu (com o link "Carteira") abre com os sete links dentro dela (ADR 0034: em 360 px o
+      // menu é a folha que o botão "Menu" abre, uma linha por tela). As contagens vêm antes das medidas: sem elas os laços passariam em
+      // vazio se o cabeçalho sumisse (o endereço de cada link é conferido no layout.spec.ts)
+      await abrirMenu(page);
       const bannerLinks = await page.getByRole('banner').getByRole('link').all();
-      expect(bannerLinks.length).toBeGreaterThanOrEqual(7);
+      expect(bannerLinks.length).toBeGreaterThanOrEqual(8);
       for (const link of bannerLinks) {
         const box = (await link.boundingBox())!;
         expect(box.x, await link.innerText()).toBeGreaterThanOrEqual(0);
         expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(360);
+        expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
       }
-      const menu = await page
-        .getByRole('navigation', { name: 'Principal' })
-        .getByRole('link')
-        .all();
-      expect(menu).toHaveLength(7);
-      const rows = new Set<number>();
-      for (const link of menu) rows.add(Math.round((await link.boundingBox())!.y));
-      expect(rows.size).toBeLessThanOrEqual(2);
+      await expect(
+        page.getByRole('navigation', { name: 'Principal' }).getByRole('link'),
+      ).toHaveCount(7);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('navigation', { name: 'Principal' })).toBeHidden();
 
       // o Safari do iPhone dá zoom na página ao focar um campo de texto com fonte menor que 16 px, e o WebKit do Playwright não reproduz isso: a
       // medida é o que protege
@@ -230,6 +231,7 @@ for (const screen of SCREENS) {
       await expect(page.getByRole('main')).toContainText(
         'Valores estimados pelo último fechamento disponível; não é recomendação de investimento.',
       );
+      await abrirMenu(page);
       await expect(
         page.getByRole('banner').getByRole('link', { name: 'Carteira', exact: true }),
       ).toHaveAttribute('href', '/carteira');

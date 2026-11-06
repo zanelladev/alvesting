@@ -258,6 +258,32 @@ describe('o que o painel mostra', () => {
     expect(out).toMatch(/Confirmo: reenviar a mensagem eod:2026-11-03 para a fila market/);
   });
 
+  // A DLQ que não deu para ler é um erro de leitura, e não "ainda não há nada": a caixa de erro do sistema, e não o vazio tracejado. Com
+  // todas as filas sem leitura (o Service Bus fora, ou a api sem ele, como na demo), o mesmo motivo seis vezes empurrava o painel para
+  // baixo: uma frase só para a seção.
+  it('filas: a DLQ sem leitura é a caixa de erro, e não o vazio; todas sem leitura viram uma frase só', async () => {
+    const out = await render();
+    expect(out).toMatch(
+      /<p class="[^"]*border-semantic-error[^"]*">Não deu para ler a DLQ desta fila agora/,
+    );
+    expect(out).not.toMatch(/class="vazio">Não deu para ler/);
+    readAdmin.mockResolvedValue({
+      ...DATA,
+      jobs: {
+        ...JOBS,
+        queues: JOBS.queues.map(({ queue }) => ({
+          queue,
+          deadLetters: { status: 'unavailable' as const },
+        })),
+      },
+    });
+    const all = await render();
+    expect(all.match(/Não deu para ler/g)).toHaveLength(1);
+    expect(all).toMatch(
+      /<p class="[^"]*border-semantic-error[^"]*">Não deu para ler a DLQ de nenhuma fila agora/,
+    );
+  });
+
   // A mesma mensagem pode estar duas vezes na DLQ (o MessageId é determinístico e o Service Bus Basic não detecta duplicata): cada
   // formulário de reenvio precisa de um nome próprio (landmark único, axe), então a posição entra no nome. Uma mensagem que outra
   // ferramenta pôs na DLQ, com o id fora do padrão, é listada sem o botão (a rota de reenvio responderia 400).

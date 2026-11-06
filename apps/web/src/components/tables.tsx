@@ -7,18 +7,23 @@ import {
   formatQuantity,
   formatUsdMicro,
 } from '../lib/format';
-import { LINK, NavLink, ROW, TABLE, TD, TH, TableScroll } from './ui';
+import { LINK, NavLink, ROW, SimulatedTag, TABLE, TD, TH, TableScroll, isSimulated } from './ui';
 
 // As tabelas da arena. Densas e legíveis: números em fonte mono e tabulares, uma linha por competidor ou posição, com o nome como
-// cabeçalho da linha (o leitor de tela lê "Fake Hold, retorno...") e preso à esquerda quando a tabela rola dentro da própria caixa
-// (ui.tsx, TableScroll). As colunas que mais dizem vêm primeiro, para caberem em 360 px sem rolar: o resto está à direita. Valor que
-// não existe (percentil antes do Monte Carlo, acerto sem venda) é "—".
+// cabeçalho da linha (o leitor de tela lê "CDI, retorno...", e "Gemini 4 Argon simulado, retorno..." com a etiqueta da arena simulada)
+// e preso à esquerda quando a tabela rola dentro da própria caixa (ui.tsx, TableScroll). As colunas que mais dizem vêm primeiro, para
+// caberem em 360 px sem rolar: o resto está à direita. Valor que não existe (percentil antes do Monte Carlo, acerto sem venda) é "—".
 
 const DASH = '—';
 const NAME = `${LINK} font-sans`;
-// o nome nunca quebra no meio de uma palavra, nem o ticker em dois; só nos espaços. (A tabela de posições da carteira, wallet-panels.tsx, usa
-// o cabeçalho de coluna e a célula presa à esquerda daqui.)
-export const STICKY = 'sticky left-0 min-w-28 bg-paper px-1.5 py-1 text-left font-normal sm:px-2';
+// A direção de um número com sinal, para o glifo ▲ ▼ ■ que o CSS põe antes dele (`[data-dir]` em globals.css): fora do texto, que o leitor de
+// tela e o e2e leem. Só em valor com sinal; o que não existe ("—") fica sem.
+export const direction = (value: number) => (value > 0 ? 'up' : value < 0 ? 'down' : 'flat');
+// o nome nunca quebra no meio de uma palavra, nem o ticker em dois; só nos espaços, e só abaixo de 1024 px (para caber em 360 px): na tela
+// larga, o nome e a etiqueta "simulado" ficam numa linha, e a linha do nome comprido tem a altura das outras. (A tabela de posições da
+// carteira, wallet-panels.tsx, usa o cabeçalho de coluna e a célula presa à esquerda daqui.)
+export const STICKY =
+  'sticky left-0 min-w-28 bg-surface-card px-1.5 py-1 text-left font-normal text-ink sm:px-3 lg:whitespace-nowrap';
 
 export const Th = ({ children }: { children: string }) => (
   <th scope="col" className={TH}>
@@ -68,18 +73,31 @@ export function LeaderboardTable({
                 <NavLink href={`/modelos/${row.competitor.slug}`} className={NAME}>
                   {row.competitor.name}
                 </NavLink>
+                {isSimulated(row.competitor) ? <SimulatedTag /> : null}
               </th>
-              <td className={TD}>{formatBps(row.returnBps)}</td>
+              <td className={TD} data-dir={direction(row.returnBps)}>
+                {formatBps(row.returnBps)}
+              </td>
               <td className={TD}>
                 {row.percentileBps === null ? DASH : formatPercentile(row.percentileBps)}
               </td>
               {compact ? null : (
                 <>
                   <td className={TD}>{formatBRL(row.equityCents)}</td>
-                  <td className={TD}>
+                  <td
+                    className={TD}
+                    data-dir={
+                      row.excessEqualWeightBps === null
+                        ? undefined
+                        : direction(row.excessEqualWeightBps)
+                    }
+                  >
                     {row.excessEqualWeightBps === null ? DASH : formatBps(row.excessEqualWeightBps)}
                   </td>
-                  <td className={TD}>
+                  <td
+                    className={TD}
+                    data-dir={row.excessCdiBps === null ? undefined : direction(row.excessCdiBps)}
+                  >
                     {row.excessCdiBps === null ? DASH : formatBps(row.excessCdiBps)}
                   </td>
                   <td className={TD}>{formatBps(row.maxDrawdownBps, { signed: false })}</td>
@@ -110,6 +128,8 @@ export interface PositionRow {
   pnlCents: number;
   // a ação não teve negócio no dia: o valor é pelo último fechamento conhecido
   stale: boolean;
+  // quem tem a ação é um modelo da arena simulada (ui.tsx, SimulatedTag)
+  simulated?: boolean;
 }
 
 // A carteira de um modelo (primeira coluna: a ação) ou quem tem uma ação (primeira coluna: o competidor). O fechamento de cada ação não
@@ -146,6 +166,7 @@ export function PositionsTable({
                 >
                   {row.label}
                 </NavLink>
+                {row.simulated ? <SimulatedTag /> : null}
               </th>
               <td className={TD}>
                 {formatBRL(row.valueCents)}
@@ -153,7 +174,9 @@ export function PositionsTable({
                   <span className="block font-sans text-xs text-muted">sem negócio no dia</span>
                 ) : null}
               </td>
-              <td className={TD}>{formatBRLSigned(row.pnlCents)}</td>
+              <td className={TD} data-dir={direction(row.pnlCents)}>
+                {formatBRLSigned(row.pnlCents)}
+              </td>
               <td className={TD}>{formatQuantity(row.quantity)}</td>
               <td className={TD}>{formatBRL(row.avgPriceCents)}</td>
             </tr>

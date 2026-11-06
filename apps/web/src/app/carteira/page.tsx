@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import type { Portfolio } from '@alvesting/contracts';
 import { WalletLots, type LotView } from '../../components/wallet-lots';
 import { WalletPositions, WalletSummary } from '../../components/wallet-panels';
-import { Section } from '../../components/ui';
+import { Aviso, CAIXA, PageHead, Section } from '../../components/ui';
 import { authCookieHeader } from '../../lib/account';
 import { ApiError } from '../../lib/api';
 import { readPortfolio } from '../../lib/wallet';
@@ -64,24 +64,24 @@ export default withApiDown(async function WalletPage() {
 
   return (
     <>
-      <header className="space-y-2">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">Minha carteira</h1>
-        <p className="max-w-prose">
+      <PageHead title="Minha carteira">
+        <p className="max-w-prose text-lead text-pretty">
           As ações que você comprou, anotadas por você. A Alvesting calcula o preço médio, o valor
           estimado e o ganho ou a perda. Ela não compra nem vende nada, não fala com a sua corretora
           e não confere os lançamentos: valem os números que você digita.
         </p>
         <noscript>
-          <p className="max-w-prose border-2 border-ink p-3 font-mono font-semibold">
+          <p className={`max-w-prose ${CAIXA}`}>
             Lançar, editar e apagar compras precisam de JavaScript. Ative o JavaScript no navegador
             e recarregue a página.
           </p>
         </noscript>
-      </header>
+      </PageHead>
 
-      <p className="max-w-prose border-2 border-ink p-3 font-mono font-semibold">
+      {/* o aviso da carteira: [!] em cinza (não há cor de aviso no sistema visual; o âmbar leria como "escolhido") */}
+      <Aviso className="mt-12">
         Valores estimados pelo último fechamento disponível; não é recomendação de investimento.
-      </p>
+      </Aviso>
 
       {wallet.lots.length > 0 ? (
         <>

@@ -18,31 +18,45 @@
   "competitors": [
     {
       "kind": "MODEL",
-      "slug": "fake-momentum",
-      "name": "Fake Momentum",
+      "slug": "claude-opus-5-5",
+      "name": "Claude Opus 5.5",
       "provider": "fake",
       "modelId": "fake/momentum"
     },
     {
       "kind": "MODEL",
-      "slug": "fake-contrarian",
-      "name": "Fake Contrarian",
+      "slug": "gpt-6-1-sol",
+      "name": "GPT-6.1 Sol",
       "provider": "fake",
       "modelId": "fake/contrarian"
     },
     {
       "kind": "MODEL",
-      "slug": "fake-hold",
-      "name": "Fake Hold",
+      "slug": "gemini-4-argon",
+      "name": "Gemini 4 Argon",
       "provider": "fake",
       "modelId": "fake/hold-only"
     },
     {
       "kind": "MODEL",
-      "slug": "fake-flaky",
-      "name": "Fake Flaky",
+      "slug": "grok-4-7",
+      "name": "Grok 4.7",
       "provider": "fake",
-      "modelId": "fake/flaky-json"
+      "modelId": "fake/hash-picks"
+    },
+    {
+      "kind": "MODEL",
+      "slug": "deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro (0813)",
+      "provider": "fake",
+      "modelId": "fake/momentum-focused"
+    },
+    {
+      "kind": "MODEL",
+      "slug": "qwen3-8-max",
+      "name": "Qwen3.8 Max (0902)",
+      "provider": "fake",
+      "modelId": "fake/contrarian-spread"
     },
     { "kind": "RANDOM", "slug": "sorteio", "name": "Sorteio" },
     {

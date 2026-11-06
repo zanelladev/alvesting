@@ -14,6 +14,7 @@ import type {
   DecisionsPage,
   Equity,
   InternalBars,
+  InternalTape,
   Leaderboard,
   NewsPage,
   Portfolio,
@@ -401,6 +402,12 @@ function route(
     if (barsOf === 'RECU3') return notFound();
     reads.set(barsOf, (reads.get(barsOf) ?? 0) + 1);
     return ok({ bars: BARS[barsOf] ?? [] } satisfies InternalBars);
+  }
+  // a fita da home (a rota interna do universo da semana): a temporada daqui não teve ciclo, então a resposta é a vazia, como a da api de
+  // verdade, e a home mostra a fita do BOVA11 e do macro (aqui, "sem cotações ainda")
+  if (rest === '/interno/fita') {
+    if (authorization !== `Bearer ${QUOTES_SECRET}`) return notFound();
+    return ok({ date: null, rows: [] } satisfies InternalTape);
   }
   const ticker = /^\/stocks\/([A-Z0-9]+)$/.exec(rest)?.[1];
   if (ticker === 'SEMN3' || ticker === 'COTA3' || ticker === 'CACH3' || ticker === 'RECU3') {

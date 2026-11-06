@@ -23,7 +23,7 @@ export function withApiDown<P>(page: (props: P) => Promise<ReactNode>) {
         <ApiDown
           retry={
             // recarrega a mesma URL (com a query): funciona sem JavaScript, e a leitura que falhou não ficou no cache de dados
-            <a href="" className={BUTTON}>
+            <a href="" className={`${BUTTON} btn-primary`}>
               Tentar de novo
             </a>
           }

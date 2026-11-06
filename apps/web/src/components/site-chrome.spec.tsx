@@ -10,14 +10,14 @@ vi.mock('../lib/quotes', () => ({ REFERENCE_TICKER: 'BOVA11', readBars }));
 vi.mock('next/server', () => ({ connection: () => Promise.resolve() }));
 const { QuotesDate, SiteFooter, SiteHeader } = await import('./site-chrome');
 
-// O cabeçalho (etapa 12, parte 2): os links fixos, na ordem. Ele não lê a sessão (as páginas públicas da arena são estáticas, com cache de
-// dados, e o LCP da home tem pouca folga contra o teto de 2,5 s), então a Carteira e a Conta são o mesmo link com ou sem login. O e2e
-// (layout.spec.ts) confere que o menu cabe em 360 px em no máximo duas linhas.
+// O cabeçalho (etapa 12, parte 2; o sistema visual ascii-ui, ADR 0034): os links fixos, na ordem. Ele não lê a sessão (as páginas públicas
+// da arena são estáticas, com cache de dados, e o LCP da home tem pouca folga contra o teto de 2,5 s), então a Carteira e a Conta são o
+// mesmo link com ou sem login. O e2e (layout.spec.ts) confere a folha do menu em 360 px e a cápsula em 1280 px.
 describe('SiteHeader', () => {
   const out = renderToStaticMarkup(<SiteHeader />);
-  // (a ordem dos atributos do <a> é do `Link` do Next: o endereço é lido pelo nome)
+  // (a ordem dos atributos do <a> é do `Link` do Next: o endereço é lido pelo nome; o texto, sem o SVG da marca)
   const links = [...out.matchAll(/<a\b([^>]*)>(.*?)<\/a>/g)].map((m) => [
-    m[2],
+    m[2]!.replace(/<[^>]+>/g, ''),
     /href="([^"]*)"/.exec(m[1]!)?.[1],
   ]);
 
@@ -34,9 +34,23 @@ describe('SiteHeader', () => {
     ]);
   });
 
-  it('o menu tem nome e cada link é de 44 px (a classe `link`)', () => {
-    expect(out).toContain('<nav aria-label="Principal">');
-    expect(out.match(/class="link[^"]*"/g)).toHaveLength(8);
+  // Abaixo de 1024 px o menu é uma folha `popover` aberta pelo botão "Menu", sem JavaScript; a partir de 1024 px, a cápsula. As classes dão
+  // a cada link a caixa de 44 px (globals.css), com a pílula visível por dentro.
+  it('o menu tem nome, é a folha que o botão "Menu" abre, e os links têm as classes da cápsula e das ações', () => {
+    expect(out).toContain('<nav id="menu" popover="auto" aria-label="Principal" class="menu">');
+    expect(out).toMatch(
+      /<button type="button" popoverTarget="menu"[^>]*>.*<span class="sr-only">Menu<\/span><\/button>/,
+    );
+    expect(out.match(/class="capsule-item"/g)).toHaveLength(5);
+    expect(out).toContain('<a href="/carteira" class="acao acao-primaria">Carteira</a>');
+    expect(out).toContain('<a href="/conta" class="acao">Conta</a>');
+  });
+
+  // O cabeçalho é do layout, que não remonta numa navegação suave: com o `Link` do Next a folha aberta ficaria aberta sobre a página nova.
+  // Os links do menu são `<a>` comuns (o do Next leva o `prefetch` e vem com os atributos em outra ordem).
+  it('os links do menu são <a> comuns: a navegação inteira fecha a folha', () => {
+    const menu = /<nav id="menu"[^>]*>(.*)<\/nav>/.exec(out)![1]!;
+    expect(menu.match(/<a href="[^"]+" class="[^"]+">/g)).toHaveLength(7);
   });
 
   it('não lê a sessão nem o cookie: nada de login ou de nome de usuário no cabeçalho', () => {

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { SignInForm } from '../../components/account-forms';
-import { LINK, NavLink } from '../../components/ui';
+import { CAIXA, CAIXA_ERRO, LINK, NavLink, PageHead } from '../../components/ui';
 import { readProviders } from '../../lib/account';
 import { first, type SearchParams } from '../../lib/page';
 import { safeInternalPath } from '../../lib/safe-path';
@@ -46,27 +46,25 @@ export default withApiDown(async function SignInPage({
 
   return (
     <>
-      <header className="space-y-2">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">Entrar</h1>
-        <p className="max-w-prose">
+      <PageHead title="Entrar">
+        <p className="max-w-prose text-lead text-pretty">
           Entre com o e-mail e a senha da sua conta. A arena pública pode ser lida sem conta.
         </p>
-      </header>
+        {/* O aviso sai do servidor, logo abaixo do título e na ordem de leitura: a confirmação de uma ação sem volta (a exclusão da conta)
+            não pode ficar abaixo do botão, fora da tela no celular, nem numa região viva que já nasce com texto (o leitor de tela não a
+            anuncia ao carregar a página). */}
+        {notice ? <p className={`max-w-md ${CAIXA}`}>{notice}</p> : null}
+        {googleError ? (
+          <p role="alert" className={`max-w-md ${CAIXA_ERRO}`}>
+            {lookup(GOOGLE_ERRORS, googleError) ?? GOOGLE_FALLBACK}
+          </p>
+        ) : null}
+      </PageHead>
 
-      {/* O aviso sai do servidor, logo abaixo do título e na ordem de leitura: a confirmação de uma ação sem volta (a exclusão da conta) não
-          pode ficar abaixo do botão, fora da tela no celular, nem numa região viva que já nasce com texto (o leitor de tela não a anuncia
-          ao carregar a página). */}
-      {notice ? (
-        <p className="max-w-md border-2 border-ink p-3 font-mono font-semibold">{notice}</p>
-      ) : null}
-
-      {googleError ? (
-        <p role="alert" className="max-w-md border-2 border-ink p-3 font-mono font-semibold">
-          {lookup(GOOGLE_ERRORS, googleError) ?? GOOGLE_FALLBACK}
-        </p>
-      ) : null}
-
-      <SignInForm next={next} google={providers.google} />
+      {/* o formulário num cartão (as regras de formulário do Arc: o campo de 44 px, a pílula branca no envio, o DotSpinner enquanto envia) */}
+      <div className="card mt-12 max-w-md">
+        <SignInForm next={next} google={providers.google} />
+      </div>
 
       <ul className="flex flex-wrap gap-x-6">
         <li>

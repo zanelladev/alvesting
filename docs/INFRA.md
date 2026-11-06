@@ -182,6 +182,7 @@ comando (seção 6). O `check.mjs` prova que a rotina é o primeiro deploy menos
   depois do `job-migrate` (passo 6 da seção 6); até lá o `ca-api` sobe (o `/health` não consulta o banco) mas as rotas que consultam falham com `password authentication failed`.
   A migration `20261103110000_api_role_least_privilege` aperta o papel depois da revisão: tira o `UPDATE` de `verification` (o Better Auth sem plugin só cria, procura e consome) e o `CREATE` do esquema `public` de PUBLIC
   (o PostgreSQL 15 em diante já não o dá; num servidor com o ACL antigo a api herdaria o `CREATE` e criaria tabela e função), e o `db:roles` **recusa** o login que ganhou atributo de administração, outro grupo ou `CREATE` no `public` por fora.
+  A migration `20261104120000_api_role_universe_read` dá ao papel o `SELECT` (e só ele) em `universe_snapshot` e `universe_member`, que a api não lia: a fita da home (`GET /api/v1/interno/fita`, `docs/API.md`, seção 6) lê o universo da semana do último ciclo. Quem congela o universo continua sendo o worker.
   **O que o login da api ainda pode (risco aceito, ADR 0028):** (a) gravar `user.role` (`INSERT`/`UPDATE` em `user`): criar ou promover um admin direto, porque a regra "o papel só muda pelo `account:promote`" vale na
   aplicação e não no banco; fechá-la pede um gatilho em `user.role` que só o login administrador passe; (b) travar uma tabela inteira (`LOCK TABLE ... IN ACCESS EXCLUSIVE MODE` vale em toda tabela em que ele tem `UPDATE` ou
   `DELETE`: `user`, `session`, `account`, `verification`, `job_run`, `season`, `cycle`, `competitor`, `corporate_event` e, desde a etapa 12, `portfolio_lot`, o que travaria a carteira de todo mundo), o que é negação de serviço; (c) desfazer o próprio limite (`ALTER ROLE alvesting_api RESET statement_timeout`:
@@ -289,8 +290,8 @@ Os mesmos números estão em `packages/contracts` e em `docker/servicebus/Config
   contra a do plano e que login, conta, admin, chat, health e Swagger não casam nenhum padrão da rota com cache. Mais em `docs/API.md`, seção 2.
 - **WAF** `wafalvesting` (Prevention, só regras próprias, que é o que o Standard permite), ligado aos dois endpoints (e ao domínio próprio, se houver) por uma política
   de segurança, com a regra `BlockInterno` (prioridade 10: bloqueia toda URL que contém `/interno/`, sem diferença de caixa e decodificada;
-  é a rota do worker, que chama o ingress do `ca-web` direto, e a rota interna de cotações da api, que o site lê pelo ingress do `ca-api`
-  (`/api/v1/interno/barras/:ticker`, seção 3.3 e `docs/API.md`, seção 6): nada legítimo as pede pelo Front Door) e duas regras de rate limit por IP
+  é a rota do worker, que chama o ingress do `ca-web` direto, e as rotas internas de cotações da api, que o site lê pelo ingress do `ca-api`
+  (`/api/v1/interno/barras/:ticker` e `/api/v1/interno/fita`, seção 3.3 e `docs/API.md`, seção 6): nada legítimo as pede pelo Front Door) e duas regras de rate limit por IP
   (a contagem é por `SocketAddr`, o IP que o WAF vê):
   `RateLimitPorIp`, 600 por minuto (`wafRateLimitPerMinute`) em toda requisição, e `RateLimitAuth`, 30 por minuto em
   `/api/auth/*` (login e cadastro do Better Auth, contra credential stuffing; a URL é comparada sem diferença de caixa e
@@ -343,7 +344,7 @@ OpenAI não tem chave (`disableLocalAuth`), o chat entra por identidade (seção
 |---|---|---|
 | `better-auth-secret` | gerado ao acaso | `BETTER_AUTH_SECRET` (api) |
 | `revalidate-secret` | gerado ao acaso | `REVALIDATE_SECRET` (web e worker) |
-| `quotes-secret` | gerado ao acaso (384 bits) | `QUOTES_SECRET` (web e api): o segredo da rota interna de cotações (`docs/API.md`, seção 6; ADR 0033) |
+| `quotes-secret` | gerado ao acaso (384 bits) | `QUOTES_SECRET` (web e api): o segredo das rotas internas de cotações, as barras e a fita da home (`docs/API.md`, seção 6; ADR 0033) |
 | `openrouter-api-key` | chave do OpenRouter | `OPENROUTER_API_KEY` (decisões) |
 | `google-oauth-client-secret` | secret do cliente OAuth | `GOOGLE_CLIENT_SECRET` (api) |
 | `brapi-token` | token da brapi | `BRAPI_TOKEN` (worker) |
@@ -405,7 +406,7 @@ um segredo do Key Vault (origem "segredo"), que o workload só recebe se a ident
 | `API_INTERNAL_URL` | `ca-web` | valor: `https://ca-api.<domínio do ambiente>` | sempre | O SSR da web lê a API pública direto pelo ingress (`apps/web/src/lib/api.ts`, `docs/API.md`), mandando o `X-Azure-FDID` com o próprio `FRONT_DOOR_ID` (seção 3.3) |
 | `WEB_INTERNAL_URL` | `ca-worker-data` | valor: `https://ca-web.<domínio do ambiente>` | sempre | O worker pede a revalidação ao site depois da liquidação (`POST /interno/revalidar`, `docs/JOBS.md`, 4.2), com o `REVALIDATE_SECRET`. Em produção o worker só aceita `https` (ou o loopback), porque o Bearer vai nesse endereço; a chamada não segue redirecionamento |
 | `REVALIDATE_SECRET` | `ca-web`, `ca-worker-data` | segredo `revalidate-secret` | sempre | Autentica a revalidação do worker para o site (`Authorization: Bearer`, comparado em tempo constante; o `proxy.ts` do site deixa passar só `POST /interno/revalidar` com ele, seção 3.3). **Pelo menos 32 caracteres**: o worker recusa subir com um mais curto, e o site trata o curto como ausente. Sem ele a rota responde 503 |
-| `QUOTES_SECRET` | `ca-web`, `ca-api` | segredo `quotes-secret` | sempre | O segredo da rota interna de cotações: a API pública não entrega a barra de preço (a licença da brapi proíbe entregar os Dados como feed, API ou base bruta), então o site lê as barras de `GET /api/v1/interno/barras/:ticker` pelo `API_INTERNAL_URL`, com `Authorization: Bearer <segredo>` (`apps/web/src/lib/quotes.ts`, módulo só do servidor: a variável não tem `NEXT_PUBLIC_`). A api o confere em tempo constante e responde 404, igual ao da rota que não existe, a quem não o traz; sem ele no ambiente a rota fica desligada. **Pelo menos 32 caracteres** (a api recusa subir com um mais curto, e **em produção com o valor de dev do `.env.example`**; o site trata o curto como erro de configuração). O **mesmo** valor nos dois: quem girar um só derruba a leitura (a home mostra "não foi possível carregar os dados"; `docs/RUNBOOK.md`, seção 4). `docs/API.md`, seção 6 |
+| `QUOTES_SECRET` | `ca-web`, `ca-api` | segredo `quotes-secret` | sempre | O segredo das rotas internas de cotações: a API pública não entrega cotação bruta (a licença da brapi proíbe entregar os Dados como feed, API ou base bruta), então o site lê as barras de `GET /api/v1/interno/barras/:ticker` e a fita da home de `GET /api/v1/interno/fita` pelo `API_INTERNAL_URL`, com `Authorization: Bearer <segredo>` (`apps/web/src/lib/quotes.ts`, módulo só do servidor: a variável não tem `NEXT_PUBLIC_`). A api o confere em tempo constante e responde 404, igual ao da rota que não existe, a quem não o traz; sem ele no ambiente as rotas ficam desligadas. **Pelo menos 32 caracteres** (a api recusa subir com um mais curto, e **em produção com o valor de dev do `.env.example`**; o site trata o curto como erro de configuração). O **mesmo** valor nos dois: quem girar um só derruba a leitura (a home mostra "não foi possível carregar os dados"; `docs/RUNBOOK.md`, seção 4). `docs/API.md`, seção 6 |
 | `FRONT_DOOR_ID` | `ca-web`, `ca-api` | segredo `front-door-id` | padrão | ID do perfil do Front Door: o que `X-Azure-FDID` tem de trazer (seção 3.3) |
 | `ORIGIN_LOCK` | `ca-web`, `ca-api` | valor: `front-door` | padrão | Contrato fail closed da etapa 3: em produção o app **recusa subir** se `ORIGIN_LOCK=front-door` e `FRONT_DOOR_ID` vier vazio (seção 3.3) |
 | `FRONT_DOOR_ENDPOINT_ID` | `ca-worker-data` | valor: ID do endpoint do Front Door | padrão | O ID do endpoint (`/subscriptions/.../afdEndpoints/alvesting`) para o purge de `/api/v1/*` depois da liquidação, por `POST .../purge?api-version=2025-06-01` na ARM REST (a `id-alvesting-worker` tem só a ação de purge; `docs/JOBS.md`, 4.2). A API valida o formato antes de concatená-lo a `management.azure.com` |
@@ -607,11 +608,11 @@ menos de 32 caracteres) a rota responde 503. A rota nem precisa ser alcançável
 bloqueia `/interno/` na borda (seção 2.5), então só o endereço direto do `ca-web` (trava e segredo) leva até ela. Private Link
 (que fecharia a origem na rede) só existe no Front Door Premium (ADR 0003).
 
-**A rota interna de cotações da api** (`GET /api/v1/interno/barras/:ticker`; `docs/API.md`, seção 6; ADR 0033) **não é exceção da trava**: o SSR do
-site a chama pelo ingress do `ca-api` com o `X-Azure-FDID` (como lê o resto da API) e mais o segredo `QUOTES_SECRET` em `Authorization: Bearer`, e a
-trava vem antes (sem o `X-Azure-FDID` é 403, até com o segredo certo). O segredo é conferido em tempo constante e, sem ele ou com o errado, a resposta
-é um 404 igual ao da rota que não existe (a rota não se confirma a quem não a conhece). Ela fica fora do Swagger, com `no-store`, fora da rota com
-cache do Front Door (o `check.mjs` lê o controlador e confere) e, pelo `/interno/` no caminho, bloqueada pelo WAF na borda.
+**As rotas internas de cotações da api** (`GET /api/v1/interno/barras/:ticker` e `GET /api/v1/interno/fita`; `docs/API.md`, seção 6; ADR 0033) **não são exceção da
+trava**: o SSR do site as chama pelo ingress do `ca-api` com o `X-Azure-FDID` (como lê o resto da API) e mais o segredo `QUOTES_SECRET` em `Authorization: Bearer`,
+e a trava vem antes (sem o `X-Azure-FDID` é 403, até com o segredo certo). O segredo é conferido em tempo constante e, sem ele ou com o errado, a resposta
+é um 404 igual ao da rota que não existe (a rota não se confirma a quem não a conhece). Elas ficam fora do Swagger, com `no-store`, fora da rota com
+cache do Front Door (o `check.mjs` lê o controlador e confere) e, pelo `/interno/` no caminho, bloqueadas pelo WAF na borda.
 
 **O que a infra entrega e o que ela NÃO prova.** A infra entrega o ID (segredo `front-door-id`, `FRONT_DOOR_ID`) e o sinal
 `ORIGIN_LOCK=front-door`. Quem recusa o pedido é o middleware da etapa 3, e **até ele existir nada na rede impede que se chame
@@ -1406,7 +1407,7 @@ e usa `bicep snapshot`, que avalia o template localmente para cada perfil, sem A
 - **o login da api e as senhas do Postgres:** a `ca-api` usa o `database-url-api` no `DATABASE_URL` (e não o do administrador), o `job-migrate` o recebe em `API_DATABASE_URL` e roda o `migrate deploy`
   e, só se deu certo, o `db:roles`; só a api e o migrate leem o `database-url-api`, e o URL é `alvesting_api`, no banco `alvesting`, com TLS; as duas senhas vêm do ambiente, são `@secure` e têm trava de tamanho (16 e 32)
   no módulo do banco;
-- **a rota interna de cotações:** o `check.mjs` lê o controlador (`modules/quotes`) e afirma que o caminho (`/api/v1/interno/barras/x`) não casa nenhum padrão da rota com cache do Front Door, está em `NEVER_CACHED` e
+- **as rotas internas de cotações:** o `check.mjs` lê o controlador (`modules/quotes`) e afirma que cada caminho (`/api/v1/interno/barras/x` e `/api/v1/interno/fita`) não casa nenhum padrão da rota com cache do Front Door, está em `NEVER_CACHED` e
   contém o que a regra `BlockInterno` do WAF bloqueia (`/interno/`, que a regra confere inteira: ação, variável, operador, valor e transformações), e que o `quotes-secret` é semeado (aleatório e longo, nunca impresso) e lido só pelo web e pela api;
 - **o blue/green no Front Door:** dois endpoints, quatro grupos de origem (os do green com o host `<app>---green.<domínio>` do mesmo ambiente do app), duas rotas do green sem cache e sem domínio próprio, o WAF
   nos dois endpoints, a saída `greenSiteUrl`, e o alerta de origem doente só nos grupos `web` e `api`;

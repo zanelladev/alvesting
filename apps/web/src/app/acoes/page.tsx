@@ -1,11 +1,21 @@
 import type { Metadata } from 'next';
 import { stocksQuerySchema } from '@alvesting/contracts';
-import { Empty, LINK, NavLink, SearchForm } from '../../components/ui';
+import {
+  CAIXA_ERRO,
+  Empty,
+  LINK,
+  NavLink,
+  PageHead,
+  ROW,
+  SearchForm,
+  Section,
+} from '../../components/ui';
 import { api } from '../../lib/api';
 import { first, orNotFound, type SearchParams } from '../../lib/page';
 import { withApiDown } from '../../lib/with-api-down';
 
-// A busca de ações (plano §3): por ticker ou por nome, até 20 resultados. Formulário GET: funciona sem JavaScript.
+// A busca de ações (plano §3; o desenho é o da v1, ADR 0034): por ticker ou por nome, até 20 resultados, um por linha num painel (o ticker na
+// mono e o nome). Formulário GET: funciona sem JavaScript.
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Ações' };
 
@@ -21,9 +31,8 @@ export default withApiDown(async function StocksPage({
 
   return (
     <>
-      <header className="space-y-3">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">Ações</h1>
-        <p className="max-w-prose">
+      <PageHead title="Ações">
+        <p className="max-w-prose text-lead text-pretty">
           Busque uma ação do universo da arena pelo ticker ou pelo nome. A página da ação mostra as
           velas recentes, quem a tem, o que os modelos decidiram sobre ela e as notícias.
         </p>
@@ -36,34 +45,37 @@ export default withApiDown(async function StocksPage({
           maxLength={40}
           invalidId={parsed && !parsed.success ? 'aviso-busca' : undefined}
         />
-      </header>
+        {/* o aviso fica junto do campo, no tom do erro de formulário (form-kit.tsx) */}
+        {parsed && !parsed.success ? (
+          <p id="aviso-busca" role="alert" className={`max-w-md ${CAIXA_ERRO}`}>
+            Busca inválida: use até 40 caracteres, sem caracteres de controle.
+          </p>
+        ) : null}
+      </PageHead>
 
-      {parsed && !parsed.success ? (
-        <p
-          id="aviso-busca"
-          role="alert"
-          className="border-2 border-ink p-3 font-mono font-semibold"
-        >
-          Busca inválida: use até 40 caracteres, sem caracteres de controle.
-        </p>
-      ) : found ? (
-        found.rows.length > 0 ? (
-          <ul aria-label="Resultados da busca" className="space-y-1">
-            {found.rows.map((stock) => (
-              <li key={stock.ticker} className="flex flex-wrap items-center gap-x-3">
-                <NavLink
-                  href={`/acoes/${stock.ticker}`}
-                  className={`${LINK} font-mono font-semibold`}
+      {found ? (
+        <Section id="resultados" title="Resultados">
+          {found.rows.length > 0 ? (
+            <ul
+              aria-label="Resultados da busca"
+              className="rounded-panel border border-hairline bg-surface-card px-4"
+            >
+              {found.rows.map((stock) => (
+                <li
+                  key={stock.ticker}
+                  className={`${ROW} flex flex-wrap items-center gap-x-4 py-1 first:border-t-0`}
                 >
-                  {stock.ticker}
-                </NavLink>
-                <span className="min-w-0">{stock.name}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Empty>Nenhuma ação encontrada para “{typed}”.</Empty>
-        )
+                  <NavLink href={`/acoes/${stock.ticker}`} className={`${LINK} min-w-16 font-mono`}>
+                    {stock.ticker}
+                  </NavLink>
+                  <span className="min-w-0">{stock.name}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty>Nenhuma ação encontrada para “{typed}”.</Empty>
+          )}
+        </Section>
       ) : null}
     </>
   );

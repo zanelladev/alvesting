@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { ResetPasswordForm } from '../../components/account-forms';
-import { LINK, NavLink } from '../../components/ui';
+import { BUTTON, NavLink, PageHead } from '../../components/ui';
 import { first, type SearchParams } from '../../lib/page';
 
 // Redefinir a senha (plano §3; etapa 11, parte 2; docs/CONTA.md). O link do e-mail traz o token na URL (?token=). Por isso esta página
@@ -21,22 +21,27 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
 
   return (
     <>
-      <header className="space-y-2">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">Redefinir a senha</h1>
-        <p className="max-w-prose">
+      <PageHead title="Redefinir a senha">
+        <p className="max-w-prose text-lead text-pretty">
           {token
             ? 'Escolha a senha nova. Ao salvar, as outras sessões abertas da conta são encerradas.'
             : 'Este link está incompleto. Abra o link do e-mail inteiro, ou peça um novo.'}
         </p>
-      </header>
+        {/* sem o token, a saída é a única ação da tela: a pílula branca */}
+        {token ? null : (
+          <p className="pt-4">
+            <NavLink href="/esqueci-senha" className={`${BUTTON} btn-primary`}>
+              Pedir um link novo
+            </NavLink>
+          </p>
+        )}
+      </PageHead>
 
       {token ? (
-        <ResetPasswordForm token={token} />
-      ) : (
-        <NavLink href="/esqueci-senha" className={LINK}>
-          Pedir um link novo
-        </NavLink>
-      )}
+        <div className="card mt-12 max-w-md">
+          <ResetPasswordForm token={token} />
+        </div>
+      ) : null}
     </>
   );
 }

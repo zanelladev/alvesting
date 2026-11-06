@@ -336,21 +336,6 @@ export async function buildReport(input: ReportInput): Promise<BuiltReport> {
     unfinishedJobs === 0,
     `${jobs} jobs, ${unfinishedJobs} não concluídos`,
   );
-  const repaired = cycles
-    .flatMap((c) => c.decisions)
-    .filter((d) => ((d.usage as { calls?: number } | null)?.calls ?? 0) === 2);
-  check(
-    'reparo',
-    'o reparo de JSON aparece (resposta quebrada na 1ª chamada, certa na 2ª)',
-    repaired.length >= 1,
-    plural(repaired.length, 'decisão', 'decisões'),
-  );
-  check(
-    'nova-tentativa',
-    'falha passageira do provedor: a fila reentrega depois e a decisão sai, sem DLQ',
-    retried >= 1 && input.deadLetters.length === 0,
-    plural(retried, 'nova tentativa agendada', 'novas tentativas agendadas'),
-  );
   const lateDeliveries = input.lateDay
     ? input.deliveries.filter((d) => d.messageId === `eod:${input.lateDay}`).length
     : 0;

@@ -1,4 +1,5 @@
-import { parseLlmDecision } from '@alvesting/contracts';
+import { readFileSync } from 'node:fs';
+import { parseLlmDecision, seasonFileSchema } from '@alvesting/contracts';
 import { describe, expect, it } from 'vitest';
 import { userMessage } from '../domain/llm-messages.js';
 import { buildOwnPart } from '../domain/own-part.js';
@@ -271,33 +272,94 @@ describe('createFakeFetch: as estratégias do ensaio', () => {
     }
   });
 
-  it('fake/flaky-json erra o JSON na primeira chamada dos dias de dia ímpar e acerta no reparo; nos pares, acerta de primeira', async () => {
-    // 03/11 (dia 3): quebra a primeira chamada
-    const first = await call(request('fake/flaky-json'));
-    expect(parseLlmDecision(contentOf(first.json)).success).toBe(false);
-    const repaired = await call(
-      request('fake/flaky-json', [
-        { role: 'assistant', content: contentOf(first.json) },
-        { role: 'user', content: 'Responda de novo somente com o JSON.' },
-      ]),
-    );
-    expect(parseLlmDecision(contentOf(repaired.json)).success).toBe(true);
+  it('fake/momentum-focused é o momentum concentrado: só a maior alta, com 20% do patrimônio, e a mesma saída abaixo do custo', async () => {
+    const plain = await call(request('fake/momentum-focused'));
+    expect(parseLlmDecision(contentOf(plain.json))).toMatchObject({ success: true });
+    expect(itemsOf(plain.json)).toEqual([
+      expect.objectContaining({ ticker: 'WEGE3', action: 'BUY', percent_of_equity: 20 }),
+    ]);
+    const held: Held[] = [
+      { ticker: 'WEGE3', quantity: 100n, avg: 10_000n, last: 10_087n }, // acima do custo: segura e não recompra
+      { ticker: 'PETR4', quantity: 50n, avg: 10_000n, last: 9_000n }, // abaixo do custo: vende
+    ];
+    const { json } = await call(request('fake/momentum-focused', [], held));
+    expect(itemsOf(json).map((item) => [item.ticker, item.action])).toEqual([
+      ['PETR4', 'SELL'],
+      ['VALE3', 'BUY'],
+    ]);
+  });
 
-    // 04/11 (dia 4): a primeira chamada já vem boa
-    const even = syntheticBriefing('2026-11-04');
-    const evenBlock = { name: 'BRIEFING' as const, bytes: even.bytes, sha256: even.sha256 };
-    const ok = await call(request('fake/flaky-json', [], [], evenBlock));
-    expect(parseLlmDecision(contentOf(ok.json)).success).toBe(true);
+  it('fake/contrarian-spread é o contrário espalhado: as três maiores quedas, com 5% do patrimônio cada, e a mesma realização de 2%', async () => {
+    const plain = await call(request('fake/contrarian-spread'));
+    expect(parseLlmDecision(contentOf(plain.json))).toMatchObject({ success: true });
+    expect(
+      itemsOf(plain.json).map((item) => [item.ticker, item.action, item.percent_of_equity]),
+    ).toEqual([
+      ['ABEV3', 'BUY', 5],
+      ['BBDC4', 'BUY', 5],
+      ['ITUB4', 'BUY', 5],
+    ]);
+    const held: Held[] = [
+      { ticker: 'WEGE3', quantity: 100n, avg: 10_000n, last: 10_200n }, // +2,00%: realiza
+      { ticker: 'VALE3', quantity: 100n, avg: 10_000n, last: 10_199n }, // +1,99%: segura
+    ];
+    const { json } = await call(request('fake/contrarian-spread', [], held));
+    const sells = itemsOf(json).filter((item) => item.action === 'SELL');
+    expect(sells.map((item) => item.ticker)).toEqual(['WEGE3']);
   });
 
   it('as estratégias são determinísticas e diferentes entre si', async () => {
+    const models = [
+      'momentum',
+      'momentum-focused',
+      'contrarian',
+      'contrarian-spread',
+      'hold-only',
+      'hash-picks',
+    ];
     const answers = new Set<string>();
-    for (const model of ['momentum', 'contrarian', 'hold-only']) {
+    for (const model of models) {
       const a = await call(request(`fake/${model}`));
       const b = await call(request(`fake/${model}`));
       expect(contentOf(a.json)).toBe(contentOf(b.json));
       answers.add(contentOf(a.json));
     }
-    expect(answers.size).toBe(3);
+    expect(answers.size).toBe(models.length);
   });
+});
+
+// O elenco do ensaio (apps/api/seasons/ensaio.json) leva o nome de modelos de verdade: a estratégia simulada de cada um nunca falha. O
+// JSON sai certo de primeira (sem reparo), em qualquer pregão e com qualquer carteira, e nenhum item é descartado. A falha simulada
+// (always-fail, invalid-json-*, echo-prompt) é só dos testes, com um ID de teste.
+describe('createFakeFetch: o elenco simulado do ensaio nunca falha', () => {
+  const season = seasonFileSchema.parse(
+    JSON.parse(readFileSync(new URL('../../../../seasons/ensaio.json', import.meta.url), 'utf8')),
+  );
+  const models = season.competitors.flatMap((c) => (c.kind === 'MODEL' ? [c.modelId] : []));
+  const held: Held[] = [
+    { ticker: 'WEGE3', quantity: 100n, avg: 10_000n, last: 12_000n },
+    { ticker: 'PETR4', quantity: 50n, avg: 10_000n, last: 9_000n },
+  ];
+
+  it('seis modelos, cada um com uma estratégia diferente', () => {
+    expect(models).toHaveLength(6);
+    expect(new Set(models).size).toBe(6);
+  });
+
+  it.each(models)(
+    '%s responde uma decisão válida de primeira, em dia par e ímpar, com e sem carteira',
+    async (model) => {
+      for (const date of ['2026-11-03', '2026-11-04'] as const) {
+        const built = syntheticBriefing(date);
+        const block = { name: 'BRIEFING' as const, bytes: built.bytes, sha256: built.sha256 };
+        for (const positions of [[], held]) {
+          const { response, json } = await call(request(model, [], positions, block));
+          expect(response.status, `${model} ${date}`).toBe(200);
+          const parsed = parseLlmDecision(contentOf(json));
+          expect(parsed.success, `${model} ${date}`).toBe(true);
+          if (parsed.success) expect(parsed.data.dropped, `${model} ${date}`).toEqual([]);
+        }
+      }
+    },
+  );
 });

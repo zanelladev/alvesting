@@ -20,7 +20,7 @@ import {
   type LotFailure,
 } from '../lib/wallet-client';
 import { AccountForm, RadioField, TextField, useHydrated, type Outcome } from './form-kit';
-import { BUTTON, Empty, Fact, Facts, LINK, NavLink, Section } from './ui';
+import { BUTTON, CAIXA, CAIXA_ERRO, Empty, Fact, Facts, LINK, NavLink, Section } from './ui';
 
 // Os lançamentos da carteira e o formulário que os cria e edita (etapa 12, parte 2; docs/TELAS.md, seção 9). É o único pedaço da tela que roda no
 // navegador: o resumo e as posições são Server Components. Lançar, editar e apagar falam com `/api/v1/me/portfolio/lots` na mesma origem (o cookie e
@@ -163,6 +163,7 @@ function LotForm({
       run={run}
       labelledBy={labelledBy}
       noscript={false}
+      primary
       actions={
         onCancel ? (
           <button type="button" className={BUTTON} onClick={onCancel}>
@@ -329,7 +330,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
     if (editing === lot.id) {
       return (
         <>
-          <h3 id={`editar-${lot.id}`} className="font-mono font-semibold">
+          <h3 id={`editar-${lot.id}`} className="font-display text-title">
             {`Editar lançamento de ${describeLot(lot)}`}
           </h3>
           <LotForm
@@ -346,7 +347,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
     }
     return (
       <>
-        <p className="font-mono font-semibold">{lot.ticker}</p>
+        <p className="font-mono text-lg text-ink">{lot.ticker}</p>
         <Facts dense>
           <Fact term="Quantidade">{formatQuantity(lot.quantity)}</Fact>
           <Fact term="Custo total">{formatBRL(lot.costCents)}</Fact>
@@ -358,13 +359,13 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
           <div
             role="group"
             aria-labelledby={`apagar-${lot.id}`}
-            className="space-y-3 border-2 border-dashed border-ink p-3"
+            className="space-y-3 rounded-xl border border-dashed border-hairline-strong p-4"
           >
             <p
               id={`apagar-${lot.id}`}
               tabIndex={-1}
               data-question=""
-              className="font-mono font-semibold"
+              className="font-display font-medium text-ink"
             >
               {`Apagar o lançamento de ${name}? Não dá para desfazer.`}
             </p>
@@ -387,12 +388,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
               </button>
             </div>
             {removal.failure ? (
-              <p
-                role="alert"
-                tabIndex={-1}
-                data-alert=""
-                className="border-2 border-ink p-3 font-mono font-semibold"
-              >
+              <p role="alert" tabIndex={-1} data-alert="" className={CAIXA_ERRO}>
                 <FailureText failure={removal.failure} />
               </p>
             ) : null}
@@ -433,9 +429,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
           role="status"
           tabIndex={notice ? -1 : undefined}
           data-notice=""
-          className={
-            notice ? 'max-w-prose border-2 border-ink p-3 font-mono font-semibold' : 'sr-only'
-          }
+          className={notice ? `max-w-prose ${CAIXA}` : 'sr-only'}
         >
           {notice}
         </p>
@@ -454,9 +448,9 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
             Depois dá para editar ou apagar cada lançamento.
           </Empty>
         ) : (
-          <ul className="space-y-3">
+          <ul className="max-w-2xl space-y-3">
             {lots.map((lot) => (
-              <li key={lot.id} data-lot={lot.id} className="space-y-3 border-2 border-ink p-3">
+              <li key={lot.id} data-lot={lot.id} className="card space-y-4">
                 {card(lot)}
               </li>
             ))}
@@ -475,13 +469,15 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
             <span className="sr-only"> (abre em outra aba)</span>
           </a>
         </p>
-        <LotForm
-          key={createKey}
-          today={today}
-          labelledBy="lancar-titulo"
-          track={track}
-          onSaved={(message) => done(message, sel.notice, () => setCreateKey((key) => key + 1))}
-        />
+        <div className="card max-w-md">
+          <LotForm
+            key={createKey}
+            today={today}
+            labelledBy="lancar-titulo"
+            track={track}
+            onSaved={(message) => done(message, sel.notice, () => setCreateKey((key) => key + 1))}
+          />
+        </div>
       </Section>
     </div>
   );

@@ -12,3 +12,5 @@ apps/api/prisma/migrations
 docs
 # o texto jurídico: o SHA-256 que o aceite guarda é o do arquivo, e um formatador que realinhasse uma tabela mudaria o hash
 apps/api/src/modules/account/legal
+# as artes ASCII são dado copiado byte a byte de outra fonte (docs/DEPENDENCIAS.md, "Artes"): reformatar mudaria o arquivo
+apps/web/public/ascii

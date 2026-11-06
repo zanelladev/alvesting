@@ -12,11 +12,11 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
-import { BUTTON, INPUT } from './ui';
+import { BUTTON, CAIXA, CAIXA_ERRO, INPUT } from './ui';
 
 // As peças dos formulários da conta (etapa 11, parte 2): campo com rótulo, erro ligado ao campo por aria-describedby, foco no primeiro
 // erro, aviso de status e o botão. Os campos são não controlados (o valor mora no DOM), o envio lê o FormData, e quem manda é a api: a
-// conferência daqui só poupa a ida. Estética crua (src/app/globals.css).
+// conferência daqui só poupa a ida. O sistema visual ascii-ui (src/app/globals.css; ADR 0034).
 //
 // Sem JavaScript o formulário não pode se enviar: um <form> sem handler faria um GET com a senha na URL (histórico, log da borda). Por isso o
 // <fieldset> nasce desativado e só é ativado depois da hidratação (os campos e o botão ficam inertes), e o <noscript> diz por quê.
@@ -57,6 +57,7 @@ export function AccountForm({
   actions,
   labelledBy,
   noscript = true,
+  primary = false,
 }: {
   submit: string;
   // `via` é o `value` do botão que enviou (o do Google), ou null para o botão principal. Devolve o resultado de uma falha ou de um aviso;
@@ -66,6 +67,9 @@ export function AccountForm({
   actions?: ReactNode;
   labelledBy?: string;
   noscript?: boolean;
+  // o envio é a ação principal da superfície: a pílula branca (uma por superfície). Sair, excluir a conta e as ações do painel ficam no
+  // botão escuro
+  primary?: boolean;
 }) {
   const hydrated = useHydrated();
   const form = useRef<HTMLFormElement>(null);
@@ -134,31 +138,34 @@ export function AccountForm({
       onSubmit={(event) => void onSubmit(event)}
       aria-labelledby={labelledBy}
       aria-busy={busy}
-      className="max-w-md space-y-4"
+      // flex com vão, e não space-y: a região de status vazia (sr-only, fora do fluxo) não deixa uma margem sobrando abaixo do botão
+      className="flex max-w-md flex-col gap-3"
     >
       {noscript ? (
         <noscript>
-          <p className="border-2 border-ink p-3 font-mono font-semibold">
+          <p className={CAIXA}>
             Esta tela precisa de JavaScript para enviar o formulário. Ative o JavaScript no
             navegador e recarregue a página.
           </p>
         </noscript>
       ) : null}
       {formError ? (
-        <p
-          role="alert"
-          tabIndex={-1}
-          data-form-error=""
-          className="border-2 border-ink p-3 font-mono font-semibold"
-        >
+        <p role="alert" tabIndex={-1} data-form-error="" className={CAIXA_ERRO}>
           {formError}
         </p>
       ) : null}
       <fieldset disabled={!hydrated || busy} className="min-w-0 space-y-4">
         <Errors.Provider value={{ errors, clear }}>{children}</Errors.Provider>
         <div className="flex flex-wrap gap-3">
-          <button type="submit" className={BUTTON}>
-            {busy ? 'Enviando…' : submit}
+          <button type="submit" className={primary ? `${BUTTON} btn-primary` : BUTTON}>
+            {busy ? (
+              <>
+                <DotSpinner />
+                Enviando…
+              </>
+            ) : (
+              submit
+            )}
           </button>
           {actions}
         </div>
@@ -168,9 +175,7 @@ export function AccountForm({
         role="status"
         tabIndex={status ? -1 : undefined}
         data-form-status={status ? '' : undefined}
-        className={
-          status ? 'max-w-prose border-2 border-ink p-3 font-mono font-semibold' : 'sr-only'
-        }
+        className={status ? `max-w-prose ${CAIXA}` : 'sr-only'}
       >
         {status}
       </p>
@@ -214,7 +219,7 @@ export function TextField({
   const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ');
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="font-mono text-sm font-semibold">
+      <label htmlFor={id} className="font-display text-sm font-medium text-ink">
         {label}
       </label>
       {hint ? (
@@ -246,7 +251,7 @@ export function TextField({
 }
 
 // Área de texto com rótulo (o JSON da temporada no painel de admin). Mesma ligação de dica e erro do TextField. O texto é mono, sem
-// correção automática nem capitalização: é JSON.
+// correção automática nem capitalização: é JSON. Os 16 px do campo ficam (o Safari do iPhone dá zoom abaixo disso).
 export function TextAreaField({
   name,
   label,
@@ -268,7 +273,7 @@ export function TextAreaField({
   const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ');
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="font-mono text-sm font-semibold">
+      <label htmlFor={id} className="font-display text-sm font-medium text-ink">
         {label}
       </label>
       {hint ? (
@@ -288,7 +293,7 @@ export function TextAreaField({
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy || undefined}
         onChange={() => clear(name)}
-        className={`${INPUT} w-full py-2 text-sm`}
+        className={`${INPUT} w-full py-2 font-mono`}
       />
       {error ? <FieldError id={errorId}>{error}</FieldError> : null}
     </div>
@@ -311,7 +316,7 @@ export function SelectField({
   const errorId = `${id}-erro`;
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="font-mono text-sm font-semibold">
+      <label htmlFor={id} className="font-display text-sm font-medium text-ink">
         {label}
       </label>
       {/* appearance-none: o <select> nativo do WebKit (iPhone) ignora a altura mínima de 44 px (medido: 27 px); sem a seta nativa, o
@@ -333,7 +338,7 @@ export function SelectField({
         </select>
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono"
+          className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-muted"
         >
           ▾
         </span>
@@ -368,7 +373,7 @@ export function RadioField({
   const hintId = `${useId()}-dica`;
   return (
     <fieldset aria-describedby={hint ? hintId : undefined} className="min-w-0 space-y-1">
-      <legend className="font-mono text-sm font-semibold">{legend}</legend>
+      <legend className="font-display text-sm font-medium text-ink">{legend}</legend>
       {hint ? (
         <p id={hintId} className="muted">
           {hint}
@@ -423,8 +428,22 @@ export function CheckField({ name, children }: { name: string; children: ReactNo
 
 function FieldError({ id, children }: { id: string; children: ReactNode }) {
   return (
-    <p id={id} className="border-l-4 border-ink pl-2 font-mono text-sm font-semibold">
+    <p id={id} className="border-l-2 border-semantic-error pl-2 text-sm text-ink">
       {children}
     </p>
   );
 }
+
+// A espera: a matriz 3 × 3 da v1, cada ponto ligando e desligando inteiro (o `@keyframes dot` de globals.css), ao lado do verbo. Nunca o
+// único sinal (o texto "Enviando…" é o nome do botão) e nunca um círculo girando; sob movimento reduzido, parada.
+const DotSpinner = () => (
+  <span aria-hidden="true" className="grid grid-cols-3 gap-0.5">
+    {[0, 7, 5, 3, 1, 8, 6, 4, 2].map((step) => (
+      <i
+        key={step}
+        className="block size-1 rounded-[1px] bg-dot-off-card [animation:dot_1.35s_steps(1,end)_infinite]"
+        style={{ animationDelay: `${step * 0.09}s` }}
+      />
+    ))}
+  </span>
+);

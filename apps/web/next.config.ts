@@ -33,12 +33,10 @@ const config: NextConfig = {
   outputFileTracingRoot: monorepoRoot,
   turbopack: { root: monorepoRoot },
   poweredByHeader: false,
-  // ponytail: `inlineCss` é experimental no Next 16.4 (node_modules/next/dist/docs, inlineCss.md). O CSS (uns 5 KB comprimidos) vai dentro do HTML, e o
-  // navegador não pede a folha de estilo: no Lighthouse mobile da home isso, junto com a Plex Sans de um peso só (layout.tsx), tira o LCP simulado
-  // de 2,49 s para 2,34 s (docs/TELAS.md, seção 5), a diferença entre passar com folga e reprovar a cada segunda execução; sozinha, cada uma não muda
-  // nada. O custo: o CSS não fica em cache entre páginas e vai três vezes no documento da home (o <style> do <head> e duas vezes no payload do React).
-  // Se a flag der problema numa versão nova do Next, remova-a e meça de novo com `pnpm lighthouse`.
-  experimental: { inlineCss: true },
+  // O CSS vai em arquivo, e não dentro do HTML. Na etapa 9 o `experimental.inlineCss` (uns 5 KB comprimidos) ajudou o LCP simulado da home;
+  // com o sistema visual ascii-ui (ADR 0034) o CSS passou de uns 9 KB comprimidos, e em linha ele ia três vezes no documento da home (o
+  // <style> do <head> e duas vezes no payload do React): 57,8 KB no fio contra 30,8 KB em arquivo, sem ganho no LCP (docs/TELAS.md, seção
+  // 5). Em arquivo, o CSS fica em cache entre as páginas.
   reactStrictMode: true,
   // O `next dev` escreve um AGENTS.md em apps/web para quem usa agente de código. As regras do repositório estão no CLAUDE.md.
   agentRules: false,

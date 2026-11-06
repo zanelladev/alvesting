@@ -3,7 +3,17 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { LegalDocumentId } from '@alvesting/contracts';
 import { AcceptConsentsForm, DeleteAccountForm, SignOutForm } from '../../components/account-forms';
-import { BUTTON, Fact, Facts, LINK, NavLink, Section } from '../../components/ui';
+import {
+  Aviso,
+  BUTTON,
+  CAIXA,
+  Fact,
+  Facts,
+  LINK,
+  NavLink,
+  PageHead,
+  Section,
+} from '../../components/ui';
 import { authCookieHeader, readMe } from '../../lib/account';
 import { formatDateTime } from '../../lib/format';
 import { withApiDown } from '../../lib/with-api-down';
@@ -29,40 +39,84 @@ export default withApiDown(async function AccountPage() {
 
   const terms = me.consent.documents.find((d) => d.document === 'TERMS');
   const privacy = me.consent.documents.find((d) => d.document === 'PRIVACY');
+  const pending = !me.consent.upToDate && terms && privacy;
+
+  // os aceites, com a versão e a data de cada um; com o aceite pendente, a seção vem antes de tudo, com o formulário (plano §3)
+  const consents = (
+    <Section id="aceites" title="Termos e privacidade">
+      {pending ? (
+        <Aviso>
+          Os textos mudaram. Leia a versão nova e aceite para continuar usando os recursos da conta.
+          Exportar os dados e excluir a conta seguem disponíveis sem o aceite novo.
+        </Aviso>
+      ) : null}
+      <ul className="max-w-2xl">
+        {me.consent.documents.map((doc) => (
+          <li key={doc.document} className="border-b border-hairline py-3 text-ink">
+            {DOCUMENTS[doc.document].title}, versão {doc.version}:{' '}
+            {doc.acceptedAt ? `aceito em ${formatDateTime(doc.acceptedAt)}` : 'ainda não aceito'}
+          </li>
+        ))}
+      </ul>
+      {/* o aceite é um registro legal: o fuso fica à vista na tela, e não só na documentação */}
+      <p className="muted">Datas e horas no horário de Brasília.</p>
+      <ul className="flex flex-wrap gap-x-6">
+        {(Object.keys(DOCUMENTS) as LegalDocumentId[]).map((id) => (
+          <li key={id}>
+            <NavLink href={DOCUMENTS[id].href} className={LINK}>
+              Ler {DOCUMENTS[id].title.toLowerCase()}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+      {pending ? (
+        <div className="card max-w-md">
+          <AcceptConsentsForm
+            terms={terms.version}
+            privacy={privacy.version}
+            labelledBy="aceites-titulo"
+          />
+        </div>
+      ) : null}
+    </Section>
+  );
 
   return (
     <>
-      <header className="space-y-2">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">Minha conta</h1>
-        <p className="max-w-prose">
+      <PageHead title="Minha conta">
+        <p className="max-w-prose text-lead text-pretty">
           O que a Alvesting guarda de você, e o que você pode fazer com isso: sair, baixar uma cópia
           ou apagar tudo.
         </p>
         <noscript>
-          <p className="max-w-prose border-2 border-ink p-3 font-mono font-semibold">
+          <p className={`max-w-prose ${CAIXA}`}>
             Sair, aceitar versões novas e excluir a conta precisam de JavaScript. Ative o JavaScript
             no navegador e recarregue a página.
           </p>
         </noscript>
-      </header>
+      </PageHead>
+
+      {pending ? consents : null}
 
       <Section id="dados" title="Dados">
-        <Facts>
-          <Fact term="Nome" prose>
-            <span className="break-words">{me.name}</span>
-          </Fact>
-          <Fact term="E-mail" prose>
-            <span className="break-all">{me.email}</span>
-          </Fact>
-          <Fact term="E-mail confirmado" prose>
-            {me.emailVerified ? 'sim' : 'não'}
-          </Fact>
-          {me.role === 'ADMIN' ? (
-            <Fact term="Papel" prose>
-              admin
+        <div className="max-w-2xl">
+          <Facts>
+            <Fact term="Nome" prose>
+              <span className="break-words">{me.name}</span>
             </Fact>
-          ) : null}
-        </Facts>
+            <Fact term="E-mail" prose>
+              <span className="break-all">{me.email}</span>
+            </Fact>
+            <Fact term="E-mail confirmado" prose>
+              {me.emailVerified ? 'sim' : 'não'}
+            </Fact>
+            {me.role === 'ADMIN' ? (
+              <Fact term="Papel" prose>
+                admin
+              </Fact>
+            ) : null}
+          </Facts>
+        </div>
         {/* o painel não tem link no cabeçalho (as páginas públicas não leem a sessão); a conta já a lê, então é daqui que o admin chega */}
         {me.role === 'ADMIN' ? (
           <p>
@@ -73,40 +127,7 @@ export default withApiDown(async function AccountPage() {
         ) : null}
       </Section>
 
-      <Section id="aceites" title="Termos e privacidade">
-        <ul className="space-y-2">
-          {me.consent.documents.map((doc) => (
-            <li key={doc.document}>
-              {DOCUMENTS[doc.document].title}, versão {doc.version}:{' '}
-              {doc.acceptedAt ? `aceito em ${formatDateTime(doc.acceptedAt)}` : 'ainda não aceito'}
-            </li>
-          ))}
-        </ul>
-        {/* o aceite é um registro legal: o fuso fica à vista na tela, e não só na documentação */}
-        <p className="muted">Datas e horas no horário de Brasília.</p>
-        <ul className="flex flex-wrap gap-x-6">
-          {(Object.keys(DOCUMENTS) as LegalDocumentId[]).map((id) => (
-            <li key={id}>
-              <NavLink href={DOCUMENTS[id].href} className={LINK}>
-                Ler {DOCUMENTS[id].title.toLowerCase()}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-        {!me.consent.upToDate && terms && privacy ? (
-          <>
-            <p className="max-w-prose border-2 border-ink p-3 font-mono font-semibold">
-              Os textos mudaram. Leia a versão nova e aceite para continuar usando os recursos da
-              conta. Exportar os dados e excluir a conta seguem disponíveis sem o aceite novo.
-            </p>
-            <AcceptConsentsForm
-              terms={terms.version}
-              privacy={privacy.version}
-              labelledBy="aceites-titulo"
-            />
-          </>
-        ) : null}
-      </Section>
+      {pending ? null : consents}
 
       <Section id="sair" title="Sair">
         <p className="max-w-prose">Encerra a sessão neste aparelho.</p>
@@ -140,7 +161,11 @@ export default withApiDown(async function AccountPage() {
           nem e-mail. As cópias de segurança do banco guardam os seus dados por até 7 dias e depois
           deixam de tê-los.
         </p>
-        <DeleteAccountForm labelledBy="excluir-titulo" />
+        {/* a confirmação e a senha num cartão de borda vermelha; o botão fica no escuro, e não na pílula branca: não é a ação que a tela
+            convida a fazer */}
+        <div className="card max-w-md border-semantic-error/60">
+          <DeleteAccountForm labelledBy="excluir-titulo" />
+        </div>
       </Section>
     </>
   );

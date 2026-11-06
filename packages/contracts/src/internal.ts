@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { decisionItemSchema } from './llm-decision.js';
 
-// A rota INTERNA do site para a api (docs/API.md, seção 6; ADR 0033). A cotação bruta (a barra de preço de um papel) não sai de nenhuma
+// As rotas INTERNAS do site para a api (docs/API.md, seção 6; ADR 0033). A cotação bruta (a barra de preço de um papel) não sai de nenhuma
 // rota pública, porque a licença da brapi proíbe "entregar os Dados a terceiros como feed, API ou base bruta": o SSR do site a lê daqui,
-// com um segredo que só o servidor tem, e a desenha (as velas da página da ação, o BOVA11 da home). Este arquivo é de propósito separado
-// do public.ts: o teste public-quotes.spec.ts reprova cotação bruta em tudo que o public.ts e o cycle.ts exportam.
+// com um segredo que só o servidor tem, e a desenha (as velas da página da ação, o BOVA11 e a fita da home). Este arquivo é de propósito
+// separado do public.ts: o teste public-quotes.spec.ts reprova cotação bruta em tudo que o public.ts e o cycle.ts exportam.
 
 // As barras que a rota devolve: as 60 mais recentes, da mais antiga à mais nova (o que a página da ação desenha).
 export const INTERNAL_BARS_LIMIT = 60;
@@ -34,3 +35,32 @@ export const internalBarsSchema = z.strictObject({
   bars: z.array(internalBarSchema).max(INTERNAL_BARS_LIMIT),
 });
 export type InternalBars = z.infer<typeof internalBarsSchema>;
+
+// --- a fita da home ----------------------------------------------------------------------------------------------------------------
+// O ticker no formato da B3, o mesmo das decisões e da API pública (reaproveitado pela forma, não copiado).
+const ticker = decisionItemSchema.options[2].shape.ticker;
+
+// O teto da fita: o tamanho máximo do universo (UNIVERSE_RULES.maxMembers da api, que o teste da rota confere ser o mesmo número).
+export const INTERNAL_TAPE_LIMIT = 500;
+
+export const internalTapeRowSchema = z.strictObject({
+  ticker,
+  closeCents: cents,
+  // o fechamento do papel no pregão anterior a `date`; nulo se ele não tem barra nesse pregão
+  previousCloseCents: cents.nullable(),
+});
+export type InternalTapeRow = z.infer<typeof internalTapeRowSchema>;
+
+// O universo da semana do último ciclo (os papéis que o briefing deu a todos os modelos), na ordem do universo (1 = maior volume
+// financeiro médio), com o fechamento do pregão `date`: o mais recente com barra até o pregão do ciclo. Só entra o papel com barra
+// nesse pregão. Sem ciclo, sem universo ou sem barra, a resposta vazia: `{ date: null, rows: [] }` (200, nunca 404: o 404 desta rota
+// quer dizer só "não é para você", como o das barras).
+export const internalTapeSchema = z
+  .strictObject({
+    date: z.iso.date().nullable(),
+    rows: z.array(internalTapeRowSchema).max(INTERNAL_TAPE_LIMIT),
+  })
+  .refine((tape) => (tape.date === null) === (tape.rows.length === 0), {
+    message: 'a data do pregão existe se e só se há linha',
+  });
+export type InternalTape = z.infer<typeof internalTapeSchema>;

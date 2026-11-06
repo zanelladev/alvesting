@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { ACCOUNT_LIMITS } from '@alvesting/contracts/account-constants';
 import { ResendVerificationForm } from '../../components/account-forms';
-import { LINK, NavLink } from '../../components/ui';
+import { BUTTON, LINK, NavLink, PageHead } from '../../components/ui';
 import { first, type SearchParams } from '../../lib/page';
 
 // Verificar o e-mail (plano §3; etapa 11, parte 2; docs/CONTA.md). Três estados, pela URL:
@@ -27,41 +27,49 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
 
   if (back && error === undefined) {
     return (
-      <section className="space-y-4">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">E-mail confirmado</h1>
-        <p className="max-w-prose">O seu e-mail está confirmado. Agora você já pode entrar.</p>
-        <NavLink href="/entrar" className={LINK}>
-          Entrar
-        </NavLink>
-      </section>
+      <PageHead title="E-mail confirmado">
+        <p className="max-w-prose text-lead text-pretty">
+          O seu e-mail está confirmado. Agora você já pode entrar.
+        </p>
+        {/* a única ação da tela: a pílula branca */}
+        <p className="pt-4">
+          <NavLink href="/entrar" className={`${BUTTON} btn-primary`}>
+            Entrar
+          </NavLink>
+        </p>
+      </PageHead>
     );
   }
 
   return (
     <>
-      <header className="space-y-2">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">
-          {back ? 'Não foi possível confirmar o e-mail' : 'Confirme o seu e-mail'}
-        </h1>
+      <PageHead title={back ? 'Não foi possível confirmar o e-mail' : 'Confirme o seu e-mail'}>
         {back ? (
-          <p className="max-w-prose">
+          <p className="max-w-prose text-lead text-pretty">
             {error === 'TOKEN_EXPIRED'
               ? `O link venceu: ele vale por ${VALIDITY_MINUTES} minutos.`
               : 'O link não vale: já foi usado, ou está incompleto.'}{' '}
             Peça um novo abaixo.
           </p>
         ) : (
-          <p className="max-w-prose">
-            Se o e-mail ainda não tinha cadastro, mandamos um link de confirmação para ele. Abra o
-            link para confirmar o endereço; ele vale por {VALIDITY_MINUTES} minutos. Só depois disso
-            dá para entrar. Não chegou? Confira o spam e, se precisar, peça um novo link abaixo (o
-            mesmo tipo de e-mail só sai de novo depois de 1 minuto). Se você já tem conta, use um
-            dos caminhos abaixo: entrar ou esqueci a senha.
-          </p>
+          <>
+            <p className="max-w-prose text-lead text-pretty">
+              Se o e-mail ainda não tinha cadastro, mandamos um link de confirmação para ele. Abra o
+              link para confirmar o endereço; ele vale por {VALIDITY_MINUTES} minutos. Só depois
+              disso dá para entrar.
+            </p>
+            <p className="max-w-prose text-pretty">
+              Não chegou? Confira o spam e, se precisar, peça um novo link abaixo (o mesmo tipo de
+              e-mail só sai de novo depois de 1 minuto). Se você já tem conta, use um dos caminhos
+              abaixo: entrar ou esqueci a senha.
+            </p>
+          </>
         )}
-      </header>
+      </PageHead>
 
-      <ResendVerificationForm />
+      <div className="card mt-12 max-w-md">
+        <ResendVerificationForm />
+      </div>
 
       <ul className="flex flex-wrap gap-x-6">
         <li>

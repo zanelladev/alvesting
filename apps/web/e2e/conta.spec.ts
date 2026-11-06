@@ -16,6 +16,7 @@ import {
   test,
 } from './account-support';
 import { ACCOUNT_API_URL, ACCOUNT_WEB_URL, FRONT_DOOR_URL } from './api-server';
+import { abrirMenu } from './menu';
 
 // As telas da conta (etapa 11, parte 2; docs/CONTA.md, seção 9), em pixel-7, iphone-15 (WebKit) e desktop, como todo e2e. O navegador
 // fala com UMA origem só, o Front Door imitado (e2e/front-door.ts, porta 4311): `/api/*` vai para a api da conta (4308) e o resto para o
@@ -69,6 +70,7 @@ test.describe('cadastro, verificação, entrar, conta, exportar, sair e excluir'
 
     // sem sessão, o link fixo do cabeçalho leva à entrada (com o caminho de volta) e dela ao cadastro
     await page.goto('/');
+    await abrirMenu(page);
     await page.getByRole('banner').getByRole('link', { name: 'Conta', exact: true }).click();
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/entrar?proximo=%2Fconta`);
     await page.getByRole('link', { name: 'Criar conta' }).click();
@@ -715,13 +717,14 @@ test.describe('por toque', () => {
     await page.getByText(/^Li e aceito os termos de uso/).tap();
     await expect(terms).toBeChecked();
     await expect(terms).not.toHaveAttribute('aria-invalid', 'true');
-    // marcada, a caixa é um quadrado preto com um X (não depende da cor para dizer que está marcada): o que uma medida de DOM não vê e o
-    // projeto não confere por captura de tela (a linha de base de uma plataforma não vale em outra)
+    // marcada, a caixa é um quadrado na cor da tinta com um X (não depende da cor para dizer que está marcada; no tema escuro, ADR 0034, a
+    // tinta é a clara): o que uma medida de DOM não vê e o projeto não confere por captura de tela (a linha de base de uma plataforma não
+    // vale em outra)
     const painted = await terms.evaluate((box) => ({
       mark: getComputedStyle(box, '::before').content,
       background: getComputedStyle(box).backgroundColor,
     }));
-    expect(painted).toEqual({ mark: '"✕"', background: 'rgb(0, 0, 0)' });
+    expect(painted).toEqual({ mark: '"✕"', background: 'rgb(245, 245, 245)' });
     await page.getByText(/^Li e aceito a política de privacidade/).tap();
     await expect(privacy).toBeChecked();
 

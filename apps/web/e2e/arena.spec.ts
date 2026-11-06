@@ -15,10 +15,12 @@ import {
   type NewsItem,
 } from '@alvesting/contracts';
 import {
+  CAST,
   CYCLE_DAY,
   FEED_PAGE,
   MODEL,
   SEASON,
+  SIMULATED,
   TICKER,
   brl,
   brt,
@@ -29,12 +31,17 @@ import {
   itemText,
   pct,
   pctl,
+  shownName,
   stockDecisionText,
   usd,
 } from './data';
+import { abrirMenu } from './menu';
 
-// As telas da arena (etapa 9, parte 2) sobre o banco sintético do e2e: a mesma temporada inteira do ensaio (5 pregões, 4 modelos
-// fake, o Sorteio e 3 referências, nada de terceiro). Cada teste lê o dado da api e confere que a tela mostra o mesmo, valor a valor.
+// o h1 da home é o título do hero (ADR 0034)
+const HERO_TITLE = 'Modelos de linguagem investindo na B3';
+
+// As telas da arena (etapa 9, parte 2) sobre o banco sintético do e2e: a mesma temporada inteira do ensaio (5 pregões, os 6 modelos
+// do elenco com decisões simuladas do provedor fake, o Sorteio e 3 referências, nada de terceiro). Cada teste lê o dado da api e confere que a tela mostra o mesmo, valor a valor.
 // Roda em pixel-7, iphone-15 e desktop (mobile é gate de merge). Não roda contra o site publicado (BASE_URL), que tem outro banco.
 test.skip(Boolean(process.env.BASE_URL), 'precisa da api local com o banco sintético');
 
@@ -52,7 +59,7 @@ const dash = (value: number | null, format: (n: number) => string) =>
 // as células de uma linha do ranking completo (a ordem das colunas da tabela: as quatro da home e mais sete)
 const fullCells = (r: LeaderboardRow) => [
   String(r.rank),
-  r.competitor.name,
+  shownName(r.competitor),
   pct(r.returnBps),
   dash(r.percentileBps, pctl),
   brl(r.equityCents),
@@ -67,22 +74,30 @@ const fullCells = (r: LeaderboardRow) => [
 // Um cartão de decisão (o feed da home, o ciclo e a página do modelo usam o mesmo): o título e o endereço dele, a linha da data e da visão
 // de mercado, o resumo do modelo e cada item (ação, ticker, percentual, confiança e justificativa), tudo por IGUALDADE: um dígito, uma
 // palavra a mais ou um BUY trocado por SELL reprova. `by`: o que dá o título, o modelo (feed e ciclo) ou a data do ciclo (página do
-// modelo); `date`: a data do pregão, quando o cartão a mostra. O banco sintético só tem decisões DECIDED, sem item descartado: o
-// HOLD forçado e os descartados são de e2e/fixture.spec.ts.
+// modelo); `date`: a data do pregão, quando o cartão a mostra; `simulated`: o nome do modelo leva a etiqueta "simulado". O banco
+// sintético só tem decisões DECIDED, e um item descartado só no último pregão (o limite de 10 posições do Qwen3.8 Max, docs/ENSAIO.md):
+// o HOLD forçado e os descartados, com o motivo, são de e2e/fixture.spec.ts.
 type CardDecision = Pick<FeedDecision, 'summary' | 'marketView' | 'items'> & {
   competitor: { slug: string; name: string };
 };
 async function expectCard(
   card: Locator,
   decision: CardDecision,
-  { by, date }: { by: 'model' | 'date'; date?: string },
+  { by, date, simulated = false }: { by: 'model' | 'date'; date?: string; simulated?: boolean },
 ) {
-  const model = { text: decision.competitor.name, href: `/modelos/${decision.competitor.slug}` };
+  const model = {
+    text: simulated ? `${decision.competitor.name} ${SIMULATED}` : decision.competitor.name,
+    href: `/modelos/${decision.competitor.slug}`,
+  };
   const day = date ? { text: dmy(date), href: `/ciclos/${date}` } : undefined;
   const title = by === 'model' ? model : day!;
   const heading = card.getByRole('heading', { level: 3 });
   await expect(heading).toHaveText(title.text);
   await expect(heading.getByRole('link')).toHaveAttribute('href', title.href);
+  // a etiqueta fica fora do link: o nome do link é só o nome do modelo
+  if (by === 'model') {
+    await expect(heading.getByRole('link')).toHaveText(decision.competitor.name);
+  }
 
   // a linha de baixo: a data, quando o título é o modelo, e a visão de mercado
   if (by === 'model' && day) {
@@ -91,9 +106,11 @@ async function expectCard(
       day.href,
     );
   }
+  // "neutro" é o valor do contrato; a frase concorda com "visão" (otimista e pessimista servem aos dois gêneros)
+  const view = decision.marketView === 'neutro' ? 'neutra' : decision.marketView;
   const sub = [
     ...(by === 'model' && day ? [day.text] : []),
-    ...(decision.marketView ? [`visão ${decision.marketView}`] : []),
+    ...(view ? [`visão ${view}`] : []),
   ].join(' ');
   await expect(card.locator('header p')).toHaveText(sub, { useInnerText: true });
 
@@ -123,7 +140,7 @@ test.describe('início', () => {
     const macro = current.macro;
     await page.goto('/');
     await expect(page).toHaveTitle('Alvesting');
-    await expect(page.getByRole('heading', { level: 1, name: 'Alvesting' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: HERO_TITLE })).toBeVisible();
 
     const seasonRegion = region(page, 'Temporada');
     await expect(fact(seasonRegion, 'Nome')).toHaveText(season.name);
@@ -238,7 +255,7 @@ test.describe('início', () => {
     const shown = board.rows.filter(
       (r) => r.competitor.type === 'MODEL' || r.competitor.type === 'RANDOM',
     );
-    expect(shown).toHaveLength(5);
+    expect(shown).toHaveLength(7);
     await expect(ranking.getByRole('columnheader')).toHaveText([
       'Pos.',
       'Competidor',
@@ -247,9 +264,9 @@ test.describe('início', () => {
     ]);
     await expect(ranking.getByRole('row')).toHaveCount(1 + shown.length);
     for (const r of shown) {
-      await expect(rowOf(ranking, r.competitor.name).locator('th, td')).toHaveText([
+      await expect(rowOf(ranking, shownName(r.competitor)).locator('th, td')).toHaveText([
         String(r.rank),
-        r.competitor.name,
+        shownName(r.competitor),
         pct(r.returnBps),
         pctl(r.percentileBps!),
       ]);
@@ -272,7 +289,11 @@ test.describe('início', () => {
     const cards = region(page, 'Decisões').getByRole('article');
     await expect(cards).toHaveCount(feed.rows.length);
     for (const [i, row] of feed.rows.entries()) {
-      await expectCard(cards.nth(i), row, { by: 'model', date: row.date });
+      await expectCard(cards.nth(i), row, {
+        by: 'model',
+        date: row.date,
+        simulated: row.competitor.provider === 'fake',
+      });
     }
   });
 });
@@ -450,16 +471,70 @@ test.describe('ranking', () => {
       ]);
       await expect(group.getByRole('row')).toHaveCount(1 + rows.length);
       for (const r of rows) {
-        await expect(rowOf(group, r.competitor.name).locator('th, td')).toHaveText(fullCells(r));
-        await expect(rowOf(group, r.competitor.name).getByRole('link')).toHaveAttribute(
+        await expect(rowOf(group, shownName(r.competitor)).locator('th, td')).toHaveText(
+          fullCells(r),
+        );
+        await expect(rowOf(group, shownName(r.competitor)).getByRole('link')).toHaveAttribute(
           'href',
           `/modelos/${r.competitor.slug}`,
         );
+        // o retorno leva o glifo da direção (▲ ▼ ■), desenhado pelo CSS antes do número: fora do texto, que a comparação acima lê por igualdade
+        const glyph = r.returnBps > 0 ? '▲' : r.returnBps < 0 ? '▼' : '■';
+        const returnCell = rowOf(group, shownName(r.competitor)).locator('td').nth(1);
+        await expect(returnCell).toHaveAttribute(
+          'data-dir',
+          r.returnBps > 0 ? 'up' : r.returnBps < 0 ? 'down' : 'flat',
+        );
+        expect(
+          await returnCell.evaluate((cell) => getComputedStyle(cell, '::before').content),
+        ).toContain(glyph);
       }
     }
     // a posição é a geral (entre todos, por retorno), então a primeira linha dos modelos não precisa ser a 1ª
     expect(board.rows.map((r) => r.rank)).toEqual(board.rows.map((_, i) => i + 1));
     await expect(page.getByText('BOVA11 inclui proventos', { exact: false })).toBeVisible();
+  });
+});
+
+// A arena simulada, até a integração (docs/ARENA.md, seções 1 e 8): o elenco é o da Temporada 1 e as decisões vêm do provedor fake. A tela
+// marca cada modelo com a etiqueta "simulado" e a home avisa; com o provedor de verdade, a etiqueta e o aviso somem sozinhos.
+test.describe('arena simulada', () => {
+  test('a home avisa que as decisões são simuladas, e o ranking traz os seis do elenco, cada um com a etiqueta', async ({
+    page,
+    request,
+  }) => {
+    const board = await fetchApi(request, `/seasons/${SEASON}/leaderboard`, leaderboardSchema);
+    const models = board.rows.filter((r) => r.competitor.type === 'MODEL');
+    expect(models.map((r) => r.competitor.name).sort()).toEqual([...CAST].sort());
+    expect(models.every((r) => r.competitor.provider === 'fake')).toBe(true);
+
+    await page.goto('/');
+    await expect(
+      page.getByText('Decisões simuladas: os modelos ainda não estão conectados.'),
+    ).toBeVisible();
+    const ranking = region(page, 'Ranking');
+    for (const name of CAST) {
+      const header = ranking.getByRole('rowheader', { name: `${name} ${SIMULATED}`, exact: true });
+      await expect(header).toBeVisible();
+      // a etiqueta fica fora do link: o nome do link é só o do modelo
+      await expect(header.getByRole('link')).toHaveText(name);
+      await expect(header.getByText(SIMULATED, { exact: true })).toBeVisible();
+    }
+    // o Sorteio não é modelo: fica sem etiqueta
+    await expect(ranking.getByRole('rowheader', { name: 'Sorteio', exact: true })).toBeVisible();
+    await expect(ranking.getByText(SIMULATED, { exact: true })).toHaveCount(CAST.length);
+  });
+
+  test('o ranking completo marca só os modelos: o Sorteio e as referências ficam sem etiqueta', async ({
+    page,
+  }) => {
+    await page.goto('/ranking');
+    await expect(region(page, 'Modelos').getByText(SIMULATED, { exact: true })).toHaveCount(
+      CAST.length,
+    );
+    for (const name of ['Sorteio (controle)', 'Referências']) {
+      await expect(region(page, name).getByText(SIMULATED, { exact: true })).toHaveCount(0);
+    }
   });
 });
 
@@ -478,11 +553,17 @@ test.describe('modelo', () => {
     const portfolio = detail.portfolio!;
     await page.goto(`/modelos/${MODEL}`);
     await expect(page).toHaveTitle(`${detail.competitor.name} · Alvesting`);
-    await expect(
-      page.getByRole('heading', { level: 1, name: detail.competitor.name }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(shownName(detail.competitor));
     await expect(fact(page.locator('main'), 'Provedor')).toHaveText(detail.competitor.provider!);
-    await expect(fact(page.locator('main'), 'Modelo (ID)')).toHaveText(detail.competitor.modelId!);
+    // o ensaio decide pelo provedor fake: o ID é a estratégia simulada que decide no lugar do modelo
+    expect(detail.competitor.provider).toBe('fake');
+    await expect(fact(page.locator('main'), 'Estratégia simulada')).toHaveText(
+      detail.competitor.modelId!,
+    );
+    await expect(page.locator('dt:text-is("Modelo (ID)")')).toHaveCount(0);
+    await expect(
+      page.getByRole('main').getByText('Decisões simuladas: o modelo ainda não está conectado.'),
+    ).toBeVisible();
 
     const result = region(page, 'Resultado');
     await expect(fact(result, 'Posição')).toHaveText(String(stat.rank));
@@ -606,7 +687,10 @@ test.describe('ciclo', () => {
     const cards = region(page, 'Decisões').getByRole('article');
     await expect(cards).toHaveCount(cycle.decisions.length);
     for (const [i, d] of cycle.decisions.entries()) {
-      await expectCard(cards.nth(i), d, { by: 'model' });
+      await expectCard(cards.nth(i), d, {
+        by: 'model',
+        simulated: d.applied?.provider === 'fake',
+      });
     }
     // o canário do ensaio e o texto do prompt não existem em página nenhuma
     const html = await page.content();
@@ -750,7 +834,7 @@ test.describe('ação', () => {
     const holders = region(page, 'Quem tem a ação');
     await expect(holders.getByRole('row')).toHaveCount(1 + stock.holders.length);
     for (const h of stock.holders) {
-      const cells = rowOf(holders, h.competitor.name).getByRole('cell');
+      const cells = rowOf(holders, shownName(h.competitor)).getByRole('cell');
       await expect(cells.nth(0)).toContainText(brl(h.valueCents));
       await expect(cells.nth(1)).toHaveText(`${h.pnlCents > 0 ? '+' : ''}${brl(h.pnlCents)}`);
       await expect(cells.nth(2)).toHaveText(String(h.quantity).replace(/\B(?=(\d{3})+$)/g, '.'));
@@ -913,13 +997,64 @@ test.describe('404', () => {
   });
 });
 
+// O urso da 404 (ADR 0034; o mesmo componente da arte do hero, components/arte.tsx): a arte é arquivo e o código só troca o quadro. O quadro 0
+// vem no HTML, já sem JavaScript; o celular nunca pede o arquivo inteiro (o JSON dos quadros e o sprite grande; o sprite do quadro 0,
+// urso-q0.png, não conta); e a partir de 1024 px ele anda. As larguras que importam são postas à mão nos três projetos.
+const bearFrame = (page: Page) => page.locator('[data-arte="urso"] pre');
+const WHOLE_BEAR = /\/ascii\/arte\/urso\.(json|png)$/;
+
+test.describe('404 sem JavaScript', () => {
+  test.use({ javaScriptEnabled: false });
+
+  test('o urso já vem com o quadro 0 inteiro no HTML, igual ao primeiro quadro do arquivo da v1', async ({
+    page,
+    request,
+  }) => {
+    const whole = (await (await request.get('/ascii/arte/urso.json')).json()) as {
+      rows: number;
+      frames: string[];
+    };
+    expect((await page.goto('/rota-que-nao-existe'))?.status()).toBe(404);
+    const text = await bearFrame(page).textContent();
+    expect(text).toBe(whole.frames[0]);
+    expect(text!.split('\n')).toHaveLength(whole.rows);
+  });
+});
+
+test.describe('404 e o urso', () => {
+  test('em 390 px o urso não pede o arquivo inteiro: nem o JSON dos quadros nem o sprite grande', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const asked: string[] = [];
+    page.on('request', (request) => {
+      if (WHOLE_BEAR.test(new URL(request.url()).pathname)) asked.push(request.url());
+    });
+    await page.goto('/rota-que-nao-existe');
+    await page.waitForLoadState('networkidle');
+    // o laço só começaria depois do load, quando o navegador fica à toa: o tempo de ele ter começado, se fosse começar
+    await page.waitForTimeout(1_000);
+    expect(asked).toEqual([]);
+    await expect(bearFrame(page)).not.toBeEmpty();
+  });
+
+  test('em 1440 px o urso anda (o quadro muda)', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/rota-que-nao-existe');
+    const first = await bearFrame(page).textContent();
+    await expect
+      .poll(async () => (await bearFrame(page).textContent()) !== first, { timeout: 10_000 })
+      .toBe(true);
+  });
+});
+
 test.describe('navegação de ponta a ponta', () => {
   test('início, modelo, ciclo, ação e notícias, só clicando', async ({ page }) => {
     await page.goto('/');
     // início -> modelo, pelo ranking
-    await region(page, 'Ranking').getByRole('link', { name: 'Fake Contrarian' }).click();
+    await region(page, 'Ranking').getByRole('link', { name: 'GPT-6.1 Sol', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/modelos/${MODEL}$`));
-    await expect(page.getByRole('heading', { level: 1, name: 'Fake Contrarian' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'GPT-6.1 Sol' })).toBeVisible();
 
     // modelo -> ciclo, pela data de uma decisão
     await region(page, 'Decisões')
@@ -947,15 +1082,18 @@ test.describe('navegação de ponta a ponta', () => {
     await page.getByRole('link', { name: `Todas as notícias de ${ticker}` }).click();
     await expect(page).toHaveURL(new RegExp(`/noticias\\?ticker=${ticker}$`));
     await expect(page.getByRole('heading', { level: 1, name: 'Notícias' })).toBeVisible();
+    // abaixo de 1024 px o menu é a folha que o botão "Menu" abre (e2e/menu.ts)
+    await abrirMenu(page);
     await page
       .getByRole('navigation', { name: 'Principal' })
       .getByRole('link', { name: 'Ranking' })
       .click();
     await expect(page.getByRole('heading', { level: 1, name: 'Ranking' })).toBeVisible();
+    await abrirMenu(page);
     await page
       .getByRole('navigation', { name: 'Principal' })
       .getByRole('link', { name: 'Início' })
       .click();
-    await expect(page.getByRole('heading', { level: 1, name: 'Alvesting' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: HERO_TITLE })).toBeVisible();
   });
 });

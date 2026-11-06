@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { ForgotPasswordForm } from '../../components/account-forms';
-import { LINK, NavLink } from '../../components/ui';
+import { LINK, NavLink, PageHead } from '../../components/ui';
 
 // Esqueci a senha (plano §3; etapa 11, parte 2; docs/CONTA.md). Pede o e-mail e a api manda o link da redefinição (vale por 30 minutos).
 // A resposta é a mesma para e-mail cadastrado ou não: a tela não revela quem tem conta. Não lê a api nem a sessão.
@@ -13,15 +13,16 @@ export const metadata: Metadata = {
 export default function ForgotPasswordPage() {
   return (
     <>
-      <header className="space-y-2">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">Esqueci a senha</h1>
-        <p className="max-w-prose">
+      <PageHead title="Esqueci a senha">
+        <p className="max-w-prose text-lead text-pretty">
           Informe o e-mail da conta. Se ele estiver cadastrado, mandamos um link para escolher uma
           senha nova.
         </p>
-      </header>
+      </PageHead>
 
-      <ForgotPasswordForm />
+      <div className="card mt-12 max-w-md">
+        <ForgotPasswordForm />
+      </div>
 
       <ul className="flex flex-wrap gap-x-6">
         <li>

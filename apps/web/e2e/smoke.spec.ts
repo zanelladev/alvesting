@@ -19,6 +19,9 @@ const API_ONLY = { tag: '@api' };
 // E2E_API_URL cobre o resto (por exemplo, as duas imagens Docker em portas diferentes).
 const apiBase = process.env.E2E_API_URL?.trim() || process.env.BASE_URL?.trim() || API_URL;
 
+// o h1 da home é o título do hero (ADR 0034)
+const HERO_TITLE = 'Modelos de linguagem investindo na B3';
+
 test.describe('smoke', () => {
   // O goto não falha com 403, 404 ou 502: a checagem do status é explícita. Um recurso com erro (JS, CSS ou fonte
   // barrado pela borda) deixaria a página sem estilo e sem hidratar, e o h1 do HTML sozinho não mostraria isso.
@@ -31,7 +34,7 @@ test.describe('smoke', () => {
     const response = await page.goto('/');
     expect(response?.status()).toBe(200);
     await expect(page).toHaveTitle('Alvesting');
-    await expect(page.getByRole('heading', { level: 1, name: 'Alvesting' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: HERO_TITLE })).toBeVisible();
     await page.evaluate(async () => {
       await document.fonts.ready;
     });
@@ -42,7 +45,7 @@ test.describe('smoke', () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto('/');
     // Sem o h1 a medida não vale nada: uma página de erro curta também "não rola".
-    await expect(page.getByRole('heading', { level: 1, name: 'Alvesting' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: HERO_TITLE })).toBeVisible();
     await page.evaluate(async () => {
       await document.fonts.ready;
     });
@@ -67,6 +70,22 @@ test.describe('smoke', () => {
     await expect(
       page.getByRole('contentinfo').getByRole('link', { name: /^brapi\.dev/ }),
     ).toHaveAttribute('href', 'https://brapi.dev/');
+  });
+
+  // O pé do hero (ADR 0034): a legenda com o crédito das cotações e a fita, que só existe com a arte do hero no ar. Não depende de dado: o
+  // banco sem barra (o primeiro deploy) mostra a fita "sem cotações ainda", e a legenda leva o crédito do mesmo jeito. A arte vem de
+  // `public/` (o standalone não o leva sozinho): o pedido do quadro 0 que falha reprovaria o teste da home acima.
+  test('a home mostra a legenda com o crédito da brapi e a fita do pé do hero', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    // (no main: o rodapé também credita a brapi)
+    await expect(page.getByRole('main').getByText(/Cotações: brapi\.dev/)).toBeVisible();
+    const tape = page.locator('[data-fita]');
+    await expect(tape).toBeVisible();
+    await expect(tape).toHaveAttribute('aria-hidden', 'true');
+    await expect(tape).not.toBeEmpty();
+    await expect(page.locator('[data-arte="escadaria"] pre')).not.toBeEmpty();
   });
 
   test('o /health do site responde ok, com service web', async ({ request }) => {

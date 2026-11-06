@@ -203,7 +203,7 @@ numa pasta temporária), agora **atrás da trava de origem** como na Azure (cada
 ## 9. As telas (parte 2)
 
 Código em `apps/web/src`: `app/` as páginas, `components/` as peças (`form-kit.tsx` e `account-forms.tsx` os formulários, `legal-text.tsx` o texto legal) e `lib/` o que fala com a api (`account.ts` a leitura do servidor, `account-client.ts` o navegador,
-`account-validation.ts`, `safe-path.ts`). Estética crua de `globals.css`, mobile primeiro (alvos de 44 px, inclusive nas caixas de marcar; sem rolagem horizontal em 360 px). Todas as páginas são dinâmicas (`force-dynamic`).
+`account-validation.ts`, `safe-path.ts`). O desenho é o do sistema visual ascii-ui (ADR 0034; `docs/TELAS.md`, seção 10), com as regras de formulário do Arc: o `PageHead` com o título e a linha da moldura, o formulário num cartão (`card`), o campo de 44 px com texto de 16 px, o envio na pílula branca (`btn-primary`, uma por superfície; sair, excluir a conta e as ações do painel ficam no `btn` escuro, e o cartão da exclusão tem a borda `semantic-error`) e o `DotSpinner` ao lado de "Enviando…"; aviso é `[!]` em cinza, erro é a borda vermelha. Mobile primeiro (alvos de 44 px, inclusive nas caixas de marcar; sem rolagem horizontal em 360 px). Todas as páginas são dinâmicas (`force-dynamic`).
 
 | Rota | O que faz | Lê da api |
 |---|---|---|

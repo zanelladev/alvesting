@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { LINK, NavLink } from './ui';
+import { BUTTON, NavLink, PageHead } from './ui';
 
 // A tela de "a arena não respondeu" (plano §3). Duas portas levam a ela: o servidor, quando a leitura da api falha (src/lib/with-api-down.tsx),
 // e a página de erro do navegador (src/app/error.tsx), para o que não era previsto. A primeira existe porque o React não renderiza o
@@ -11,23 +11,24 @@ import { LINK, NavLink } from './ui';
 // navegador, ou um link que recarrega a página sem JavaScript.
 export function ApiDown({ digest, retry }: { digest?: string | undefined; retry: ReactNode }) {
   return (
-    <section className="space-y-4">
+    <>
       {/* a tela de erro não vale como página: sem isto, um rastreador que a pegue durante uma queda a indexaria (a resposta é 200) */}
       <meta name="robots" content="noindex" />
-      <h1 className="font-mono text-2xl font-semibold sm:text-3xl">
-        Não foi possível carregar os dados
-      </h1>
-      <p className="max-w-prose">
-        A arena não respondeu agora. Tente de novo em alguns minutos; se continuar assim, o problema
-        é do site, e não da sua conexão.
-      </p>
-      {digest ? <p className="font-mono muted">Código do erro: {digest}</p> : null}
-      <div className="flex flex-wrap gap-x-6 gap-y-2">
-        {retry}
-        <NavLink href="/" className={LINK}>
-          Voltar ao início
-        </NavLink>
+      <PageHead title="Não foi possível carregar os dados">
+        <p className="max-w-prose text-lead text-pretty">
+          A arena não respondeu agora. Tente de novo em alguns minutos; se continuar assim, o
+          problema é do site, e não da sua conexão.
+        </p>
+      </PageHead>
+      <div className="space-y-6 pt-4">
+        {digest ? <p className="font-mono muted">Código do erro: {digest}</p> : null}
+        <div className="flex flex-wrap gap-3">
+          {retry}
+          <NavLink href="/" className={BUTTON}>
+            Voltar ao início
+          </NavLink>
+        </div>
       </div>
-    </section>
+    </>
   );
 }

@@ -57,7 +57,7 @@ mensagem. Os agendadores são as mesmas classes que `src/role.ts` liga (`MarketS
 | 07:00:05 | `sched-news` | 6 `fetch {fonte, slot}`: 4 RSS, CVM IPE e BCB SGS |
 | 07:30:30 | `sched-briefing` | `freeze {pregão}`: congela o briefing (SHA-256) |
 | 07:30:45 | `sched-news` | 6 `fetch`, **depois do corte**: entram no briefing do dia seguinte |
-| 08:00:30 | `sched-cycle` | 1 `decide {ciclo, competidor}` por modelo (4) |
+| 08:00:30 | `sched-cycle` | 1 `decide {ciclo, competidor}` por modelo (6) |
 | 21:30:20 | `sched-eod` | `eod {pregão}`; ao concluir (o conjunto obrigatório inteiro, ou o prazo das 00:30), o eod publica `settle {temporada, pregão}` |
 | 23:30 do 2º pregão | `settle:event` (admin) | nenhuma: registra o desdobramento antes da data ex, pelo mesmo `CorporateEventService` do comando |
 
@@ -78,7 +78,8 @@ round(volume ÷ fechamento), então quantidade × fechamento volta ao volume sin
 pregão só aparece a partir da hora em que "sai" (20:45; a do 2º pregão, 22:10), pelo relógio simulado. O calendário é o real de 2026 (`b3-holidays.json`): o 1º
 pregão é terça 03/11/2026, depois do Finados, o mesmo da Temporada 0 em produção, e a semana 46 começa na segunda 09/11.
 
-**Os casos difíceis, de propósito.** Quatro ações existem para isso, e cada estratégia de modelo cai em uma delas:
+**Os casos difíceis, de propósito.** Quatro ações existem para isso, e cada estratégia de modelo cai em uma delas (o momentum é o do
+Claude Opus 5.5 e, concentrado, o do DeepSeek V4 Pro; o contrário é o do GPT-6.1 Sol e, espalhado, o do Qwen3.8 Max; quadro abaixo):
 
 | Ação | O que acontece | Quem se depara com ela |
 | --- | --- | --- |
@@ -89,21 +90,40 @@ pregão é terça 03/11/2026, depois do Finados, o mesmo da Temporada 0 em produ
 
 As outras ações de enchimento também ficam, raramente (1 a 1,5% dos pregões), sem negócio.
 
-**Os quatro modelos** (`apps/api/seasons/ensaio.json`; comportamentos em `src/modules/arena/infrastructure/fake-llm.ts`, que valem também
-para a Temporada 0 de produção). Passam pelo gateway de verdade (o SDK da OpenAI, com o `fetch` trocado pelo fake), pelo prompt, pelo
-briefing, pela validação, pelo filtro de vazamento e pelo Blob.
+**O elenco simulado: os seis da Temporada 1, com decisões do provedor fake** (`apps/api/seasons/ensaio.json`; estratégias em
+`src/modules/arena/infrastructure/fake-llm.ts`). Desde 04/11/2026 a temporada sintética (a do ensaio, a da demo local e a da semente do
+e2e) tem os seis modelos do rascunho da Temporada 1 (`docs/ARENA.md`, seção 8), com **os mesmos nomes e slugs**, mas com o provedor
+`fake`: as chaves ainda não existem, e as decisões vêm de estratégias simples e determinísticas. O site marca cada um com a etiqueta
+"simulado" e a home avisa que as decisões são simuladas (`docs/ARENA.md`, seção 1). Passam pelo gateway de verdade (o SDK da OpenAI,
+com o `fetch` trocado pelo fake), pelo prompt, pelo briefing, pela validação, pelo filtro de vazamento e pelo Blob.
 
-| Modelo | O que faz |
-| --- | --- |
-| `fake/momentum` | compra as duas maiores altas do último pregão (10% do patrimônio cada) e vende a posição que está abaixo do custo médio |
-| `fake/contrarian` | o contrário: compra as duas maiores quedas e realiza a posição que ganhou 2% ou mais |
-| `fake/hold-only` | só segura (um HOLD): rende como o CDI, centavo a centavo |
-| `fake/flaky-json` | decide como o fake de sempre (as escolhas saem do SHA-256 de modelo e pregão), mas nos pregões de dia ímpar do mês a 1ª chamada devolve texto que não é JSON e o reparo acerta |
+| Modelo (slug) | Estratégia simulada | O que faz |
+| --- | --- | --- |
+| Claude Opus 5.5 (`claude-opus-5-5`) | `fake/momentum` | compra as duas maiores altas do último pregão (10% do patrimônio cada) e vende (100%) a posição que está abaixo do custo médio |
+| GPT-6.1 Sol (`gpt-6-1-sol`) | `fake/contrarian` | o contrário: compra as duas maiores quedas (10% cada) e realiza a posição que ganhou 2% ou mais |
+| Gemini 4 Argon (`gemini-4-argon`) | `fake/hold-only` | só segura (um HOLD): rende como o CDI, centavo a centavo |
+| Grok 4.7 (`grok-4-7`) | `fake/hash-picks` | escolhas tiradas do SHA-256 de modelo e pregão: compra de 1 a 3 ações (5 a 12% do patrimônio cada) e, em cerca de metade dos pregões em que tem posição, vende de 50 a 100% de uma delas (o comportamento padrão do fake, para um ID que ele não conhece) |
+| DeepSeek V4 Pro (0813) (`deepseek-v4-pro`) | `fake/momentum-focused` | o momentum concentrado: só a maior alta, com 20% do patrimônio, e a mesma saída abaixo do custo |
+| Qwen3.8 Max (0902) (`qwen3-8-max`) | `fake/contrarian-spread` | o contrário espalhado: as três maiores quedas, com 5% do patrimônio cada, e a mesma realização de 2% |
 
-**Duas falhas injetadas**, para exercitar a nova tentativa e o reagendamento com o handler de verdade:
+**Quem ficou com qual estratégia.** Pela ordem do rascunho: as quatro estratégias que o ensaio já tinha (momentum, contrário, só segura e o
+sorteio por SHA-256, que era o do `fake/flaky-json` sem a falha) ficaram nas quatro primeiras posições, e as duas variantes novas, nas duas
+últimas. A escolha não diz nada sobre o modelo de verdade, e o resultado do ranking também não. Trocar é mudar o `modelId` no
+`ensaio.json` (o `season-files.spec.ts` confere o elenco).
 
-- **Provedor com falha passageira.** O `fake/contrarian` recebe um 500 na 1ª chamada do 2º pregão. O `DecideHandler` falha, o barramento
-  agenda a cópia para daqui a 10 minutos (a regra de `QUEUES.decisions`) e a decisão sai na 2ª entrega. Sem DLQ, sem HOLD.
+**Por que nenhuma marca falha.** A falha simulada (`fake/always-fail`, `fake/invalid-json-once`, `fake/invalid-json-always` e
+`fake/echo-prompt`) seria atribuída, na tela, a um modelo de verdade. Por isso o elenco só usa estratégias que acertam o JSON de primeira, em
+qualquer pregão e com qualquer carteira (o `fake-llm.spec.ts` confere cada uma das seis), e o ensaio não injeta mais a falha passageira do
+provedor. O `fake/flaky-json` saiu do código, sem uso. Os dois caminhos continuam provados nos testes de integração, com IDs de teste:
+
+- **o reparo do JSON**: `decide.handler.integration.spec.ts` ("JSON inválido e o reparo único": o reparo que acerta, o que também falha e
+  vira HOLD `resposta_invalida`, o que não cabe no prazo; e o `fake/invalid-json-once` pelo SDK);
+- **a falha do provedor e a nova tentativa da fila**: `decide.handler.integration.spec.ts` ("DLQ vira HOLD registrado: a última entrega")
+  e `arena-cycle.integration.spec.ts` (critério 2: o competidor que sempre falha reagenda nas duas primeiras entregas e vira HOLD na
+  terceira, sem DLQ); a conta da espera e da DLQ do barramento, em `bus.spec.ts` e `bus-parity.spec.ts`.
+
+**As falhas que continuam injetadas** são as do mercado, que não são de modelo:
+
 - **Brapi atrasada.** No 2º pregão a barra só "sai" às 22:10. O `eod` das 21:30 pede o BOVA11 (a sonda), vê que ele não tem a barra do
   dia, gasta uma requisição só e se reagenda para 22:30 (`publishScheduled`, +60 min); na cópia busca o conjunto obrigatório inteiro.
 - **Papel sem negócio e suspenso.** SECA3 não negocia no 2º pregão e PAUS3 some do 3º em diante, e as ações de enchimento ficam sem
@@ -136,7 +156,7 @@ aparece nele.
 | Relógio da máquina | `SimClock`, só para a frente. Os handlers o recebem pelo construtor; mudou só quem não tinha: `MarketQueueHandler`, `FreezeHandler` e `FetchHandler` ganharam um relógio opcional, e sem ele nada mudou |
 | brapi (`fetch` do `BrapiClient`, com a trava consultiva do Postgres de verdade) | `createFakeBrapi`: um `fetch` que serve o mercado sintético no formato dos docs, a partir da hora em que a barra "sai", e conta as requisições |
 | Feeds RSS, CVM e BCB | os dados sintéticos acima, pelos mesmos buscadores |
-| OpenRouter | o `fetch` do SDK trocado pelo provedor fake (e a falha passageira) |
+| OpenRouter | o `fetch` do SDK trocado pelo provedor fake |
 | Prompt do Key Vault | o prompt sintético |
 | Containers `briefings`, `llm-io` | os mesmos, com o prefixo `ensaio-` |
 
@@ -153,12 +173,15 @@ sem isso o resultado dependeria do dia em que o ensaio roda.
 **Prova** (cada item é uma verificação do relatório; a lista está na seção 6):
 
 1. **5 ciclos fake consecutivos, sem intervenção e sem DLQ.** Os únicos atos humanos são os de produção: criar e iniciar a temporada,
-   e o admin registrar o desdobramento. Cinco ciclos fechados, 4 decisões em cada, nenhum HOLD forçado, nenhuma mensagem na DLQ, todos os
+   e o admin registrar o desdobramento. Cinco ciclos fechados, 6 decisões em cada, nenhum HOLD forçado, nenhuma mensagem na DLQ, todos os
    `job_run` concluídos e a temporada encerrada (`FINISHED`) no último pregão.
 2. **Determinismo.** Duas execuções com a mesma semente dão o mesmo relatório, byte a byte: os hashes do briefing e do prompt, as
    decisões, as ordens, o patrimônio e os percentis do Monte Carlo. Outra semente dá outro.
-3. **Cada competidor tem decisão e patrimônio em cada pregão** (4 modelos, o Sorteio e as 3 referências: 40 snapshots em 5 pregões). O
-   reparo de JSON aparece (3 decisões com 2 chamadas). A nova tentativa agendada e o reagendamento do `eod` também.
+3. **Cada competidor tem decisão e patrimônio em cada pregão** (6 modelos, o Sorteio e as 3 referências: 50 snapshots em 5 pregões). O
+   elenco simulado não falha: toda decisão sai de primeira, sem reparo e sem nova tentativa (o teste do ensaio confere; a seção 3 diz onde
+   o reparo e a nova tentativa são provados). O reagendamento do `eod` aparece. No último pregão aparece também o **limite de 10
+   posições**, com as duas barreiras (`docs/ARENA.md`, seção 10): a validação descarta uma compra do Qwen3.8 Max (`max_positions`), e a
+   liquidação recusa outra, que só caberia se a venda de `PAUS3` (suspensa) tivesse executado.
 4. **O dia sem negócio** (a ordem não executa, sem preço e sem execução), **a ação suspensa** (a posição segue marcada pelo último
    fechamento) **e o desdobramento** (a quantidade dobra na data ex, e o patrimônio não perde a metade) saem certos.
 5. **A fiação das filas.** Cada tipo de mensagem chega ao handler da fila dele, pelo `handleDelivery`, e o que um handler publica
@@ -183,8 +206,11 @@ sem isso o resultado dependeria do dia em que o ensaio roda.
   Front Door, nenhuma VNet. O Blob é o Azurite, por connection string.
 - **O tempo real**: latência de provedor, timeout de chamada, cold start do job, o prazo das 09:30 com uma chamada lenta (o prazo e o
   orçamento de tempo têm testes próprios, com relógio injetado). Tudo aqui leva zero minuto simulado.
-- **LLM de verdade**: o fake devolve JSON válido ou, de propósito, quebrado. Não prova que `strict: false`, `require_parameters` e os
-  parâmetros de cada modelo são aceitos, nem o custo (`usage.cost`), nem o teto mensal.
+- **LLM de verdade**: o fake devolve JSON válido ou, de propósito (nos testes), quebrado. Não prova que `strict: false`, `require_parameters`
+  e os parâmetros de cada modelo são aceitos, nem o custo (`usage.cost`), nem o teto mensal. Os nomes do elenco são os da Temporada 1, mas
+  quem decide é a estratégia fake de cada um (seção 3).
+- **O reparo do JSON e a nova tentativa de uma decisão**: saíram do ensaio com o elenco simulado (nenhuma falha vai para o nome de um
+  modelo de verdade) e ficam com os testes de integração da seção 3.
 - **A brapi de verdade**: a brapi falsa tem o formato dos docs, mas não o comportamento real (preço ajustado por provento, atraso da
   atualização, o papel sem negócio que a brapi devolve com preço nulo, o limite real de histórico). A prova contra a brapi de verdade é a
   controlada do integrador, de no máximo 10 requisições, num banco descartável (`docs/DADOS.md`, seção 9).
@@ -198,11 +224,11 @@ sem isso o resultado dependeria do dia em que o ensaio roda.
 
 ## 6. Resultado de uma execução
 
-`pnpm --filter @alvesting/api arena:ensaio` (03/11/2026, semente 1, 5 pregões, Mac arm64, Node 26.13, Postgres 17 e Azurite 3.37 do
-compose): **exit 0, 19 de 19 verificações passaram.** O relatório (`.data/ensaio/relatorio-s1-p5.txt`, 17.528 bytes) tem o SHA-256
-`e3138a5596e24321ba549a1352324d167422146fe844790119d7d4541b7c1a2f`, o mesmo nas duas execuções seguidas (o relatório anterior, de
-antes da onda da brapi, tinha 16.979 bytes e o SHA-256 `b45047f88cfd54c3054e055a3f4b8af4103a907628f96f456453fa3444ec5cc4`; veja o que
-mudou na seção 6.1). Cabeçalho e o 2º pregão (o das duas falhas injetadas e do dia sem negócio):
+`pnpm --filter @alvesting/api arena:ensaio` (04/11/2026, semente 1, 5 pregões, Mac arm64, Node 26.13, Postgres 17 e Azurite 3.37 do
+compose, com o elenco simulado da seção 3): **exit 0, 17 de 17 verificações passaram.** O relatório (`.data/ensaio/relatorio-s1-p5.txt`,
+22.068 bytes) tem o SHA-256 `081d860b31b6c69997424d92beacc190eefed498835b61e2ebe9b442d8891f12`, o mesmo nas duas execuções seguidas. Os
+relatórios desta semente, em ordem: `b45047f8…` (antes da brapi), `e3138a55…` (a brapi falsa, seção 6.1) e este (o elenco simulado, seção
+6.2). Cabeçalho e o 2º pregão (o da brapi atrasada e do dia sem negócio):
 
 ```text
 ENSAIO DA TEMPORADA 0
@@ -211,46 +237,54 @@ histórico: 60 pregões (2026-08-06 a 2026-10-30) | universo: 2026-W45 40 açõe
 prompt: versão 8b778a007bb43bd13098b814b49042db | sha256 88fe79d1d3e69ab472b21afeaebd82b42322c426d5005d170af01dbb6c72fa8f (o texto nunca sai do código)
 
 PREGÃO 2026-11-04 (semana 2026-W45)
-  briefing sha256 1c48834387691976afb879a3b9487f0216cc9f0280209fed4c4882f488449d76 (31019 bytes) | prompt sha256 88fe79d1... | ciclo CLOSED
+  briefing sha256 1c48834387691976afb879a3b9487f0216cc9f0280209fed4c4882f488449d76 (31019 bytes) | prompt sha256 88fe79d1d3e69ab472b21afeaebd82b42322c426d5005d170af01dbb6c72fa8f | ciclo CLOSED
   decisões (08:00):
-    fake-momentum    DECIDED     otimista   1 chamada   SELL MOVE3 100% | SELL SINM3 100% | BUY SECA3 10% | BUY SINN4 10%
-    fake-contrarian  DECIDED     pessimista 1 chamada   BUY MOVE3 10% | BUY SINM3 10%
-    fake-hold        DECIDED     neutro     1 chamada   HOLD SINA3
-    fake-flaky       DECIDED     otimista   1 chamada   SELL SINQ4 89% | BUY SIMG11 8% | BUY SIMA11 11% | HOLD SINA3
+    claude-opus-5-5  DECIDED     otimista   1 chamada   SELL MOVE3 100% | SELL SINM3 100% | BUY SECA3 10% | BUY SINN4 10%
+    gpt-6-1-sol      DECIDED     pessimista 1 chamada   BUY MOVE3 10% | BUY SINM3 10%
+    gemini-4-argon   DECIDED     neutro     1 chamada   HOLD SINA3
+    grok-4-7         DECIDED     otimista   1 chamada   SELL SINN4 92% | BUY SINP3 9% | BUY SINK4 11% | HOLD SINA3
+    deepseek-v4-pro  DECIDED     otimista   1 chamada   SELL MOVE3 100% | BUY SECA3 20%
+    qwen3-8-max      DECIDED     pessimista 1 chamada   BUY MOVE3 5% | BUY SINM3 5% | BUY SIMD11 5%
   ordens no preço de abertura (modelos e Sorteio; as referências só entram no patrimônio):
-    fake-momentum    SELL MOVE3  FILLED 124 de 124 a R$ 76,89
-    fake-momentum    SELL SINM3  FILLED 113 de 113 a R$ 85,33
-    fake-momentum    BUY SECA3  não executou (no_bar)
-    fake-momentum    BUY SINN4  FILLED 99 de 99 a R$ 99,89
-    fake-contrarian  BUY MOVE3  FILLED 130 de 130 a R$ 76,89
+    claude-opus-5-5  SELL MOVE3  FILLED 124 de 124 a R$ 76,89
+    claude-opus-5-5  SELL SINM3  FILLED 113 de 113 a R$ 85,33
+    claude-opus-5-5  BUY SECA3  não executou (no_bar)
+    claude-opus-5-5  BUY SINN4  FILLED 99 de 99 a R$ 99,89
+    gpt-6-1-sol      BUY MOVE3  FILLED 130 de 130 a R$ 76,89
+    gpt-6-1-sol      BUY SINM3  FILLED 117 de 117 a R$ 85,33
     ...
   patrimônio no fechamento:
-    fake-momentum         R$ 99.488,58  caixa     R$ 89.389,59  posições     R$ 10.098,99  percentil  11,70%
-    fake-contrarian      R$ 100.411,52  caixa     R$ 60.070,18  posições     R$ 40.341,34  percentil  69,60%
-    fake-hold            R$ 100.050,25  caixa    R$ 100.050,25  posições          R$ 0,00  percentil  42,90%
-    fake-flaky            R$ 99.887,27  caixa     R$ 74.066,35  posições     R$ 25.820,92  percentil  29,30%
+    claude-opus-5-5       R$ 99.488,58  caixa     R$ 89.389,59  posições     R$ 10.098,99  percentil  11,70%
+    gpt-6-1-sol          R$ 100.411,52  caixa     R$ 60.070,18  posições     R$ 40.341,34  percentil  69,60%
+    gemini-4-argon       R$ 100.050,25  caixa    R$ 100.050,25  posições          R$ 0,00  percentil  42,90%
+    grok-4-7             R$ 100.030,52  caixa     R$ 79.643,08  posições     R$ 20.387,44  percentil  39,80%
+    deepseek-v4-pro       R$ 99.113,37  caixa     R$ 99.113,37  posições          R$ 0,00  percentil   3,90%
+    qwen3-8-max          R$ 100.343,60  caixa     R$ 75.129,47  posições     R$ 25.214,13  percentil  64,60%
     ...
 ```
 
-No 3º pregão (05/11) o `fake-contrarian` passa a ter `DOBR4 252` (eram 126 antes da data ex) e `PAUS3 124*`, com a venda de `PAUS3` sem
-execução (`no_bar`); o `fake-flaky` volta a precisar do reparo (2 chamadas). Ranking final, fila e verificações:
+No 3º pregão (05/11) o `gpt-6-1-sol` passa a ter `DOBR4 252` (eram 126 antes da data ex) e `PAUS3 124*`, com a venda de `PAUS3` sem
+execução (`no_bar`); o `qwen3-8-max` também (`DOBR4 126`, eram 63, e `PAUS3 62*`). No último pregão (09/11) aparece o limite de 10 posições
+(seção 5). Ranking final, fila e verificações:
 
 ```text
 RANKING FINAL (2026-11-09)
   #  competidor              patrimônio   retorno  percentil  vs igual-peso    vs CDI  drawdown  operações   acerto
   1  cdi                  R$ 100.201,98     0,20%     72,00%          0,91%     0,00%     0,00%          0        -
-  2  fake-hold            R$ 100.201,98     0,20%     72,00%          0,91%     0,00%     0,00%          0        -
-  3  fake-contrarian       R$ 99.741,34    -0,26%     57,40%          0,45%    -0,46%     0,70%         11  100,00%
-  4  fake-flaky            R$ 99.586,95    -0,41%     51,50%          0,29%    -0,62%     0,50%         10    0,00%
-  5  fake-momentum         R$ 99.557,14    -0,44%     50,30%          0,26%    -0,64%     0,77%         11   33,33%
-  6  igual-peso            R$ 99.293,23    -0,71%     39,20%          0,00%    -0,91%     0,90%         39        -
-  7  sorteio               R$ 98.804,97    -1,20%     24,60%         -0,49%    -1,40%     1,37%         13   66,67%
-  8  bova11                R$ 98.610,70    -1,39%     18,80%         -0,68%    -1,59%     1,39%          1        -
+  2  gemini-4-argon       R$ 100.201,98     0,20%     72,00%          0,91%     0,00%     0,00%          0        -
+  3  qwen3-8-max           R$ 99.816,57    -0,18%     60,00%          0,52%    -0,39%     0,53%         14  100,00%
+  4  gpt-6-1-sol           R$ 99.741,34    -0,26%     57,40%          0,45%    -0,46%     0,70%         11  100,00%
+  5  claude-opus-5-5       R$ 99.557,14    -0,44%     50,30%          0,26%    -0,64%     0,77%         11   33,33%
+  6  deepseek-v4-pro       R$ 99.539,09    -0,46%     50,10%          0,25%    -0,66%     1,02%          4    0,00%
+  7  igual-peso            R$ 99.293,23    -0,71%     39,20%          0,00%    -0,91%     0,90%         39        -
+  8  grok-4-7              R$ 99.184,79    -0,82%     35,30%         -0,11%    -1,02%     0,90%         13   50,00%
+  9  sorteio               R$ 98.804,97    -1,20%     24,60%         -0,49%    -1,40%     1,37%         13   66,67%
+  10 bova11                R$ 98.610,70    -1,39%     18,80%         -0,68%    -1,59%     1,39%          1        -
 
 FILA (barramento em processo, a mesma regra do MessagingService)
-  entregas: briefing 5, decisions 21, market 22, news 60, settlement 5
-  novas tentativas agendadas: 1 | eod reagendado (a brapi ainda sem o BOVA11 ou algum papel do dia): 5 | mensagens na DLQ: 0
-  jobs gravados: 97 (não concluídos: 0) | avisos nos logs: 0 | erros nos logs: 0
+  entregas: briefing 5, decisions 30, market 22, news 60, settlement 5
+  novas tentativas agendadas: 0 | eod reagendado (a brapi ainda sem o BOVA11 ou algum papel do dia): 5 | mensagens na DLQ: 0
+  jobs gravados: 107 (não concluídos: 0) | avisos nos logs: 0 | erros nos logs: 0
 
 BRAPI FALSA (o fetch do ensaio, no formato dos docs; nenhuma rede)
   requisições: 266 | carga inicial 41 (uma por papel e o BOVA11) | listas de ações 3 (a da carga e uma por domingo)
@@ -259,20 +293,18 @@ BRAPI FALSA (o fetch do ensaio, no formato dos docs; nenhuma rede)
 VERIFICAÇÕES
   [ok] DLQ vazia: 0 mensagens
   [ok] nenhum acesso à rede (fetch global e TCP fora do loopback bloqueados): 0 tentativas
-  [ok] um ciclo fechado por pregão, com uma decisão de cada modelo: 5 ciclos para 5 pregões e 4 modelos
+  [ok] um ciclo fechado por pregão, com uma decisão de cada modelo: 5 ciclos para 5 pregões e 6 modelos
   [ok] nenhum HOLD forçado (prazo, falha ou resposta inválida): 0 HOLDs
-  [ok] patrimônio de cada competidor em cada pregão: 40 snapshots (8 competidores x 5 pregões)
-  [ok] todos os jobs concluídos (nenhum FAILED nem RUNNING no fim): 97 jobs, 0 não concluídos
-  [ok] o reparo de JSON aparece (resposta quebrada na 1ª chamada, certa na 2ª): 3 decisões
-  [ok] falha passageira do provedor: a fila reentrega depois e a decisão sai, sem DLQ: 1 nova tentativa agendada
+  [ok] patrimônio de cada competidor em cada pregão: 50 snapshots (10 competidores x 5 pregões)
+  [ok] todos os jobs concluídos (nenhum FAILED nem RUNNING no fim): 107 jobs, 0 não concluídos
   [ok] brapi atrasada: o eod vê o BOVA11 sem a barra do dia, se reagenda e completa na tentativa seguinte: 5 pregões reagendados; o atrasado (2026-11-04) teve 4 entregas
   [ok] requisições à brapi falsa dentro do plano (uma por papel que falta; só quem não veio é pedido de novo): 44/44 · 46/46 · 44/44 · 44/44 · 44/44
-  [ok] ação sem negócio no dia: a ordem não executa, sem preço e sem execução: 6 ordens
-  [ok] ação suspensa: a posição segue marcada pelo último fechamento: 8 posições marcadas
-  [ok] desdobramento 1:2 de DOBR4 na data ex (2026-11-05): a quantidade dobra: evento registrado; 3 carteiras com a ação
-  [ok] o modelo que só segura rende como o CDI, centavo a centavo: fake-hold contra cdi
+  [ok] ação sem negócio no dia: a ordem não executa, sem preço e sem execução: 12 ordens
+  [ok] ação suspensa: a posição segue marcada pelo último fechamento: 11 posições marcadas
+  [ok] desdobramento 1:2 de DOBR4 na data ex (2026-11-05): a quantidade dobra: evento registrado; 4 carteiras com a ação
+  [ok] o modelo que só segura rende como o CDI, centavo a centavo: gemini-4-argon contra cdi
   [ok] a temporada encerra no último pregão (FINISHED, com a hora do encerramento): FINISHED
-  [ok] todo competidor tem percentil no Monte Carlo (0 a 10.000 pontos-base): 8 de 8
+  [ok] todo competidor tem percentil no Monte Carlo (0 a 10.000 pontos-base): 10 de 10
   [ok] o mesmo prompt em todos os ciclos (SHA-256 registrado) e um briefing diferente por pregão: 1 prompt, 5 briefings
   [ok] universo semanal congelado para cada semana do ensaio: 2026-W45: 40, 2026-W46: 40
   [ok] o texto do prompt não aparece no relatório: o canário do prompt fica de fora
@@ -280,25 +312,27 @@ VERIFICAÇÕES
 RESULTADO: OK
 ```
 
-Os percentis de `cdi` e `fake-hold` são iguais (72,00%) porque os dois são o mesmo caixa rendendo o mesmo CDI. O ranking é de modelos
-fake e de um mercado inventado: não diz nada sobre modelos de verdade.
+Os percentis de `cdi` e `gemini-4-argon` são iguais (72,00%) porque os dois são o mesmo caixa rendendo o mesmo CDI. O ranking é de
+estratégias fake com o nome dos modelos e de um mercado inventado: não diz nada sobre modelos de verdade.
 
-**Medidas desta máquina** (saem na tela, fora do relatório, porque mudam a cada execução):
+**Medidas desta máquina** (saem na tela, fora do relatório, porque mudam a cada execução). As de 04/11/2026 saíram com a máquina carregada
+(a demo local no ar e o swap quase cheio): o mesmo ensaio, com o elenco antigo, levou 1.125 ms em `decisions` nessa hora, contra os 534 ms da
+medida de 03/11. Servem de ordem de grandeza, não de comparação:
 
 | Fila | Entregas | Total | Mais lenta |
 | --- | --- | --- | --- |
-| `briefing` | 5 | 106 ms | 37 ms |
-| `decisions` | 21 | 534 ms | 56 ms |
-| `market` | 8 | 104 ms | 22 ms |
-| `news` | 60 | 203 ms | 18 ms |
-| `settlement` | 5 | 397 ms | 128 ms |
+| `briefing` | 5 | 255 ms | 89 ms |
+| `decisions` | 30 | 2.053 ms | 144 ms |
+| `market` | 22 | 2.214 ms | 545 ms |
+| `news` | 60 | 564 ms | 39 ms |
+| `settlement` | 5 | 893 ms | 238 ms |
 
-O `settle` do último pregão (a conta do zero de 5 pregões, o Sorteio e 1.000 carteiras aleatórias, com 40 ações) levou 128 ms. Isso não
-vale para o worker de 0,5 vCPU da Azure; a medida lá continua pendente (seção 8).
+A entrega mais lenta do `settlement` (a conta do zero de até 5 pregões, o Sorteio e 1.000 carteiras aleatórias, com 40 ações) levou 238 ms
+(128 ms na máquina descansada de 03/11). Isso não vale para o worker de 0,5 vCPU da Azure; a medida lá continua pendente (seção 8).
 
-### 6.1 O que mudou em relação ao relatório de antes da brapi
+### 6.1 O que mudou com a brapi falsa (o relatório de antes do elenco simulado)
 
-O relatório de antes (COTAHIST gerado em disco, SHA-256 `b45047f8…`, 16.979 bytes) e o de agora (brapi falsa, SHA-256 `e3138a55…`, 17.528 bytes)
+O relatório de antes (COTAHIST gerado em disco, SHA-256 `b45047f8…`, 16.979 bytes) e o da brapi falsa (SHA-256 `e3138a55…`, 17.528 bytes)
 foram comparados linha a linha (`diff`). **A parte econômica é idêntica**: decisões, ordens, patrimônio, posições, ranking, Monte Carlo, Sorteio
 e referências não mudam um centavo. O que muda, e por quê:
 
@@ -330,16 +364,51 @@ repetir):
   `barras do pregão ausentes: ...`, `apps/api/src/telemetry/alert-logs.ts`). O ensaio as anota na saída do comando (`avisos e erros dos handlers`), mas **não as conta** em
   `avisos nos logs` e `erros nos logs` do relatório: elas repetem um fato que o relatório já conta (o `decide` que falhou e foi reagendado já está em "novas tentativas agendadas"),
   e o relatório continua byte a byte o mesmo (conferido em duas execuções seguidas). Sem o SDK ligado, as métricas e os spans da etapa 10
-  são chamadas vazias e não mexem em nada.
+  são chamadas vazias e não mexem em nada. Com o elenco simulado (04/11/2026, seção 6.2) a exceção saiu do driver: nenhuma falha é
+  injetada, então essas linhas seriam erro de verdade, e toda linha de aviso e de erro dos handlers conta (o relatório mostra 0 e 0).
 - **Relógio.** Com `Date` deslocado +400 e -60 dias no processo, o relatório saiu idêntico. É o que garante que o ensaio no CI, em
   qualquer dia depois de 11/2026, dá o mesmo resultado.
 - **Mutação.** 20 trocas de uma linha, cada uma desfeita na hora, e todas derrubaram algum teste: a regra de DLQ e do atraso da nova
   tentativa, a hora da entrega, a ordem por horário e a marca de última entrega no barramento; o guarda de rede; o corte pela metade
   do desdobramento, o fim da suspensão e o dia sem negócio no mercado; o sinal do momentum e o dia ímpar do `fake/flaky-json`; o
   relógio injetado nos três handlers e no freeze do ensaio; a falha passageira e a brapi atrasada; e, no teste de paridade, a espera
-  da nova tentativa do `MessagingService` de produção e o motivo e a descrição da DLQ do barramento.
+  da nova tentativa do `MessagingService` de produção e o motivo e a descrição da DLQ do barramento. (O `fake/flaky-json` e a falha
+  passageira saíram com o elenco simulado, seção 6.2.)
 - **Conta independente.** A carteira do `fake-momentum` no 2º pregão, refeita à mão a partir das ordens e das barras gravadas (caixa
-  R$ 89.389,59 depois de juros, duas vendas e uma compra), bate com o `settle`.
+  R$ 89.389,59 depois de juros, duas vendas e uma compra), bate com o `settle`. É a mesma do `claude-opus-5-5` de hoje: a estratégia é a
+  mesma, e o relatório do elenco simulado traz os mesmos números (seção 6.2).
+
+### 6.2 O que mudou com o elenco simulado (04/11/2026)
+
+O relatório anterior (`e3138a55…`, 17.528 bytes, 19 verificações; refeito nesta máquina antes da mudança, com o mesmo SHA-256) e o novo
+(`081d860b…`, 22.068 bytes, 17 verificações) foram comparados linha a linha (`diff`), depois de trocar os slugs antigos pelos novos
+(`fake-momentum` por `claude-opus-5-5`, `fake-contrarian` por `gpt-6-1-sol` e `fake-hold` por `gemini-4-argon`) e de juntar os espaços (a
+coluna do slug mudou de largura). **O que não muda, centavo a centavo**: os briefings e o prompt (os hashes), a brapi falsa (266 requisições,
+no plano), o Sorteio, as três referências, o Monte Carlo (os percentis 5, 50 e 95 de cada pregão) e as decisões, ordens, carteiras,
+patrimônio e percentis das três estratégias que ficaram (momentum, contrário e só segura, agora com os nomes Claude Opus 5.5, GPT-6.1 Sol
+e Gemini 4 Argon). Cada estratégia lê só o briefing e a própria carteira, então o resto do elenco não mexe nela. O que muda, e por quê:
+
+| Linhas | Antes | Agora | Por quê |
+|---|---|---|---|
+| decisões, ordens, patrimônio e posições do 4º modelo (26 linhas) | `fake-flaky` (`fake/flaky-json`: 2 chamadas nos dias ímpares) | `grok-4-7` (`fake/hash-picks`: a mesma regra por SHA-256, sem a falha; as escolhas mudam porque a semente leva o ID do modelo) | nenhuma falha simulada vai para o nome de um modelo de verdade (seção 3) |
+| os dois modelos novos | (não existiam) | `deepseek-v4-pro` e `qwen3-8-max` (com o Grok, 86 linhas) | o elenco da Temporada 1 tem seis modelos |
+| `RANKING FINAL` | 8 linhas | 10 linhas, com os mesmos valores; desce a posição de quem fica abaixo de um modelo novo (`gpt-6-1-sol` de 3º para 4º, `igual-peso` de 6º para 7º, `sorteio` de 7º para 9º e `bova11` de 8º para 10º) | dois competidores a mais |
+| `entregas: ... decisions` | 21 | 30 | 6 modelos x 5 pregões, sem nova tentativa |
+| `novas tentativas agendadas` | 1 | 0 | a falha passageira do provedor saiu |
+| `jobs gravados` | 97 | 107 | 10 `decide` a mais (a nova tentativa reaproveitava o mesmo `job_run`) |
+| `[ok] um ciclo fechado por pregão...` | 4 modelos | 6 modelos | o elenco |
+| `[ok] patrimônio de cada competidor...` | 40 snapshots (8 x 5) | 50 (10 x 5) | o elenco |
+| `[ok] o reparo de JSON aparece` | 3 decisões | (saiu) | nenhum modelo do elenco falha; o reparo é provado na integração (seção 3) |
+| `[ok] falha passageira do provedor` | 1 nova tentativa | (saiu) | o mesmo; a nova tentativa é provada na integração (seção 3) |
+| `[ok] ação sem negócio no dia` | 6 ordens | 12 | o DeepSeek (momentum) também tenta comprar o SECA3 e o PAUS3, e o Qwen (contrário) também tenta vender o PAUS3 nos três pregões da suspensão e compra uma ação de enchimento sem negócio no dia |
+| `[ok] ação suspensa` | 8 posições marcadas | 11 | o Qwen também tem o PAUS3 nos três pregões da suspensão |
+| `[ok] desdobramento` | 3 carteiras com DOBR4 | 4 | o Qwen também tem o DOBR4 |
+| `[ok] todo competidor tem percentil` | 8 de 8 | 10 de 10 | o elenco |
+| verificações | 19 | 17 | as duas que saíram |
+
+O limite de 10 posições, que antes só aparecia nas execuções longas, agora aparece no último pregão dos 5 (seção 5). O
+`ensaio.integration.spec.ts` confere o que importa de forma independente: o elenco de 6 modelos, nenhuma decisão com reparo, nenhuma nova
+tentativa e nenhum aviso nem erro dos handlers.
 
 ## 7. Decisões e limites do desenho
 

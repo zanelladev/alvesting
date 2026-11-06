@@ -1,12 +1,14 @@
 import type { Position, Totals } from '@alvesting/contracts';
 import { formatBRL, formatBRLSigned, formatBps, formatDate, formatQuantity } from '../lib/format';
-import { STICKY, Th } from './tables';
-import { Fact, Facts, ROW, TABLE, TD, TableScroll } from './ui';
+import { STICKY, Th, direction } from './tables';
+import { ROW, StripItem, TABLE, TD, TableScroll } from './ui';
 
 // O resumo e as posições da carteira (etapa 12, parte 2; docs/TELAS.md, seção 9): Server Components, sem JavaScript no navegador. Os números
 // vêm prontos da api (`GET /api/v1/me/portfolio`, docs/API.md, seção 9), em centavos e pontos-base inteiros: aqui só se formata. O resultado
-// leva o sinal (+ ou -) E a palavra (ganho, perda), porque a tela não pode depender de cor para dizer se foi ganho ou perda (e a estética daqui é
-// preto sobre papel). Posição sem fechamento diz "sem cotação" e fica fora do valor e do resultado dos totais.
+// leva o sinal (+ ou -) E a palavra (ganho, perda), porque a tela não pode depender de cor para dizer se foi ganho ou perda, e o glifo ▲ ▼ ■ da
+// direção, como as posições dos modelos (`direction` e o `data-dir` de tables.tsx: o CSS o desenha antes do número, com a cor de dado só nele e
+// o texto alternativo vazio, então o texto que o e2e compara não muda; o valor fica na tinta). Posição sem fechamento diz "sem cotação" e fica
+// fora do valor e do resultado dos totais.
 
 const DASH = '—';
 const NO_QUOTE = 'sem cotação';
@@ -34,20 +36,33 @@ function priced(p: Position) {
   };
 }
 
+// O resumo é a faixa de números da home (a `stats-band` do Arc): as três células divididas por um fio, numa caixa de borda; uma embaixo da outra
+// no celular, lado a lado a partir de 768 px. O percentual e a palavra vão embaixo do resultado, menores, como a data na faixa da home.
 export function WalletSummary({ totals }: { totals: Totals }) {
   return (
     <>
-      <Facts>
-        <Fact term="Custo total">{formatBRL(totals.costCents)}</Fact>
-        <Fact term="Valor estimado">
-          {totals.valueCents === null ? NO_QUOTE : formatBRL(totals.valueCents)}
-        </Fact>
-        <Fact term="Resultado">
-          {totals.pnlCents === null
-            ? NO_QUOTE
-            : `${formatBRLSigned(totals.pnlCents)} (${percent(totals.pnlBps)}, ${verdict(totals.pnlCents)})`}
-        </Fact>
-      </Facts>
+      <div className="overflow-hidden rounded-panel border border-hairline">
+        <dl className="grid gap-px bg-hairline md:grid-cols-3">
+          <StripItem term="Custo total">{formatBRL(totals.costCents)}</StripItem>
+          <StripItem term="Valor estimado">
+            {totals.valueCents === null ? NO_QUOTE : formatBRL(totals.valueCents)}
+          </StripItem>
+          <StripItem term="Resultado">
+            {totals.pnlCents === null ? (
+              NO_QUOTE
+            ) : (
+              <>
+                <span data-dir={direction(totals.pnlCents)}>
+                  {formatBRLSigned(totals.pnlCents)}
+                </span>{' '}
+                <span className="block font-sans text-xs font-normal text-muted">
+                  {`(${percent(totals.pnlBps)}, ${verdict(totals.pnlCents)})`}
+                </span>
+              </>
+            )}
+          </StripItem>
+        </dl>
+      </div>
       {totals.unpriced > 0 ? (
         <p className="muted max-w-prose">
           {totals.unpriced === 1
@@ -85,7 +100,7 @@ export function WalletPositions({ positions }: { positions: readonly Position[] 
                   {p.ticker}
                 </th>
                 <td className={TD}>{close ? formatBRL(close.valueCents) : NO_QUOTE}</td>
-                <td className={TD}>
+                <td className={TD} data-dir={close ? direction(close.pnlCents) : undefined}>
                   {close ? (
                     <>
                       {formatBRLSigned(close.pnlCents)}{' '}

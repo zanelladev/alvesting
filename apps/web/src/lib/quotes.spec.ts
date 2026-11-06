@@ -5,7 +5,7 @@ import { ApiError, type ApiDeps } from './api';
 
 // O marcador `server-only` é do Next (o build quebra se um componente de cliente importar o módulo); fora do Next, no vitest, ele não existe.
 vi.mock('server-only', () => ({}));
-const { REFERENCE_TICKER, readBars } = await import('./quotes');
+const { REFERENCE_TICKER, readBars, readTape } = await import('./quotes');
 
 // A leitura das barras de preço pela rota interna da api (docs/API.md, seção 6; ADR 0033): o SSR manda o segredo do servidor em
 // `Authorization: Bearer`, com o X-Azure-FDID, pelo cache de dados do Next (as tags e o tempo de vida da API pública). Nenhum teste chama rede.
@@ -334,5 +334,95 @@ describe('readBars', () => {
         expect(inspect(error, { depth: null })).not.toContain(SECRET);
       }
     });
+  });
+});
+
+// A fita da home pela rota interna (docs/API.md, seção 6): o universo da semana do último ciclo, com o fechamento e o anterior de cada papel.
+// A mesma leitura das barras: o segredo em Bearer, o cache de dados com a tag `arena`, e os mesmos erros de configuração e de recusa.
+describe('readTape', () => {
+  const TAPE = {
+    date: '2026-11-04',
+    rows: [
+      { ticker: 'VALE3', closeCents: 6_100, previousCloseCents: null },
+      { ticker: 'PETR4', closeCents: 3_200, previousCloseCents: 3_100 },
+    ],
+  };
+
+  it('chama a fita no endereço interno, com o segredo em Bearer e o X-Azure-FDID, pelo cache de dados, e devolve a data e as linhas', async () => {
+    const { calls, deps } = fakeFetch(() => json(ok(TAPE)));
+    await expect(readTape(deps)).resolves.toEqual(TAPE);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe('http://127.0.0.1:4310/api/v1/interno/fita');
+    expect(calls[0]!.headers.authorization).toBe(`Bearer ${SECRET}`);
+    expect(calls[0]!.headers['x-azure-fdid']).toBe(FDID);
+    expect(calls[0]!.init.next).toEqual({ revalidate: PUBLIC_CACHE_TTL_SECONDS, tags: ['arena'] });
+    expect(calls[0]!.init.cache).toBeUndefined();
+    expect(calls[0]!.init.redirect).toBe('error');
+  });
+
+  it('a resposta vazia (sem ciclo, sem universo ou sem barra) passa como veio', async () => {
+    const { deps } = fakeFetch(() => json(ok({ date: null, rows: [] })));
+    await expect(readTape(deps)).resolves.toEqual({ date: null, rows: [] });
+  });
+
+  it('o segredo ausente ou torto: 503 QUOTES_UNCONFIGURED, sem chamar a api', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      for (const QUOTES_SECRET of [undefined, 'PENDENTE', `${'x'.repeat(20)}\n${'y'.repeat(20)}`]) {
+        const { calls, deps } = fakeFetch(() => json(ok(TAPE)));
+        await expect(readTape({ ...deps, env: { ...env, QUOTES_SECRET } })).rejects.toMatchObject({
+          status: 503,
+          code: 'QUOTES_UNCONFIGURED',
+        });
+        expect(calls).toEqual([]);
+      }
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('em produção, o endereço da api sem https fora do loopback: QUOTES_UNCONFIGURED, sem chamar a api', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const { calls, deps } = fakeFetch(() => json(ok(TAPE)));
+      const production = {
+        ...env,
+        NODE_ENV: 'production',
+        API_INTERNAL_URL: 'http://10.0.0.7:4310',
+      };
+      await expect(readTape({ ...deps, env: production })).rejects.toMatchObject({
+        status: 503,
+        code: 'QUOTES_UNCONFIGURED',
+      });
+      expect(calls).toEqual([]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('404 (segredo recusado) vira 502 QUOTES_REFUSED; o 5xx segue como o de toda leitura', async () => {
+    const refused = fakeFetch(() =>
+      json(fail('NOT_FOUND', 'Cannot GET /api/v1/interno/fita'), 404),
+    );
+    await expect(readTape(refused.deps)).rejects.toMatchObject({
+      status: 502,
+      code: 'QUOTES_REFUSED',
+    });
+    const server = fakeFetch(() => json(fail('INTERNAL_ERROR', 'Erro interno'), 500));
+    await expect(readTape(server.deps)).rejects.toMatchObject({
+      status: 500,
+      code: 'INTERNAL_ERROR',
+    });
+  });
+
+  // O contrato é estrito: campo a mais, abertura numa linha, ou a data sem linha (a legenda leria um pregão sem cotação) não passam.
+  it.each([
+    ['campo a mais', { ...TAPE, universe: 4 }],
+    ['abertura na linha', { ...TAPE, rows: [{ ...TAPE.rows[1]!, openCents: 3_150 }] }],
+    ['data sem linha', { date: '2026-11-04', rows: [] }],
+    ['linha sem data', { date: null, rows: TAPE.rows }],
+  ])('resposta fora do contrato (%s) é INVALID_RESPONSE', async (_name, body) => {
+    const { deps } = fakeFetch(() => json(ok(body)));
+    await expect(readTape(deps)).rejects.toMatchObject({ status: 502, code: 'INVALID_RESPONSE' });
   });
 });

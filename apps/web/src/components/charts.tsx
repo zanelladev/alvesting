@@ -7,37 +7,55 @@ import {
   formatReais,
   variationBps,
 } from '../lib/format';
+import { SimulatedTag } from './ui';
 
 // Os gráficos SVG da arena, sem biblioteca (plano §3). A geometria vem de src/lib/chart.ts (testada); aqui só se desenha. Acessíveis: o
 // SVG é uma imagem com título e descrição, e o mesmo dado vem em texto (a tabela do patrimônio, o resumo das barras). Monocromáticos:
 // quem tem linha e quem tem vela cheia ou vazada se distingue sem cor.
 
 const SIZE = { width: 360, height: 230 };
-const SVG_CLASS = 'h-auto w-full max-w-lg';
-// O tamanho dos rótulos dos eixos, no sistema de coordenadas do viewBox (360 de largura, mostrado a uns 328 px em 360 px de tela):
-// 12 sai a uns 11 px na tela, e 10 daria uns 9. A margem esquerda de src/lib/chart.ts leva o maior rótulo do eixo y ("100.000").
+// O desenho escala o viewBox de 360 com a largura, e os rótulos junto: o teto de 24rem (384 px) segura o rótulo em uns 12,8 px no desktop
+// (com os 32rem de antes ia a 17 px, maior que o texto ao lado), e no celular a figura entra 12 px no respiro do cartão de cada lado
+// (FIGURE) para o desenho não encolher demais: 302 px de 360 de tela, o rótulo com uns 10 px (eram 9,3), e 11 px em 390.
+const SVG_CLASS = 'h-auto w-full max-w-sm';
+// O tamanho dos rótulos dos eixos, no sistema de coordenadas do viewBox. A margem esquerda de src/lib/chart.ts leva o maior rótulo do eixo
+// y ("100.000") neste tamanho.
 const LABEL_SIZE = 12;
+// A figura: o desenho e, ao lado dele a partir de 1024 px, a legenda (ou o resumo das velas). Entre 768 e 1024 px a coluna ao lado ficava
+// com uns 120 px e quebrava cada nome em duas linhas: ali a legenda fica embaixo, como no celular.
+const FIGURE =
+  'space-y-2 max-sm:-mx-3 lg:grid lg:grid-cols-[24rem_1fr] lg:items-start lg:gap-6 lg:space-y-0';
 
-// Oito estilos de linha (tinta e cinza, cheia, tracejada, pontilhada e traço-ponto): com cor só, não dá para ler o gráfico em preto e
-// branco nem com daltonismo. O texto da legenda e a tabela dizem quem é quem.
+// Oito estilos de linha (a tinta e o cinza do texto, cheia, tracejada, pontilhada e traço-ponto): com cor só, não dá para ler o gráfico em
+// preto e branco nem com daltonismo, e a v2 tem mais linhas que as cinco cores de série do sistema (docs/TELAS.md, "Sistema visual"). O
+// texto da legenda e a tabela dizem quem é quem. Hexadecimal, e não a variável do tema: o atributo do SVG não passa pelo Tailwind.
+const INK = '#f5f5f5';
+const BODY = '#a3a3a3';
 const LINE_STYLES = [
-  { stroke: '#000000', width: 2.5, dash: undefined },
-  { stroke: '#000000', width: 2, dash: '7 4' },
-  { stroke: '#000000', width: 2.5, dash: '2 3' },
-  { stroke: '#000000', width: 2, dash: '10 3 2 3' },
-  { stroke: '#4a4a4a', width: 1.5, dash: undefined },
-  { stroke: '#4a4a4a', width: 1.5, dash: '7 4' },
-  { stroke: '#4a4a4a', width: 1.5, dash: '2 3' },
-  { stroke: '#4a4a4a', width: 1.5, dash: '10 3 2 3' },
+  { stroke: INK, width: 2.5, dash: undefined },
+  { stroke: INK, width: 2, dash: '7 4' },
+  { stroke: INK, width: 2.5, dash: '2 3' },
+  { stroke: INK, width: 2, dash: '10 3 2 3' },
+  { stroke: BODY, width: 1.5, dash: undefined },
+  { stroke: BODY, width: 1.5, dash: '7 4' },
+  { stroke: BODY, width: 1.5, dash: '2 3' },
+  { stroke: BODY, width: 1.5, dash: '10 3 2 3' },
 ] as const;
+const AXIS = '#2e2e2e';
 
-const TEXT = 'fill-ink font-mono';
+const TEXT = 'fill-muted font-mono';
 
 export interface EquityChartProps {
   // prefixo dos ids do título e da descrição: único na página
   id: string;
   dates: readonly string[];
-  series: ReadonlyArray<{ slug: string; name: string; cents: readonly number[] }>;
+  // `simulated`: o modelo da arena simulada leva a etiqueta na legenda, como no ranking (ui.tsx, SimulatedTag)
+  series: ReadonlyArray<{
+    slug: string;
+    name: string;
+    cents: readonly number[];
+    simulated?: boolean;
+  }>;
   band: { p5: readonly number[]; p95: readonly number[] } | null;
 }
 
@@ -57,10 +75,7 @@ export function EquityChart({ id, dates, series, band }: EquityChartProps) {
 
   return (
     // aria-label: sem ele a figura tomaria o nome do figcaption, que traz a legenda inteira
-    <figure
-      aria-label="Patrimônio por pregão"
-      className="space-y-2 md:grid md:grid-cols-[32rem_1fr] md:items-start md:gap-6 md:space-y-0"
-    >
+    <figure aria-label="Patrimônio por pregão" className={FIGURE}>
       <svg
         viewBox={`0 0 ${SIZE.width} ${SIZE.height}`}
         role="img"
@@ -77,7 +92,7 @@ export function EquityChart({ id, dates, series, band }: EquityChartProps) {
               x2={plot.right}
               y1={tick.y}
               y2={tick.y}
-              className="stroke-muted"
+              className="stroke-hairline-strong"
               strokeWidth={0.5}
               strokeDasharray="2 3"
             />
@@ -93,7 +108,7 @@ export function EquityChart({ id, dates, series, band }: EquityChartProps) {
             </text>
           </g>
         ))}
-        {layout.band ? <path data-band d={layout.band.d} className="fill-band" /> : null}
+        {layout.band ? <path data-band d={layout.band.d} className="fill-surface-strong" /> : null}
         {layout.lines.map((line, i) => {
           const style = LINE_STYLES[i % LINE_STYLES.length]!;
           return (
@@ -110,7 +125,7 @@ export function EquityChart({ id, dates, series, band }: EquityChartProps) {
             </g>
           );
         })}
-        <line x1={plot.left} x2={plot.right} y1={plot.bottom} y2={plot.bottom} stroke="#000" />
+        <line x1={plot.left} x2={plot.right} y1={plot.bottom} y2={plot.bottom} stroke={AXIS} />
         {layout.xLabels.map((label) => (
           <text
             key={label.label}
@@ -168,7 +183,7 @@ export function EquityChart({ id, dates, series, band }: EquityChartProps) {
 
       <figcaption className="space-y-2">
         <p className="muted">Patrimônio em R$, no fechamento de cada pregão.</p>
-        <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm md:flex-col">
+        <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm lg:flex-col">
           {series.map((s, i) => {
             const style = LINE_STYLES[i % LINE_STYLES.length]!;
             return (
@@ -185,12 +200,16 @@ export function EquityChart({ id, dates, series, band }: EquityChartProps) {
                   />
                 </svg>
                 {s.name}
+                {s.simulated ? <SimulatedTag /> : null}
               </li>
             );
           })}
           {band ? (
             <li className="flex items-center gap-2">
-              <span aria-hidden="true" className="inline-block h-3 w-7 border border-ink bg-band" />
+              <span
+                aria-hidden="true"
+                className="inline-block h-3 w-7 border border-hairline-strong bg-surface-strong"
+              />
               Faixa p5 a p95 do Monte Carlo
             </li>
           ) : null}
@@ -202,7 +221,7 @@ export function EquityChart({ id, dates, series, band }: EquityChartProps) {
 
 // As barras recentes de uma ação, em velas. Cotação (brapi.dev): o desenho e o resumo em texto, e nenhuma tabela de preços (a tabela
 // entregaria a série inteira a quem raspasse a página; docs/API.md, seção 6). Por isso o texto alternativo é um resumo, e não uma tabela
-// como a do patrimônio.
+// como a do patrimônio. A partir de 1024 px, o resumo fica ao lado do desenho, como a legenda do patrimônio.
 export function CandlesChart({ ticker, bars }: { ticker: string; bars: readonly Bar[] }) {
   const layout = layoutCandles(bars, SIZE);
   const { plot } = layout;
@@ -220,7 +239,7 @@ export function CandlesChart({ ticker, bars }: { ticker: string; bars: readonly 
     `mínima de ${formatBRL(low)} e máxima de ${formatBRL(high)}.`;
 
   return (
-    <figure aria-label={`Velas diárias de ${ticker}`} className="space-y-2">
+    <figure aria-label={`Velas diárias de ${ticker}`} className={FIGURE}>
       <svg
         viewBox={`0 0 ${SIZE.width} ${SIZE.height}`}
         role="img"
@@ -237,7 +256,7 @@ export function CandlesChart({ ticker, bars }: { ticker: string; bars: readonly 
               x2={plot.right}
               y1={tick.y}
               y2={tick.y}
-              className="stroke-muted"
+              className="stroke-hairline-strong"
               strokeWidth={0.5}
               strokeDasharray="2 3"
             />
@@ -260,21 +279,22 @@ export function CandlesChart({ ticker, bars }: { ticker: string; bars: readonly 
               x2={candle.x}
               y1={candle.wickTop}
               y2={candle.wickBottom}
-              stroke="#000"
+              stroke={BODY}
               strokeWidth={1}
             />
+            {/* alta vazada na tinta, baixa cheia no cinza do texto */}
             <rect
               x={candle.x - layout.candleWidth / 2}
               y={candle.bodyTop}
               width={layout.candleWidth}
               height={candle.bodyHeight}
-              stroke="#000"
+              stroke={candle.up ? INK : BODY}
               strokeWidth={1}
-              className={candle.up ? 'fill-paper' : 'fill-ink'}
+              className={candle.up ? 'fill-canvas' : 'fill-body'}
             />
           </g>
         ))}
-        <line x1={plot.left} x2={plot.right} y1={plot.bottom} y2={plot.bottom} stroke="#000" />
+        <line x1={plot.left} x2={plot.right} y1={plot.bottom} y2={plot.bottom} stroke={AXIS} />
         {layout.xLabels.map((label) => (
           <text
             key={label.label}

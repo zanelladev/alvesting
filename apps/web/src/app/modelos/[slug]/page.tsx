@@ -3,8 +3,18 @@ import type { CompetitorDetail, CompetitorType } from '@alvesting/contracts';
 import { slugSchema } from '@alvesting/contracts';
 import { EquityChart } from '../../../components/charts';
 import { DecisionCard } from '../../../components/decisions';
-import { PositionsTable } from '../../../components/tables';
-import { Empty, Fact, Facts, Section } from '../../../components/ui';
+import { PositionsTable, direction } from '../../../components/tables';
+import {
+  Empty,
+  Fact,
+  Facts,
+  PageHead,
+  Section,
+  SimulatedTag,
+  Strip,
+  StripItem,
+  isSimulated,
+} from '../../../components/ui';
 import { api } from '../../../lib/api';
 import { alignBand } from '../../../lib/chart';
 import {
@@ -17,9 +27,9 @@ import {
 import { orNotFound } from '../../../lib/page';
 import { withApiDown } from '../../../lib/with-api-down';
 
-// A página de um competidor (plano §3): o modelo com o provedor e o ID fixados na criação da temporada, o resultado, a carteira do
-// último pregão liquidado, a série de patrimônio e as decisões. O Sorteio e as referências também têm página, mas não decidem nem mostram a
-// composição da carteira (só o patrimônio: NO_HOLDINGS).
+// A página de um competidor (plano §3; o desenho é o da v1, ADR 0034): o modelo com o provedor e o ID fixados na criação da temporada, o
+// resultado, a carteira do último pregão liquidado, a série de patrimônio e as decisões. O Sorteio e as referências também têm página, mas não
+// decidem nem mostram a composição da carteira (só o patrimônio: NO_HOLDINGS).
 export const dynamic = 'force-dynamic';
 
 const KIND: Record<CompetitorType, string> = {
@@ -58,30 +68,43 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
+// o número com sinal leva o glifo da direção (▲ ▼ ■, por CSS); o que não existe ainda é "sem dado"
+const Signed = ({ bps }: { bps: number | null }) =>
+  bps === null ? 'sem dado' : <span data-dir={direction(bps)}>{formatBps(bps)}</span>;
+
+// Os seis números que dizem como o competidor está vão na faixa dividida (a mesma da home), e o resto em pares termo/valor.
 function Result({ stat }: { stat: NonNullable<CompetitorDetail['stat']> }) {
   return (
-    <Facts dense>
-      <Fact term="Posição">{stat.rank}</Fact>
-      <Fact term="Patrimônio">{formatBRL(stat.equityCents)}</Fact>
-      <Fact term="Retorno">{formatBps(stat.returnBps)}</Fact>
-      <Fact term="Percentil">
-        {stat.percentileBps === null ? 'sem dado' : formatPercentile(stat.percentileBps)}
-      </Fact>
-      <Fact term="vs igual-peso">
-        {stat.excessEqualWeightBps === null ? 'sem dado' : formatBps(stat.excessEqualWeightBps)}
-      </Fact>
-      <Fact term="vs CDI">
-        {stat.excessCdiBps === null ? 'sem dado' : formatBps(stat.excessCdiBps)}
-      </Fact>
-      <Fact term="Drawdown máximo">{formatBps(stat.maxDrawdownBps, { signed: false })}</Fact>
-      <Fact term="Acerto">
-        {stat.winRateBps === null
-          ? 'sem venda'
-          : `${formatBps(stat.winRateBps, { signed: false })} (${stat.winningSells}/${stat.sells})`}
-      </Fact>
-      <Fact term="Operações">{stat.trades}</Fact>
-      <Fact term="Custo de LLM">{formatUsdMicro(stat.llmCostMicroUsd)}</Fact>
-    </Facts>
+    <>
+      <div className="overflow-hidden rounded-panel border border-hairline">
+        <Strip columns={6}>
+          <StripItem term="Posição">{stat.rank}</StripItem>
+          <StripItem term="Patrimônio">{formatBRL(stat.equityCents)}</StripItem>
+          <StripItem term="Retorno">
+            <Signed bps={stat.returnBps} />
+          </StripItem>
+          <StripItem term="Percentil">
+            {stat.percentileBps === null ? 'sem dado' : formatPercentile(stat.percentileBps)}
+          </StripItem>
+          <StripItem term="vs igual-peso">
+            <Signed bps={stat.excessEqualWeightBps} />
+          </StripItem>
+          <StripItem term="vs CDI">
+            <Signed bps={stat.excessCdiBps} />
+          </StripItem>
+        </Strip>
+      </div>
+      <Facts dense>
+        <Fact term="Drawdown máximo">{formatBps(stat.maxDrawdownBps, { signed: false })}</Fact>
+        <Fact term="Acerto">
+          {stat.winRateBps === null
+            ? 'sem venda'
+            : `${formatBps(stat.winRateBps, { signed: false })} (${stat.winningSells}/${stat.sells})`}
+        </Fact>
+        <Fact term="Operações">{stat.trades}</Fact>
+        <Fact term="Custo de LLM">{formatUsdMicro(stat.llmCostMicroUsd)}</Fact>
+      </Facts>
+    </>
   );
 }
 
@@ -90,21 +113,47 @@ export default withApiDown(async function CompetitorPage({ params }: Props) {
   const detail = await orNotFound(api.competitor(slug));
   const { competitor, stat, portfolio, series, decisions, season } = detail;
   const baseline = series.dates.length > 0 ? await api.randomBaseline(season.slug) : null;
+  // a arena simulada: o ID do provedor fake é a estratégia que decide no lugar do modelo (ui.tsx, SimulatedTag)
+  const simulated = isSimulated(competitor);
 
   return (
     <>
-      <header className="space-y-2">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">{competitor.name}</h1>
-        <p className="text-muted">
+      <PageHead
+        title={
+          <>
+            {competitor.name}
+            {simulated ? <SimulatedTag /> : null}
+          </>
+        }
+      >
+        <p className="muted">
           {KIND[competitor.type]} · {season.name}
         </p>
         {competitor.provider && competitor.modelId ? (
-          <Facts>
-            <Fact term="Provedor">{competitor.provider}</Fact>
-            <Fact term="Modelo (ID)">{competitor.modelId}</Fact>
-          </Facts>
+          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            <div className="flex min-w-0 gap-2">
+              <dt className="text-muted">Provedor</dt>
+              <dd className="font-mono text-ink">{competitor.provider}</dd>
+            </div>
+            <div className="flex min-w-0 gap-2">
+              <dt className="text-muted">{simulated ? 'Estratégia simulada' : 'Modelo (ID)'}</dt>
+              <dd className="min-w-0 font-mono text-ink">{competitor.modelId}</dd>
+            </div>
+          </dl>
         ) : null}
-      </header>
+        {simulated ? (
+          <p className="flex max-w-[560px] gap-2 text-label text-muted">
+            <span aria-hidden="true" className="font-mono">
+              [!]
+            </span>
+            <span>
+              <strong>Decisões simuladas: o modelo ainda não está conectado.</strong> Quem decide
+              por ele é a estratégia acima, do provedor fake; o resultado não diz nada sobre o
+              modelo de verdade.
+            </span>
+          </p>
+        ) : null}
+      </PageHead>
 
       <Section id="resultado" title="Resultado">
         {stat ? <Result stat={stat} /> : <Empty>{NO_RESULT}</Empty>}
@@ -123,7 +172,9 @@ export default withApiDown(async function CompetitorPage({ params }: Props) {
                   <Fact term="Em ações">{formatBRL(portfolio.holdings.positionsValueCents)}</Fact>
                 </>
               ) : null}
-              <Fact term="Patrimônio">{formatBRL(portfolio.equityCents)}</Fact>
+              <Fact term="Patrimônio" wide>
+                {formatBRL(portfolio.equityCents)}
+              </Fact>
             </Facts>
             {portfolio.holdings === null ? (
               <Empty>{NO_HOLDINGS}</Empty>
@@ -153,12 +204,21 @@ export default withApiDown(async function CompetitorPage({ params }: Props) {
 
       <Section id="patrimonio" title="Patrimônio">
         {series.dates.length > 0 ? (
-          <EquityChart
-            id="modelo-patrimonio"
-            dates={series.dates}
-            series={[{ slug: competitor.slug, name: competitor.name, cents: series.equityCents }]}
-            band={baseline ? alignBand(series.dates, baseline.rows) : null}
-          />
+          <div className="card">
+            <EquityChart
+              id="modelo-patrimonio"
+              dates={series.dates}
+              series={[
+                {
+                  slug: competitor.slug,
+                  name: competitor.name,
+                  cents: series.equityCents,
+                  simulated,
+                },
+              ]}
+              band={baseline ? alignBand(series.dates, baseline.rows) : null}
+            />
+          </div>
         ) : (
           <Empty>{NO_RESULT}</Empty>
         )}
@@ -168,7 +228,7 @@ export default withApiDown(async function CompetitorPage({ params }: Props) {
         {competitor.type !== 'MODEL' ? (
           <Empty>{DOES_NOT_DECIDE[competitor.type]}</Empty>
         ) : decisions.length > 0 ? (
-          <div className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-2">
             {decisions.map((decision) => (
               <DecisionCard
                 key={decision.date}

@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 import type { SeasonParams } from '@alvesting/contracts';
-import { Empty, Fact, Facts, Section } from '../../components/ui';
+import { Empty, Fact, Facts, PageHead, Section } from '../../components/ui';
 import { api } from '../../lib/api';
 import { formatBRL, formatBps, formatDate, formatQuantity } from '../../lib/format';
 
-// Como funciona (plano §3, §10 e §12; docs/METODOLOGIA.md): as regras, o prompt oculto com o hash publicado, a igualdade das entradas, o
+// Como funciona (plano §3, §10 e §12; docs/METODOLOGIA.md; o desenho é o das páginas de texto da v1, ADR 0034): as regras, o prompt oculto com o hash publicado, a igualdade das entradas, o
 // Sorteio, o Monte Carlo, as referências, as fontes e as limitações. Os números da temporada (capital, pregões, limites, horários, custo,
 // carteiras do Monte Carlo) são os da temporada atual, lidos da api; sem temporada valem os do plano (a Temporada 1). O hash vem do último
 // ciclo. Se a api falhar a página sai com o texto e sem esses números: explicar a regra não pode depender de dado.
@@ -28,7 +28,10 @@ const PLAN: SeasonParams = {
   monteCarloRuns: 1000,
 };
 
-const P = ({ children }: { children: ReactNode }) => <p className="max-w-prose">{children}</p>;
+// a prosa: até uns 64 caracteres por linha, com a entrelinha de leitura
+const P = ({ children }: { children: ReactNode }) => (
+  <p className="max-w-prose text-prose-md">{children}</p>
+);
 
 async function loadSeason() {
   try {
@@ -46,13 +49,12 @@ export default async function HowItWorksPage() {
 
   return (
     <>
-      <header className="space-y-2">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">Como funciona</h1>
-        <P>
+      <PageHead title="Como funciona">
+        <p className="max-w-prose text-lead text-pretty">
           A Alvesting é um projeto acadêmico (TCC). Tudo é com dinheiro fictício e nada aqui é
           recomendação de investimento.
-        </P>
-      </header>
+        </p>
+      </PageHead>
 
       <Section id="o-que-e" title="O que é a arena">
         <P>
@@ -110,7 +112,7 @@ export default async function HowItWorksPage() {
             reparo; se falhar, HOLD
           </Fact>
         </Facts>
-        <p className="muted">
+        <p className="max-w-prose muted">
           {season
             ? `Valores de ${season.name}.`
             : 'Valores previstos para a Temporada 1; ainda não há temporada em andamento.'}{' '}
@@ -126,16 +128,26 @@ export default async function HowItWorksPage() {
           respostas públicas dos modelos. Padrão adotado: o texto é revelado no fim da temporada, e
           o hash publicado confere.
         </P>
+        {/* o hash é dado, não código: inteiro, na mono, num cartão (nada de bloco de código; o texto do prompt nunca aparece) */}
         {prompt ? (
-          <Facts>
-            <Fact term="Versão do prompt atual">{prompt.version}</Fact>
-            <Fact term="SHA-256 do prompt atual">
-              <span className="break-all">{prompt.sha256 ?? 'sem registro'}</span>
-            </Fact>
+          <dl className="card space-y-4">
+            <div className="space-y-1">
+              <dt className="text-sm text-muted">Versão do prompt atual</dt>
+              <dd className="font-mono text-sm break-all text-ink">{prompt.version}</dd>
+            </div>
+            <div className="space-y-1">
+              <dt className="text-sm text-muted">SHA-256 do prompt atual</dt>
+              <dd className="font-mono text-sm break-all text-ink">
+                {prompt.sha256 ?? 'sem registro'}
+              </dd>
+            </div>
             {current?.lastCycle ? (
-              <Fact term="Do ciclo de">{formatDate(current.lastCycle.date)}</Fact>
+              <div className="space-y-1">
+                <dt className="text-sm text-muted">Do ciclo de</dt>
+                <dd className="text-ink tabular-nums">{formatDate(current.lastCycle.date)}</dd>
+              </div>
             ) : null}
-          </Facts>
+          </dl>
         ) : (
           <Empty>O hash do prompt aparece aqui depois do primeiro ciclo.</Empty>
         )}
@@ -182,7 +194,7 @@ export default async function HowItWorksPage() {
       </Section>
 
       <Section id="fontes" title="De onde vêm os dados">
-        <ul className="list-inside list-disc space-y-1">
+        <ul className="max-w-prose list-disc pl-6 space-y-2 text-prose-md">
           <li>
             Preços de abertura e de fechamento: brapi.dev (cotações diárias; a brapi não é
             distribuidora licenciada da B3).
@@ -195,14 +207,14 @@ export default async function HowItWorksPage() {
             cujos termos permitem.
           </li>
         </ul>
-        <p className="muted">
+        <p className="max-w-prose muted">
           Cada valor de cotação e de macro aparece com a data do dado. A lista completa de
-          atribuições está no rodapé.
+          atribuições, com o link de cada fonte, está no rodapé.
         </p>
       </Section>
 
       <Section id="limitacoes" title="Limitações">
-        <ul className="list-inside list-disc space-y-1">
+        <ul className="max-w-prose list-disc pl-6 space-y-2 text-prose-md">
           <li>
             Amostra pequena: poucos pregões têm pouco poder estatístico; por isso o Sorteio e o
             Monte Carlo.

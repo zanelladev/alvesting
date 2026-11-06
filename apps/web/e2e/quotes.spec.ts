@@ -116,7 +116,7 @@ test.describe('a API pública não entrega cotação bruta', () => {
       '/seasons/ensaio/leaderboard',
       '/seasons/ensaio/equity',
       '/seasons/ensaio/random-baseline',
-      '/competitors/fake-contrarian',
+      '/competitors/gpt-6-1-sol',
       '/competitors/igual-peso',
       '/cycles/2026-11-04',
       '/decisions?limit=100',
@@ -149,7 +149,7 @@ test.describe('a API pública não entrega cotação bruta', () => {
       expect(JSON.stringify(body), slug).not.toMatch(composition);
     }
     const model = (await (
-      await request.get(`${API_URL}/api/v1/competitors/fake-contrarian`)
+      await request.get(`${API_URL}/api/v1/competitors/gpt-6-1-sol`)
     ).json()) as { data: { portfolio: { holdings: { positions: unknown[] } } } };
     expect(model.data.portfolio.holdings.positions.length).toBeGreaterThan(0);
     const stock = (await (await request.get(`${API_URL}/api/v1/stocks/${TICKER}`)).json()) as {

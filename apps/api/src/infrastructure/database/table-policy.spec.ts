@@ -108,6 +108,17 @@ describe('a matriz de tabelas contra o schema.prisma de verdade', () => {
       expect(updatable).not.toContain(column);
   });
 
+  // A fita da home (docs/API.md, seção 6): a rota interna lê o universo congelado da semana do último ciclo (os papéis que o briefing deu a
+  // todos os modelos). Só leitura, por tabela inteira e sem gatilho: quem congela o universo é o worker.
+  it('o universo: a api só lê (a fita da home), e quem o congela é o worker', () => {
+    for (const table of ['universe_snapshot', 'universe_member']) {
+      expect(TABLE_POLICY[table], table).toMatchObject({ personal: false, api: ['SELECT'] });
+      expect(TABLE_POLICY[table]!.apiColumns, table).toBeUndefined();
+      expect(TABLE_POLICY[table]!.guard, table).toBeUndefined();
+      expect(TABLE_POLICY[table]!.why, table).toMatch(/fita/);
+    }
+  });
+
   it('a tabela do histórico de migrations não é da api (não está no schema do Prisma e ninguém a lê)', () => {
     expect(TABLE_POLICY).not.toHaveProperty('_prisma_migrations');
   });

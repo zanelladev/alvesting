@@ -215,14 +215,14 @@ describe('as leituras tipadas', () => {
     ],
     [
       'competitor',
-      () => reader(empty.deps).competitor('fake-hold'),
-      '/competitors/fake-hold',
+      () => reader(empty.deps).competitor('gemini-4-argon'),
+      '/competitors/gemini-4-argon',
       ['arena'],
     ],
     [
       'competitor (temporada)',
-      () => reader(empty.deps).competitor('fake-hold', 'ensaio'),
-      '/competitors/fake-hold?season=ensaio',
+      () => reader(empty.deps).competitor('gemini-4-argon', 'ensaio'),
+      '/competitors/gemini-4-argon?season=ensaio',
       ['arena'],
     ],
     ['cycle', () => reader(empty.deps).cycle('2026-11-04'), '/cycles/2026-11-04', ['arena']],
@@ -248,7 +248,7 @@ describe('as leituras tipadas', () => {
     it.each([
       ['competitor', (r: ReturnType<typeof reader>) => r.competitor('..')],
       ['competitor', (r: ReturnType<typeof reader>) => r.competitor('../me/portfolio')],
-      ['competitor', (r: ReturnType<typeof reader>) => r.competitor('Fake Hold')],
+      ['competitor', (r: ReturnType<typeof reader>) => r.competitor('Gemini 4 Argon')],
       ['competitor', (r: ReturnType<typeof reader>) => r.competitor('')],
       ['leaderboard', (r: ReturnType<typeof reader>) => r.leaderboard('..')],
       ['leaderboard', (r: ReturnType<typeof reader>) => r.leaderboard('a/b')],

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   INTERNAL_BARS_LIMIT,
+  INTERNAL_TAPE_LIMIT,
   QUOTES_SECRET_MIN_LENGTH,
   QUOTES_SECRET_SHAPE,
   internalBarsSchema,
+  internalTapeSchema,
 } from './internal.js';
 
 // O contrato da rota interna do site (docs/API.md, seção 6; ADR 0033). É estrito como o público: campo a mais é erro, e as barras vêm
@@ -74,5 +76,73 @@ describe('internalBarsSchema', () => {
     ]) {
       expect(QUOTES_SECRET_SHAPE.test(bad), JSON.stringify(bad)).toBe(false);
     }
+  });
+});
+
+// A fita da home (docs/API.md, seção 6): o universo da semana do último ciclo, com o fechamento do pregão `date` e o do pregão anterior.
+// Estrita como as barras; a data existe só quando há linha (sem ciclo, sem universo ou sem barra, a resposta vazia é `{ date: null, rows: [] }`).
+const row = (ticker: string, previousCloseCents: number | null = 3_690) => ({
+  ticker,
+  closeCents: 3_750,
+  previousCloseCents,
+});
+const tape = (rows: unknown[]) => ({ date: '2026-11-04', rows });
+
+describe('internalTapeSchema', () => {
+  it('aceita a fita (data do pregão e, por papel, o fechamento e o anterior) e a resposta vazia', () => {
+    expect(internalTapeSchema.parse(tape([row('PETR4'), row('VALE3', null)]))).toEqual({
+      date: '2026-11-04',
+      rows: [
+        { ticker: 'PETR4', closeCents: 3_750, previousCloseCents: 3_690 },
+        { ticker: 'VALE3', closeCents: 3_750, previousCloseCents: null },
+      ],
+    });
+    expect(internalTapeSchema.parse({ date: null, rows: [] })).toEqual({ date: null, rows: [] });
+  });
+
+  it('é estrita: campo a mais, na resposta ou na linha, e campo faltando são erro', () => {
+    expect(internalTapeSchema.safeParse({ ...tape([row('PETR4')]), extra: 1 }).success).toBe(false);
+    expect(
+      internalTapeSchema.safeParse(tape([{ ...row('PETR4'), openCents: 3_700 }])).success,
+    ).toBe(false);
+    const { previousCloseCents: _previous, ...withoutPrevious } = row('PETR4');
+    expect(internalTapeSchema.safeParse(tape([withoutPrevious])).success).toBe(false);
+    expect(internalTapeSchema.safeParse({ rows: [] }).success).toBe(false);
+    expect(internalTapeSchema.safeParse({ date: null }).success).toBe(false);
+  });
+
+  it('o fechamento nunca é nulo; só o anterior pode ser (o papel sem barra no pregão anterior)', () => {
+    expect(
+      internalTapeSchema.safeParse(tape([{ ...row('PETR4'), closeCents: null }])).success,
+    ).toBe(false);
+    expect(internalTapeSchema.safeParse(tape([row('PETR4', null)])).success).toBe(true);
+  });
+
+  it('centavo é inteiro seguro, a data é AAAA-MM-DD e o ticker tem o formato da B3', () => {
+    for (const bad of [
+      tape([{ ...row('PETR4'), closeCents: 37.5 }]),
+      tape([{ ...row('PETR4'), previousCloseCents: 2 ** 53 }]),
+      { ...tape([row('PETR4')]), date: '04/11/2026' },
+      tape([row('petr4')]),
+      tape([row('PETR')]),
+      tape([row('PETR4; DROP')]),
+    ]) {
+      expect(internalTapeSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  // A data é a do pregão das linhas: sem linha não há pregão (a legenda da home leria "pregão de null"), e linha sem pregão não diz de quando é.
+  it('a data existe se e só se há linha', () => {
+    expect(internalTapeSchema.safeParse({ date: '2026-11-04', rows: [] }).success).toBe(false);
+    expect(internalTapeSchema.safeParse({ date: null, rows: [row('PETR4')] }).success).toBe(false);
+  });
+
+  // O universo tem no máximo 500 ações (UNIVERSE_RULES.maxMembers da api; o teste da rota confere que os dois números são o mesmo).
+  it('no máximo o tamanho do universo (500 linhas)', () => {
+    const rows = (n: number) =>
+      Array.from({ length: n }, (_, i) => row(`A${String(i).padStart(3, '0')}3`));
+    expect(INTERNAL_TAPE_LIMIT).toBe(500);
+    expect(internalTapeSchema.safeParse(tape(rows(500))).success).toBe(true);
+    expect(internalTapeSchema.safeParse(tape(rows(501))).success).toBe(false);
   });
 });

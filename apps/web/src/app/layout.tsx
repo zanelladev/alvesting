@@ -1,21 +1,19 @@
 import type { Metadata, Viewport } from 'next';
-import { IBM_Plex_Mono, IBM_Plex_Sans } from 'next/font/google';
+import { Geist } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { SiteFooter, SiteHeader } from '../components/site-chrome';
+import { Rule } from '../components/ui';
 import './globals.css';
 
-// O next/font baixa as fontes no build e as serve do nosso domínio: o navegador não fala com o Google. A Sans só no peso 400: com mais de um
-// peso o Google serve a fonte variável (wdth e wght), de 40 KB contra 18 KB da estática, e o texto em negrito já é da Mono 600.
-const mono = IBM_Plex_Mono({
+// O next/font baixa a fonte no build e a serve do nosso domínio: o navegador não fala com o Google. Uma fonte só, num peso (ADR 0034): a
+// Geist no 500 (títulos, números grandes, botões, a cápsula do menu, o negrito); com dois pesos o Google serveria a fonte variável, com o
+// dobro do tamanho. O texto, as células e os rótulos usam a fonte do sistema, e a mono também (globals.css): a Inter 400 do plano saiu
+// porque o LCP simulado da home passou do teto com ela (cada fonte baixada é um pedido de alta prioridade no caminho crítico; a medida está
+// em docs/TELAS.md, seção 5).
+const display = Geist({
   subsets: ['latin'],
-  weight: ['400', '600'],
-  variable: '--font-plex-mono',
-  display: 'swap',
-});
-const sans = IBM_Plex_Sans({
-  subsets: ['latin'],
-  weight: ['400'],
-  variable: '--font-plex-sans',
+  weight: ['500'],
+  variable: '--font-geist',
   display: 'swap',
 });
 
@@ -29,20 +27,36 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false, address: false, email: false },
 };
 
-// Sem maximumScale nem userScalable: o usuário pode dar zoom.
+// Sem maximumScale nem userScalable: o usuário pode dar zoom. O site é escuro (o canvas preto): o navegador já pinta o fundo e os controles
+// nativos no escuro antes do CSS.
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#f2efe6',
+  themeColor: '#000000',
+  colorScheme: 'dark',
 };
 
+// A casca de toda tela, sem JavaScript: o cabeçalho, a moldura (as laterais de 1 px na coluna de 1200, a partir de 1202 px, por cima do
+// conteúdo para cruzar a arte e as faixas de largura total, e abaixo do cabeçalho), o main na coluna e a linha da moldura antes do rodapé.
+// As laterais são duas linhas de 1 px, e não uma caixa de 1202 px com borda: a caixa ficava por cima de todo o texto da coluna, e o axe não
+// achava o fundo dele (o contraste do desktop virava "incompleto", sem violação nem aprovação). O `overflow-x: clip` corta o que passa da
+// barra de rolagem nas linhas de ponta a ponta (a Rule e o hero têm 100vw).
+const MOLDURA =
+  'pointer-events-none absolute inset-y-0 z-20 hidden w-px bg-hairline min-[75.125rem]:block';
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${mono.variable} ${sans.variable}`}>
-      <body className="flex min-h-dvh flex-col bg-paper font-sans text-ink antialiased">
+    <html lang="pt-BR" className={display.variable}>
+      <body className="flex min-h-dvh flex-col antialiased">
         <SiteHeader />
-        <main className="mx-auto w-full max-w-5xl flex-1 space-y-8 px-4 py-6">{children}</main>
-        <SiteFooter />
+        <div className="relative flex min-w-0 flex-1 flex-col overflow-x-clip">
+          <div aria-hidden="true" data-moldura="" className={`${MOLDURA} left-[calc(50%-601px)]`} />
+          <div aria-hidden="true" data-moldura="" className={`${MOLDURA} left-[calc(50%+600px)]`} />
+          <main className="mx-auto w-full max-w-[1200px] flex-1 space-y-8 px-(--calha) pt-6 pb-12">
+            {children}
+          </main>
+          <Rule />
+          <SiteFooter />
+        </div>
       </body>
     </html>
   );

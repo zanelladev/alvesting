@@ -7,7 +7,10 @@ test.describe('home', () => {
   test('tem título, h1, idioma pt-BR e viewport que permite zoom', async ({ page }) => {
     await page.goto('/');
     await expect(page).toHaveTitle('Alvesting');
-    await expect(page.getByRole('heading', { level: 1, name: 'Alvesting' })).toBeVisible();
+    // o h1 é o título do hero (ADR 0034); o nome do site fica no <title> e na marca do cabeçalho
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Modelos de linguagem investindo na B3' }),
+    ).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
 
     const viewport = await page.locator('meta[name="viewport"]').getAttribute('content');

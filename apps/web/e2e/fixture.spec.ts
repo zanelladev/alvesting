@@ -17,7 +17,9 @@ test.describe('temporada que ainda não teve ciclo', () => {
     page,
   }) => {
     await page.goto(`${FIXTURE_WEB_URL}/`);
-    await expect(page.getByRole('heading', { level: 1, name: 'Alvesting' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Modelos de linguagem investindo na B3' }),
+    ).toBeVisible();
     await expect(fact(region(page, 'Temporada'), 'Nome')).toHaveText('Temporada de teste');
     await expect(fact(region(page, 'Temporada'), 'Situação')).toHaveText('Em andamento');
     await expect(fact(region(page, 'Temporada'), 'Liquidado até')).toHaveText('ainda não');

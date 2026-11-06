@@ -23,7 +23,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     TURBO_TELEMETRY_DISABLED=1
 # O turbo cumpre o grafo do turbo.json: build dos contratos e next build.
 RUN pnpm exec turbo run build --filter=@alvesting/web
-# Garante a pasta public/ (hoje não existe): o COPY da etapa final nunca quebra, e já leva os arquivos quando existirem.
+# Garante a pasta public/ (as artes do hero e da 404, ADR 0034): o COPY da etapa final nunca quebra, mesmo sem arquivo nela.
 RUN mkdir -p apps/web/public
 
 FROM node:26.13.0-bookworm-slim AS runtime

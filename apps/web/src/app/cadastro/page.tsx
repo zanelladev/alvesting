@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { SignUpForm } from '../../components/account-forms';
-import { LINK, NavLink } from '../../components/ui';
+import { LINK, NavLink, PageHead } from '../../components/ui';
 import { readLegal, readProviders } from '../../lib/account';
 import { documentOf } from '../../lib/legal';
 import { withApiDown } from '../../lib/with-api-down';
@@ -18,15 +18,16 @@ export default withApiDown(async function SignUpPage() {
 
   return (
     <>
-      <header className="space-y-2">
-        <h1 className="font-mono text-2xl font-semibold sm:text-3xl">Criar conta</h1>
-        <p className="max-w-prose">
+      <PageHead title="Criar conta">
+        <p className="max-w-prose text-lead text-pretty">
           Informe o nome, o e-mail e uma senha. Você vai receber um link para confirmar o e-mail
           antes do primeiro acesso.
         </p>
-      </header>
+      </PageHead>
 
-      <SignUpForm terms={terms.version} privacy={privacy.version} google={providers.google} />
+      <div className="card mt-12 max-w-md">
+        <SignUpForm terms={terms.version} privacy={privacy.version} google={providers.google} />
+      </div>
 
       <ul className="flex flex-wrap gap-x-6">
         <li>

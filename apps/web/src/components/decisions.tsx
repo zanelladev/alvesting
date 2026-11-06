@@ -1,6 +1,6 @@
 import type { DropReason, HoldReason } from '@alvesting/contracts';
 import { formatConfidence, formatDate, formatPercentValue } from '../lib/format';
-import { LINK, NavLink } from './ui';
+import { LINK, NavLink, SimulatedTag } from './ui';
 
 // A decisão de um modelo num pregão, como o feed da home, a página do modelo e a do ciclo a mostram. O texto do modelo (resumo e
 // justificativa) é dado de terceiro: já passou pela limpeza e pelo filtro de vazamento na api (docs/METODOLOGIA.md) e aqui entra como
@@ -25,6 +25,13 @@ export interface DecisionCardData {
   dropped: ReadonlyArray<{ position: number; reason: DropReason }>;
 }
 
+// A visão de mercado concorda com "visão" (o valor do contrato é o que o modelo responde, no masculino): "visão neutra".
+const MARKET_VIEW: Record<NonNullable<DecisionCardData['marketView']>, string> = {
+  otimista: 'visão otimista',
+  pessimista: 'visão pessimista',
+  neutro: 'visão neutra',
+};
+
 // Por que a decisão virou HOLD à força, e por que um item da resposta foi descartado (os motivos do contrato, em português).
 const HOLD_REASON: Record<HoldReason, string> = {
   prazo: 'fora do prazo',
@@ -42,17 +49,15 @@ const DROP_REASON: Record<DropReason, string> = {
   max_positions: 'acima do limite de posições',
 };
 
-// Compra e venda cheia ou vazada, e o HOLD tracejado: o que o item faz se lê pela palavra e pela borda, sem depender de cor.
+// Compra e venda cheia ou vazada, e o HOLD tracejado: o que o item faz se lê pela palavra e pela borda, sem depender de cor (a etiqueta
+// `badge` do sistema, globals.css).
 const BADGE: Record<Action, string> = {
-  BUY: 'border-ink bg-ink text-paper',
-  SELL: 'border-ink bg-paper text-ink',
-  HOLD: 'border-dashed border-ink bg-paper text-ink',
+  BUY: 'border-ink bg-ink text-canvas',
+  SELL: 'border-ink text-ink',
+  HOLD: 'border-dashed text-body',
 };
 export const ActionBadge = ({ action }: { action: Action }) => (
-  <span
-    data-action={action}
-    className={`inline-block border-2 px-1.5 py-0.5 font-mono text-xs font-semibold ${BADGE[action]}`}
-  >
+  <span data-action={action} className={`badge font-mono ${BADGE[action]}`}>
     {action}
   </span>
 );
@@ -63,20 +68,26 @@ const percentOf = (action: Action, percent: number | null): string | null =>
     : `${formatPercentValue(percent)} ${action === 'BUY' ? 'do patrimônio' : 'da posição'}`;
 
 // `date`: a data do pregão, como link para o ciclo (não vai na página do ciclo, que já é ele). `by`: o que dá o título do cartão, o
-// modelo (no feed e no ciclo) ou a data (na página do próprio modelo).
+// modelo (no feed e no ciclo) ou a data (na página do próprio modelo, que já mostra o nome). `simulated`: a decisão veio do provedor
+// fake, e o nome do modelo leva a etiqueta (ui.tsx, SimulatedTag).
 export function DecisionCard({
   decision,
   date,
   by,
+  simulated = false,
 }: {
   decision: DecisionCardData;
   date?: string;
   by: 'model' | 'date';
+  simulated?: boolean;
 }) {
   const modelLink = (
-    <NavLink href={`/modelos/${decision.competitor.slug}`} className={LINK}>
-      {decision.competitor.name}
-    </NavLink>
+    <>
+      <NavLink href={`/modelos/${decision.competitor.slug}`} className={LINK}>
+        {decision.competitor.name}
+      </NavLink>
+      {simulated ? <SimulatedTag /> : null}
+    </>
   );
   const dateLink = date ? (
     <NavLink href={`/ciclos/${date}`} className={LINK}>
@@ -85,19 +96,17 @@ export function DecisionCard({
   ) : null;
 
   return (
-    <article className="space-y-2 border-2 border-ink p-3">
+    <article className="card space-y-3">
       <header>
-        <h3 className="font-mono text-base font-semibold">
-          {by === 'model' ? modelLink : dateLink}
-        </h3>
+        <h3 className="font-display text-title">{by === 'model' ? modelLink : dateLink}</h3>
         <p className="flex flex-wrap items-center gap-x-3 muted">
           {by === 'model' ? dateLink : null}
-          {decision.marketView ? <span>visão {decision.marketView}</span> : null}
+          {decision.marketView ? <span>{MARKET_VIEW[decision.marketView]}</span> : null}
         </p>
       </header>
 
       {decision.status === 'FORCED_HOLD' ? (
-        <p className="font-mono font-semibold">
+        <p className="font-display font-medium text-ink">
           HOLD forçado{decision.holdReason ? `: ${HOLD_REASON[decision.holdReason]}` : ''}
         </p>
       ) : null}
@@ -110,13 +119,10 @@ export function DecisionCard({
             return (
               <li key={item.position} className="flex flex-wrap items-center gap-x-3">
                 <ActionBadge action={item.action} />
-                <NavLink
-                  href={`/acoes/${item.ticker}`}
-                  className={`${LINK} font-mono font-semibold`}
-                >
+                <NavLink href={`/acoes/${item.ticker}`} className={`${LINK} font-mono`}>
                   {item.ticker}
                 </NavLink>
-                {percent ? <span className="font-mono text-sm">{percent}</span> : null}
+                {percent ? <span className="text-sm text-ink tabular-nums">{percent}</span> : null}
                 {item.confidence === null ? null : (
                   <span className="muted">confiança {formatConfidence(item.confidence)}</span>
                 )}
@@ -131,8 +137,8 @@ export function DecisionCard({
 
       {decision.dropped.length > 0 ? (
         <div className="text-sm">
-          <p className="font-mono font-semibold">Itens descartados</p>
-          <ul aria-label="Itens descartados" className="list-inside list-disc">
+          <p className="font-display font-medium text-ink">Itens descartados</p>
+          <ul aria-label="Itens descartados" className="list-disc pl-6">
             {decision.dropped.map((drop) => (
               <li key={drop.position}>
                 Item {drop.position + 1}: {DROP_REASON[drop.reason]}

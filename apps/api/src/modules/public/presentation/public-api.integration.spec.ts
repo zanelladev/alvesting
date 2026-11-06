@@ -40,7 +40,7 @@ import { PublicModule } from '../public.module.js';
 import { PublicController } from './public.controller.js';
 
 // A API pública (plano §9, etapa 9) sobre uma temporada INTEIRA e sintética: o driver do ensaio (docs/ENSAIO.md) semeia o banco de
-// teste com 3 pregões, o Monte Carlo, as notícias e as decisões dos quatro modelos fake, sem rede e sem dado de terceiro. As
+// teste com 3 pregões, o Monte Carlo, as notícias e as decisões dos seis modelos do elenco (decisões do provedor fake), sem rede e sem dado de terceiro. As
 // expectativas saem do banco por consultas do próprio teste, não do repositório que está sendo testado.
 //
 // O canário da etapa 6 vira uma varredura: antes de pedir qualquer rota, o teste PLANTA um marcador em cada coluna que nunca pode
@@ -90,7 +90,7 @@ describe.skipIf(!ready)(title, () => {
     expect(result.ok, 'o ensaio que semeia o banco tem de passar').toBe(true);
 
     seasonId = (await prisma.season.findFirstOrThrow({ where: { slug: 'ensaio' } })).id;
-    momentumId = (await prisma.competitor.findFirstOrThrow({ where: { slug: 'fake-momentum' } }))
+    momentumId = (await prisma.competitor.findFirstOrThrow({ where: { slug: 'claude-opus-5-5' } }))
       .id;
     secondCycleId = (await prisma.cycle.findFirstOrThrow({ where: { date: day('2026-11-04') } }))
       .id;
@@ -362,7 +362,7 @@ describe.skipIf(!ready)(title, () => {
         expect(page.rows.map((s) => s.slug)).not.toContain('rascunho');
         expect((await get('/api/v1/seasons/rascunho/leaderboard')).status).toBe(404);
         expect((await get(`/api/v1/seasons/${draft.id}/equity`)).status).toBe(404);
-        expect((await get('/api/v1/competitors/fake-momentum?season=rascunho')).status).toBe(404);
+        expect((await get('/api/v1/competitors/claude-opus-5-5?season=rascunho')).status).toBe(404);
         expect(JSON.stringify((await get('/api/v1/arena/current')).body)).not.toContain(
           'Rascunho secreto',
         );
@@ -423,8 +423,8 @@ describe.skipIf(!ready)(title, () => {
         data: {
           id: newId(),
           seasonId: running.id,
-          slug: 'fake-momentum',
-          name: 'Outro Momentum',
+          slug: 'claude-opus-5-5',
+          name: 'Outro Claude',
           kind: 'MODEL',
           provider: 'fake',
           modelId: 'fake/outro',
@@ -433,15 +433,15 @@ describe.skipIf(!ready)(title, () => {
       });
       try {
         // a atual é a que está em andamento: o competidor dela, ainda sem liquidação
-        const current = await ok('/api/v1/competitors/fake-momentum', competitorDetailSchema);
+        const current = await ok('/api/v1/competitors/claude-opus-5-5', competitorDetailSchema);
         expect(current.season.slug).toBe('em-andamento');
-        expect(current.competitor).toMatchObject({ name: 'Outro Momentum', modelId: 'fake/outro' });
+        expect(current.competitor).toMatchObject({ name: 'Outro Claude', modelId: 'fake/outro' });
         expect(current.stat).toBeNull();
         expect(current.portfolio).toBeNull();
         // a da temporada encerrada, escolhida pelo slug ou pelo ULID
         for (const ref of ['ensaio', seasonId]) {
           const old = await ok(
-            `/api/v1/competitors/fake-momentum?season=${ref}`,
+            `/api/v1/competitors/claude-opus-5-5?season=${ref}`,
             competitorDetailSchema,
           );
           expect(old.season.slug).toBe('ensaio');
@@ -461,7 +461,7 @@ describe.skipIf(!ready)(title, () => {
         expect((await ok('/api/v1/decisions', decisionsPageSchema)).rows).toEqual([]);
         expect(
           (await ok('/api/v1/decisions?season=ensaio', decisionsPageSchema)).rows,
-        ).toHaveLength(SESSIONS * 4);
+        ).toHaveLength(SESSIONS * 6);
         expect((await get('/api/v1/cycles/2026-11-04')).status).toBe(404);
         expect((await get('/api/v1/cycles/2026-11-04?season=ensaio')).status).toBe(200);
       } finally {
@@ -490,17 +490,19 @@ describe.skipIf(!ready)(title, () => {
       const board = await ok(`/api/v1/seasons/${seasonId}/leaderboard`, leaderboardSchema);
       expect(board.season.slug).toBe('ensaio');
       expect(board.asOf).toBe(LAST);
-      expect(board.rows).toHaveLength(8);
-      expect(board.rows.map((r) => r.rank)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(board.rows).toHaveLength(10);
+      expect(board.rows.map((r) => r.rank)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
       const types = Object.fromEntries(
         board.rows.map((r) => [r.competitor.slug, r.competitor.type]),
       );
       expect(types).toEqual({
-        'fake-momentum': 'MODEL',
-        'fake-contrarian': 'MODEL',
-        'fake-hold': 'MODEL',
-        'fake-flaky': 'MODEL',
+        'claude-opus-5-5': 'MODEL',
+        'gpt-6-1-sol': 'MODEL',
+        'gemini-4-argon': 'MODEL',
+        'grok-4-7': 'MODEL',
+        'deepseek-v4-pro': 'MODEL',
+        'qwen3-8-max': 'MODEL',
         sorteio: 'RANDOM',
         'igual-peso': 'EQUAL_WEIGHT',
         cdi: 'CDI',
@@ -510,7 +512,7 @@ describe.skipIf(!ready)(title, () => {
       expect(returns).toEqual([...returns].sort((a, b) => b - a));
 
       const stats = await prisma.seasonStat.findMany({ include: { competitor: true } });
-      // o empate de retorno (o fake-hold e o CDI rendem igual) vale a ordem do elenco
+      // o empate de retorno (o gemini-4-argon, que só segura, e o CDI rendem igual) vale a ordem do elenco
       const expectedOrder = [...stats]
         .sort((a, b) => b.returnBps - a.returnBps || a.competitor.position - b.competitor.position)
         .map((stat) => stat.competitor.slug);
@@ -534,7 +536,7 @@ describe.skipIf(!ready)(title, () => {
         });
       }
       // o provedor e o ID do modelo fixados, só dos modelos
-      const momentum = board.rows.find((r) => r.competitor.slug === 'fake-momentum')!;
+      const momentum = board.rows.find((r) => r.competitor.slug === 'claude-opus-5-5')!;
       expect(momentum.competitor).toMatchObject({ provider: 'fake', modelId: 'fake/momentum' });
       expect(board.rows.find((r) => r.competitor.slug === 'cdi')!.competitor).toMatchObject({
         provider: null,
@@ -546,15 +548,15 @@ describe.skipIf(!ready)(title, () => {
     });
 
     it('o empate no retorno desempata pela ordem do elenco, não pela ordem das linhas do banco', async () => {
-      // o fake-hold e o CDI rendem igual; com o CDI antes no elenco, ele passa à frente
-      const hold = await prisma.competitor.findFirstOrThrow({ where: { slug: 'fake-hold' } });
+      // o gemini-4-argon (só segura) e o CDI rendem igual; com o CDI antes no elenco, ele passa à frente
+      const hold = await prisma.competitor.findFirstOrThrow({ where: { slug: 'gemini-4-argon' } });
       const cdi = await prisma.competitor.findFirstOrThrow({ where: { slug: 'cdi' } });
       await prisma.competitor.update({ where: { id: hold.id }, data: { position: cdi.position } });
       await prisma.competitor.update({ where: { id: cdi.id }, data: { position: hold.position } });
       try {
         const board = await ok(`/api/v1/seasons/${seasonId}/leaderboard`, leaderboardSchema);
         const order = board.rows.map((r) => r.competitor.slug);
-        expect(order.indexOf('cdi')).toBeLessThan(order.indexOf('fake-hold'));
+        expect(order.indexOf('cdi')).toBeLessThan(order.indexOf('gemini-4-argon'));
       } finally {
         await prisma.competitor.update({
           where: { id: hold.id },
@@ -582,7 +584,7 @@ describe.skipIf(!ready)(title, () => {
     it('a série de patrimônio de cada competidor, uma data por ponto', async () => {
       const equity = await ok(`/api/v1/seasons/${seasonId}/equity`, equitySchema);
       expect(equity.dates).toEqual([FIRST, '2026-11-04', LAST]);
-      expect(equity.series).toHaveLength(8);
+      expect(equity.series).toHaveLength(10);
       const snapshots = await prisma.equitySnapshot.findMany({
         include: { competitor: true },
         orderBy: { date: 'asc' },
@@ -643,9 +645,9 @@ describe.skipIf(!ready)(title, () => {
 
   describe('GET /competitors/:slug', () => {
     it('o competidor, a carteira atual com preço médio e P&L, a série e as últimas decisões', async () => {
-      const detail = await ok('/api/v1/competitors/fake-contrarian', competitorDetailSchema);
+      const detail = await ok('/api/v1/competitors/gpt-6-1-sol', competitorDetailSchema);
       expect(detail.competitor).toMatchObject({
-        slug: 'fake-contrarian',
+        slug: 'gpt-6-1-sol',
         type: 'MODEL',
         provider: 'fake',
         modelId: 'fake/contrarian',
@@ -654,7 +656,7 @@ describe.skipIf(!ready)(title, () => {
       expect(detail.stat).not.toBeNull();
 
       const contrarian = await prisma.competitor.findFirstOrThrow({
-        where: { slug: 'fake-contrarian' },
+        where: { slug: 'gpt-6-1-sol' },
       });
       const snapshot = await prisma.equitySnapshot.findFirstOrThrow({
         where: { competitorId: contrarian.id, date: day(LAST) },
@@ -698,7 +700,7 @@ describe.skipIf(!ready)(title, () => {
       expect(detail.series.equityCents.at(-1)).toBe(Number(snapshot.equityCents));
       // as decisões mais novas primeiro, todas do competidor
       expect(detail.decisions.map((d) => d.date)).toEqual([LAST, '2026-11-04', FIRST]);
-      expect(detail.decisions.every((d) => d.competitor.slug === 'fake-contrarian')).toBe(true);
+      expect(detail.decisions.every((d) => d.competitor.slug === 'gpt-6-1-sol')).toBe(true);
     });
 
     it('o Sorteio e as referências não decidem: a lista de decisões é vazia', async () => {
@@ -748,14 +750,14 @@ describe.skipIf(!ready)(title, () => {
 
     it('slug que não existe é 404; slug torto é 400; a temporada pode ser escolhida', async () => {
       expect((await get('/api/v1/competitors/nao-existe')).status).toBe(404);
-      expect((await get('/api/v1/competitors/fake-momentum?season=outra')).status).toBe(404);
+      expect((await get('/api/v1/competitors/claude-opus-5-5?season=outra')).status).toBe(404);
       expect((await get('/api/v1/competitors/Fake%20Momentum')).status).toBe(400);
-      expect((await get('/api/v1/competitors/fake-momentum?extra=1')).status).toBe(400);
+      expect((await get('/api/v1/competitors/claude-opus-5-5?extra=1')).status).toBe(400);
       const detail = await ok(
-        `/api/v1/competitors/fake-momentum?season=ensaio`,
+        `/api/v1/competitors/claude-opus-5-5?season=ensaio`,
         competitorDetailSchema,
       );
-      expect(detail.competitor.slug).toBe('fake-momentum');
+      expect(detail.competitor.slug).toBe('claude-opus-5-5');
     });
   });
 
@@ -767,7 +769,7 @@ describe.skipIf(!ready)(title, () => {
       expect(byDate).toMatchObject({ date: '2026-11-04', status: 'CLOSED', seasonId });
       expect(byDate.prompt?.sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(byDate.briefing?.sha256).toMatch(/^[0-9a-f]{64}$/);
-      expect(byDate.decisions).toHaveLength(4);
+      expect(byDate.decisions).toHaveLength(6);
     });
 
     it('?season= escolhe a temporada por slug ou ULID', async () => {
@@ -799,7 +801,7 @@ describe.skipIf(!ready)(title, () => {
   describe('GET /decisions', () => {
     it('o feed, do mais novo ao mais antigo, com resumo, visão de mercado e os itens públicos', async () => {
       const { rows } = await allPages('/api/v1/decisions', decisionsPageSchema, PAGE_MAX_LIMIT);
-      expect(rows).toHaveLength(SESSIONS * 4);
+      expect(rows).toHaveLength(SESSIONS * 6);
       expect(rows.map((r) => r.date)).toEqual([...rows.map((r) => r.date)].sort().reverse());
       const first = rows[0]!;
       expect(first.status).toBe('DECIDED');
@@ -818,16 +820,16 @@ describe.skipIf(!ready)(title, () => {
       const all = await allPages('/api/v1/decisions', decisionsPageSchema, PAGE_MAX_LIMIT);
       expect(all.pages).toBe(1);
       const paged = await allPages('/api/v1/decisions', decisionsPageSchema, 5);
-      expect(paged.pages).toBe(3);
+      expect(paged.pages).toBe(4);
       expect(paged.rows).toEqual(all.rows);
       const one = await ok('/api/v1/decisions?limit=5', decisionsPageSchema);
       expect(one.rows).toHaveLength(5);
       expect(one.nextCursor).toEqual(expect.any(String));
       const last = await ok(
-        `/api/v1/decisions?limit=5&cursor=${(await ok('/api/v1/decisions?limit=10', decisionsPageSchema)).nextCursor}`,
+        `/api/v1/decisions?limit=5&cursor=${(await ok('/api/v1/decisions?limit=15', decisionsPageSchema)).nextCursor}`,
         decisionsPageSchema,
       );
-      expect(last.rows).toHaveLength(2);
+      expect(last.rows).toHaveLength(3);
       expect(last.nextCursor).toBeNull();
     });
 
@@ -859,23 +861,23 @@ describe.skipIf(!ready)(title, () => {
 
     it('filtra por competidor e por temporada', async () => {
       const { rows } = await allPages(
-        '/api/v1/decisions?competitor=fake-hold',
+        '/api/v1/decisions?competitor=gemini-4-argon',
         decisionsPageSchema,
         50,
       );
       expect(rows).toHaveLength(SESSIONS);
-      expect(rows.every((r) => r.competitor.slug === 'fake-hold')).toBe(true);
+      expect(rows.every((r) => r.competitor.slug === 'gemini-4-argon')).toBe(true);
       expect(
         (await allPages('/api/v1/decisions?competitor=nao-existe', decisionsPageSchema, 50)).rows,
       ).toEqual([]);
       const bySeason = await allPages('/api/v1/decisions?season=ensaio', decisionsPageSchema, 50);
-      expect(bySeason.rows).toHaveLength(SESSIONS * 4);
+      expect(bySeason.rows).toHaveLength(SESSIONS * 6);
       expect((await get('/api/v1/decisions?season=outra')).status).toBe(404);
     });
 
     it('o HOLD forçado aparece com o motivo, e o item descartado só com a posição e o motivo', async () => {
       const hold = await prisma.decision.findFirstOrThrow({
-        where: { competitor: { slug: 'fake-hold' }, cycle: { date: day(LAST) } },
+        where: { competitor: { slug: 'gemini-4-argon' }, cycle: { date: day(LAST) } },
       });
       await prisma.decisionItem.deleteMany({ where: { decisionId: hold.id } });
       await prisma.decision.update({
@@ -883,7 +885,7 @@ describe.skipIf(!ready)(title, () => {
         data: { status: 'FORCED_HOLD', holdReason: 'prazo', marketView: null, summary: null },
       });
       const sell = await prisma.decision.findFirstOrThrow({
-        where: { competitor: { slug: 'fake-momentum' }, cycle: { date: day(LAST) } },
+        where: { competitor: { slug: 'claude-opus-5-5' }, cycle: { date: day(LAST) } },
       });
       await prisma.decisionItem.create({
         data: {
@@ -898,7 +900,7 @@ describe.skipIf(!ready)(title, () => {
         },
       });
       const { rows } = await allPages('/api/v1/decisions', decisionsPageSchema, 50);
-      const forced = rows.find((r) => r.competitor.slug === 'fake-hold' && r.date === LAST)!;
+      const forced = rows.find((r) => r.competitor.slug === 'gemini-4-argon' && r.date === LAST)!;
       expect(forced).toMatchObject({
         status: 'FORCED_HOLD',
         holdReason: 'prazo',
@@ -906,7 +908,7 @@ describe.skipIf(!ready)(title, () => {
         marketView: null,
         items: [],
       });
-      const dropped = rows.find((r) => r.competitor.slug === 'fake-momentum' && r.date === LAST)!;
+      const dropped = rows.find((r) => r.competitor.slug === 'claude-opus-5-5' && r.date === LAST)!;
       expect(dropped.dropped).toContainEqual({ position: 99, reason: 'not_in_universe' });
       expect(JSON.stringify(dropped)).not.toContain('XPTO3');
       // o HOLD forçado conta como "só segurou"
@@ -916,7 +918,7 @@ describe.skipIf(!ready)(title, () => {
 
     it('o item descartado não conta no filtro: a decisão cujo único BUY foi descartado só segurou', async () => {
       const hold = await prisma.decision.findFirstOrThrow({
-        where: { competitor: { slug: 'fake-hold' }, cycle: { date: day(FIRST) } },
+        where: { competitor: { slug: 'gemini-4-argon' }, cycle: { date: day(FIRST) } },
       });
       await prisma.decisionItem.create({
         data: {
@@ -931,7 +933,7 @@ describe.skipIf(!ready)(title, () => {
         },
       });
       const mine = (rows: Array<{ date: string; competitor: { slug: string } }>) =>
-        rows.some((row) => row.date === FIRST && row.competitor.slug === 'fake-hold');
+        rows.some((row) => row.date === FIRST && row.competitor.slug === 'gemini-4-argon');
       const buys = await allPages('/api/v1/decisions?action=BUY', decisionsPageSchema, 50);
       const holds = await allPages('/api/v1/decisions?action=HOLD', decisionsPageSchema, 50);
       expect(mine(buys.rows)).toBe(false);
@@ -1404,8 +1406,8 @@ describe.skipIf(!ready)(title, () => {
     `/api/v1/seasons/${seasonId}/leaderboard`,
     '/api/v1/seasons/ensaio/equity',
     '/api/v1/seasons/ensaio/random-baseline',
-    '/api/v1/competitors/fake-momentum',
-    '/api/v1/competitors/fake-contrarian',
+    '/api/v1/competitors/claude-opus-5-5',
+    '/api/v1/competitors/gpt-6-1-sol',
     '/api/v1/competitors/sorteio',
     '/api/v1/competitors/igual-peso',
     '/api/v1/cycles/2026-11-03',
@@ -1415,7 +1417,7 @@ describe.skipIf(!ready)(title, () => {
     '/api/v1/decisions?action=BUY',
     '/api/v1/decisions?action=SELL',
     '/api/v1/decisions?action=HOLD',
-    '/api/v1/decisions?competitor=fake-flaky&limit=2',
+    '/api/v1/decisions?competitor=grok-4-7&limit=2',
     '/api/v1/news',
     `/api/v1/news?ticker=${newsTicker}`,
     '/api/v1/stocks?q=sin',
@@ -1780,7 +1782,7 @@ describe.skipIf(!ready)(title, () => {
     // O que fica é o registro da arena (docs/API.md, seção 6): a posição de um MODELO, com a marcação, o valor e o P&L. A marcação não
     // esconde nada que o valor não mostre: valor é quantidade × marcação, exato.
     it('os registros da arena ficam: marcação, valor, preço médio e P&L das posições do modelo, e a marcação é valor ÷ quantidade', async () => {
-      const competitor = await ok('/api/v1/competitors/fake-momentum', competitorDetailSchema);
+      const competitor = await ok('/api/v1/competitors/claude-opus-5-5', competitorDetailSchema);
       const positions = competitor.portfolio!.holdings!.positions;
       expect(positions.length).toBeGreaterThan(0);
       for (const position of positions) {
@@ -1801,7 +1803,7 @@ describe.skipIf(!ready)(title, () => {
       }
       const held = positions[0]!;
       const stock = await ok(`/api/v1/stocks/${held.ticker}`, stockDetailSchema);
-      const holder = stock.holders.find((row) => row.competitor.slug === 'fake-momentum');
+      const holder = stock.holders.find((row) => row.competitor.slug === 'claude-opus-5-5');
       expect(holder).toMatchObject({ markCents: held.markCents, valueCents: held.valueCents });
     });
   });
@@ -1822,7 +1824,7 @@ describe.skipIf(!ready)(title, () => {
       expect((await ok('/api/v1/decisions', decisionsPageSchema)).rows).toEqual([]);
       expect((await ok('/api/v1/news', newsPageSchema)).rows).toEqual([]);
       expect((await ok('/api/v1/stocks?q=sin', stockSearchSchema)).rows).toEqual([]);
-      expect((await get('/api/v1/competitors/fake-momentum')).status).toBe(404);
+      expect((await get('/api/v1/competitors/claude-opus-5-5')).status).toBe(404);
       expect((await get('/api/v1/cycles/2026-11-03')).status).toBe(404);
       expect((await get('/api/v1/stocks/SINA3')).status).toBe(404);
     });

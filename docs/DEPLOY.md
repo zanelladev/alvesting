@@ -88,14 +88,15 @@ desenho não se sustentar na Azure, a volta é provar o green pelo FQDN do label
 ### O smoke do Playwright (passos 6, 8 e 9)
 
 `apps/web/e2e/smoke.spec.ts` é o único arquivo que o deploy roda (`playwright test e2e/smoke.spec.ts --project=pixel-7 --project=iphone-15`, com `BASE_URL` = `SITE_GREEN_URL` nos passos 6 e 8 e = `SITE_URL` no
-passo 9). A suíte e2e inteira fica no CI, porque parte dela depende do servidor local (trava de origem, cabeçalhos). São onze testes. Os que **só falam com a api** levam a etiqueta `@api`, e a prova da api
-(passo 6) roda só esses (`--grep @api`); o web verde e a produção rodam os onze:
+passo 9). A suíte e2e inteira fica no CI, porque parte dela depende do servidor local (trava de origem, cabeçalhos). São catorze testes. Os que **só falam com a api** levam a etiqueta `@api`, e a prova da api
+(passo 6) roda só esses (`--grep @api`); o web verde e a produção rodam os catorze:
 
 | Teste | Etiqueta | O que falha |
 |---|---|---|
-| A home responde 200, tem título e h1 "Alvesting" e nenhum recurso da página (JS, CSS, fonte) volta com status 400 ou mais | | Página fora do ar, borda ou WAF barrando o estático, trava de origem recusando o Front Door |
+| A home responde 200, tem título e o h1 do hero ("Modelos de linguagem investindo na B3", ADR 0034) e nenhum recurso da página (JS, CSS, fonte, a arte do quadro 0) volta com status 400 ou mais | | Página fora do ar, borda ou WAF barrando o estático, trava de origem recusando o Front Door, a arte de `public/` fora da imagem |
 | A home não rola na horizontal em 360 px | | Layout que estoura a tela do celular |
 | A home mostra a faixa de cotações (a região "Cotações e macro", com o BOVA11) e o crédito "brapi.dev" no rodapé (onda da brapi, parte 2; ADR 0033) | | O `QUOTES_SECRET` do site diferente do da api (a rota interna de cotações responde 404 e a home vira "Não foi possível carregar os dados"), ou o site sem o segredo |
+| A home mostra o pé do hero: a legenda com o crédito "Cotações: brapi.dev", a fita (decorativa, `aria-hidden`) e o quadro 0 da arte no HTML (ADR 0034). Não depende de dado: o banco sem barra (o primeiro deploy) mostra a fita "sem cotações ainda" | | O hero quebrado na revisão nova, ou a arte e a fita fora da página |
 | `GET /health` do site: 200 no envelope, `service: "web"` | | Site fora do ar, rota errada no Front Door |
 | `GET /api/v1/health` da api: 200 no envelope, `service: "api"` | `@api` | Api fora do ar, rota `/api/*` errada no Front Door |
 | A tela `/entrar` abre (200, h1 "Entrar", campo de e-mail) e a `/conta` sem sessão manda para `/entrar?proximo=%2Fconta` (etapa 11, parte 2) | | O site não alcança a api (a tela de entrar lê quais logins ela oferece, com o `X-Azure-FDID`), a conta fora do ar |
@@ -365,7 +366,7 @@ Como rodar esse SQL no Postgres privado: uma execução do `job-migrate` com o c
   conhecido: o WAF barrar o User-Agent do `request` do Playwright, que os dois testes de health usam (o da home é um
   navegador). A home já não vem do cache da borda (ADR 0023: o HTML é dinâmico e a rota `/*` não tem cache), e desde a etapa 9
   ela lê a api: com o `API_INTERNAL_URL` ou o `X-Azure-FDID` do site errados, o servidor responde 200 com a tela de erro, sem o
-  h1 `Alvesting`, e o smoke reprova (provado na integração da onda 3a, com o site standalone sem api).
+  h1 da home (hoje o título do hero, ADR 0034), e o smoke reprova (provado na integração da onda 3a, com o site standalone sem api).
 - **Premissas da Azure que o pipeline confere em execução**, porque não deu para testá-las aqui: que a revisão nasce com
   0% quando o tráfego está fixado por nome e que o label não a faz receber tráfego (o passo 4 confere os dois e devolve se não for), que `az containerapp job update
   --image` mantém o comando do `job-migrate` (agora `sh -c 'migrate deploy && db:roles'`), e que `--parameters arquivo.bicepparam chave=valor` (o formato do

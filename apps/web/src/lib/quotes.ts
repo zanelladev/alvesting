@@ -1,17 +1,21 @@
 import 'server-only';
+import type { z } from 'zod';
 import {
   PUBLIC_CACHE_TTL_SECONDS,
   QUOTES_SECRET_MIN_LENGTH,
   QUOTES_SECRET_SHAPE,
   internalBarsSchema,
+  internalTapeSchema,
   tickerParamSchema,
   type InternalBars,
+  type InternalTape,
 } from '@alvesting/contracts';
 import { ApiError, call, segment, type ApiDeps } from './api';
 import type { CacheTag } from './cache';
 
-// A leitura das cotações pela rota INTERNA da api (docs/API.md, seção 6; ADR 0033). Nenhuma rota pública entrega a barra de preço de um papel
-// (a licença da brapi proíbe entregar os Dados como feed, API ou base bruta), então o SSR a lê daqui, com um segredo que só o servidor tem.
+// A leitura das cotações pelas rotas INTERNAS da api (docs/API.md, seção 6; ADR 0033): as barras de um papel e a fita da home. Nenhuma rota
+// pública entrega cotação bruta (a licença da brapi proíbe entregar os Dados como feed, API ou base bruta), então o SSR as lê daqui, com um
+// segredo que só o servidor tem.
 //
 // Este é o ÚNICO módulo que lê QUOTES_SECRET, e ele é só do servidor: `import 'server-only'` faz o build quebrar se um componente de cliente o
 // importar (direta ou indiretamente), e a variável não tem NEXT_PUBLIC_, então o Next nunca a copia para o JavaScript do navegador.
@@ -55,6 +59,23 @@ export async function readBars(
 ): Promise<InternalBars['bars']> {
   // O ticker vem da URL da página: o torto é 404 antes de qualquer outra conferência, e a configuração com defeito não o transforma em tela de erro.
   const path = `/interno/barras/${segment(tickerParamSchema, ticker)}`;
+  return (await readInternal(path, internalBarsSchema, deps)).bars;
+}
+
+// A fita da home: o universo da semana do último ciclo (os papéis que o briefing deu a todos os modelos), na ordem do universo, com o
+// fechamento do pregão `date` e o do pregão anterior (nulo para o papel sem barra nele). Sem ciclo, sem universo ou sem barra, a resposta
+// vazia: `{ date: null, rows: [] }` (a home mostra a fita sem a rota, com o BOVA11 e o macro).
+export function readTape(deps: QuotesDeps = {}): Promise<InternalTape> {
+  return readInternal('/interno/fita', internalTapeSchema, deps);
+}
+
+// O que as duas leituras têm em comum: o segredo e o endereço conferidos antes do `fetch`, o cache de dados com a tag `arena`, e o 404 da
+// rota (o segredo que a api não reconhece) como defeito de configuração.
+async function readInternal<S extends z.ZodType>(
+  path: string,
+  schema: S,
+  deps: QuotesDeps,
+): Promise<z.output<S>> {
   const env = deps.env ?? process.env;
   // Aparado nas pontas, como a api apara o dela (segredo colado à mão no Key Vault costuma levar a quebra de linha do `echo`), senão os dois
   // valores nunca bateriam. O PENDENTE do Key Vault tem menos de 32 caracteres e cai aqui também.
@@ -74,9 +95,9 @@ export async function readBars(
     }
   }
   try {
-    const { bars } = await call(
+    return await call(
       path,
-      internalBarsSchema,
+      schema,
       {
         query: undefined,
         init: { next: { revalidate: PUBLIC_CACHE_TTL_SECONDS, tags: [...TAGS] } },
@@ -84,11 +105,10 @@ export async function readBars(
       },
       deps,
     );
-    return bars;
   } catch (error) {
-    // Papel desconhecido é lista vazia (200): o 404 desta rota quer dizer só "não é para você", isto é, o segredo que o site manda não é o da
-    // api (ou a api está sem ele). Vira 502 para a página mostrar "a arena não respondeu" (e o smoke do deploy reprovar), e nunca "ação não
-    // encontrada" (404 e 400 viram a tela de 404 em orNotFound).
+    // Papel desconhecido é lista vazia (200), e a fita sem ciclo é a resposta vazia: o 404 destas rotas quer dizer só "não é para você", isto
+    // é, o segredo que o site manda não é o da api (ou a api está sem ele). Vira 502 para a página mostrar "a arena não respondeu" (e o smoke
+    // do deploy reprovar), e nunca "ação não encontrada" (404 e 400 viram a tela de 404 em orNotFound).
     if (error instanceof ApiError && error.status === 404) {
       throw new ApiError(502, 'QUOTES_REFUSED', { cause: error });
     }

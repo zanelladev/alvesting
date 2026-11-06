@@ -3,6 +3,7 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import { signInViaApi } from './account-support';
 import { registerAdmin, seasonFile, test } from './admin-support';
 import { FRONT_DOOR_URL } from './api-server';
+import { abrirMenu } from './menu';
 
 // Mobile primeiro (plano §13) no painel de admin (etapa 10, parte 2; docs/TELAS.md, seção 8): em pixel-7, iphone-15 e desktop, sem rolagem
 // horizontal em 360 px, alvos de toque de pelo menos 44 px (os campos, a lista, a área de texto e as caixas de marcar também), nenhum erro no
@@ -110,11 +111,20 @@ for (const screen of SCREENS) {
       expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
       expect(bodyWidth).toBeLessThanOrEqual(clientWidth);
 
-      for (const link of await page.getByRole('banner').getByRole('link').all()) {
+      // o cabeçalho cabe na largura, e a folha do menu abre com os sete links dentro dela, cada um com 44 px de altura (ADR 0034: em 360 px o
+      // menu é a folha que o botão "Menu" abre, uma linha por tela; o mesmo do carteira-layout.spec.ts). A contagem vem antes das medidas: sem
+      // ela o laço passaria em vazio se o cabeçalho sumisse
+      await abrirMenu(page);
+      const bannerLinks = await page.getByRole('banner').getByRole('link').all();
+      expect(bannerLinks.length).toBeGreaterThanOrEqual(8);
+      for (const link of bannerLinks) {
         const box = (await link.boundingBox())!;
         expect(box.x, await link.innerText()).toBeGreaterThanOrEqual(0);
         expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(360);
+        expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
       }
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('navigation', { name: 'Principal' })).toBeHidden();
 
       // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante
       const small = await page.evaluate(() => {

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { CAIXA } from './ui';
 
 // O texto dos termos de uso e da política de privacidade (etapa 11), como a api o serve: Markdown simples, de arquivos do repositório
 // (apps/api/src/modules/account/legal). Só o que os textos usam: `## ` e `### ` (subtítulos), `> ` (a citação do rascunho), `- ` (lista),
@@ -12,15 +13,9 @@ const HEADER_LINE = /^(?:# .*|Versão: .*|Vigência: .*)$/;
 
 // **negrito** em partes: o que está entre dois pares de asteriscos. Asteriscos sem par ficam como texto.
 function inline(line: string): ReactNode[] {
-  return line.split(/\*\*(.+?)\*\*/g).map((part, index) =>
-    index % 2 === 1 ? (
-      <strong key={index} className="font-semibold">
-        {part}
-      </strong>
-    ) : (
-      part
-    ),
-  );
+  return line
+    .split(/\*\*(.+?)\*\*/g)
+    .map((part, index) => (index % 2 === 1 ? <strong key={index}>{part}</strong> : part));
 }
 
 type Block =
@@ -70,25 +65,28 @@ export function LegalText({ text }: { text: string }) {
   const parts = blocks(text);
   if (parts.length === 0) return null;
   return (
-    <div className="max-w-prose space-y-4 break-words">
+    <div className="max-w-prose space-y-4 text-prose-md break-words">
       {parts.map((block, index) => {
         switch (block.kind) {
           case 'h2':
             return (
-              <h2 key={index} className="pt-2 font-mono text-lg font-semibold">
+              <h2 key={index} className="pt-6 font-display text-display-sm">
                 {inline(block.text)}
               </h2>
             );
           case 'h3':
             return (
-              <h3 key={index} className="font-mono font-semibold">
+              <h3 key={index} className="pt-2 font-display text-title">
                 {inline(block.text)}
               </h3>
             );
           case 'quote':
             return (
-              <blockquote key={index} className="border-2 border-ink p-3 font-mono font-semibold">
-                {inline(block.text)}
+              <blockquote key={index} className={`flex gap-3 ${CAIXA}`}>
+                <span aria-hidden="true" className="font-mono text-muted">
+                  [!]
+                </span>
+                <span className="min-w-0">{inline(block.text)}</span>
               </blockquote>
             );
           case 'list':

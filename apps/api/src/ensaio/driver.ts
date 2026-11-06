@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises';
 import type { BlobServiceClient } from '@azure/storage-blob';
 import { Logger } from '@nestjs/common';
 import type { PrismaService } from '../infrastructure/database/prisma.service.js';
-import { ALERT_LOG } from '../telemetry/alert-logs.js';
 import {
   addDays,
   brasiliaDate,
@@ -95,22 +94,11 @@ const DEFAULT_SEASON_FILE = new URL('../../seasons/ensaio.json', import.meta.url
 const brt = (date: IsoDate, hhmm: string, seconds = 0): Date =>
   new Date(brasiliaInstant(date, hhmm).getTime() + seconds * 1000);
 
-// As linhas que a etapa 10 acrescentou para os alertas do Azure Monitor (job falho, HOLD forçado, barras ausentes) repetem um fato que o
-// relatório já conta por outro lado (jobs não concluídos, novas tentativas agendadas, os HOLD de cada competidor). Ficam anotadas, mas
-// fora da contagem de avisos e erros, para o relatório da Temporada 0 continuar o mesmo (docs/ENSAIO.md). As linhas dos alertas que já
-// existiam antes da etapa 10 (filtro de vazamento, e-mail da conta, aceite) continuam contando.
-const ALERT_ONLY_LINES = new Set<string>([
-  ALERT_LOG.jobFailed,
-  ALERT_LOG.holdForced,
-  ALERT_LOG.eodBarsMissing,
-]);
-
-// Os avisos e erros dos handlers ficam anotados, não impressos: o Nest Logger escreveria uma linha por mensagem.
+// Os avisos e erros dos handlers ficam anotados, não impressos: o Nest Logger escreveria uma linha por mensagem. Todos contam: nenhuma
+// falha é injetada no elenco (docs/ENSAIO.md, seção 3), então a linha de alerta (job falho, HOLD forçado, barras ausentes) é erro de verdade.
 function captureLogs() {
   const counts = { warn: 0, error: 0 };
   const lines: string[] = [];
-  const counted = (message: unknown, rest: unknown[]) =>
-    ![message, ...rest].some((part) => typeof part === 'string' && ALERT_ONLY_LINES.has(part));
   const show = (message: unknown, rest: unknown[]) =>
     [message, ...rest]
       .map((part) =>
@@ -131,15 +119,15 @@ function captureLogs() {
     debug: none,
     verbose: none,
     warn: (message: unknown, ...rest: unknown[]) => {
-      if (counted(message, rest)) counts.warn += 1;
+      counts.warn += 1;
       lines.push(`aviso: ${show(message, rest)}`);
     },
     error: (message: unknown, ...rest: unknown[]) => {
-      if (counted(message, rest)) counts.error += 1;
+      counts.error += 1;
       lines.push(`erro: ${show(message, rest)}`);
     },
     fatal: (message: unknown, ...rest: unknown[]) => {
-      if (counted(message, rest)) counts.error += 1;
+      counts.error += 1;
       lines.push(`erro: ${show(message, rest)}`);
     },
   });

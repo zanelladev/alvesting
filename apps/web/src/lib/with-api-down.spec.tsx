@@ -27,7 +27,7 @@ describe('withApiDown', () => {
       expect(out).toContain('Não foi possível carregar os dados');
       expect(out).toContain('<meta name="robots" content="noindex"/>');
       // sem JavaScript: um link para a mesma URL (a query inclusive), e não um botão
-      expect(out).toMatch(/<a href="" class="btn">Tentar de novo<\/a>/);
+      expect(out).toMatch(/<a href="" class="btn btn-primary">Tentar de novo<\/a>/);
       expect(out).toContain('href="/"');
       // nenhum detalhe do erro na tela
       expect(out).not.toContain('API respondeu');
