@@ -9,7 +9,8 @@ import {
   SeasonsPanel,
 } from '../../../../components/admin-panels';
 import { SecaoCartao } from '../../../../components/cartao';
-import { CAIXA, PageHead } from '../../../../components/ui';
+import { Avisos, PilhaDeAvisos } from '../../../../components/avisos';
+import { PageHead } from '../../../../components/ui';
 import { authCookieHeader, readMe } from '../../../../lib/account';
 import { readAdmin, type AdminData } from '../../../../lib/admin';
 import { ApiError } from '../../../../lib/api';
@@ -53,20 +54,22 @@ export default withApiDown(async function AdminPage() {
     new Date(),
   );
 
+  // a pilha de avisos (o toast que confirma cada ação; o resultado inteiro fica no formulário dela) logo abaixo do título, na ordem do Tab
   return (
-    <>
+    <Avisos foco="main h1">
       <PageHead title="Painel da arena">
         <p className="max-w-prose text-15 text-pretty">
           A operação da arena: jobs, filas, custos e temporadas. Só o admin vê esta página. Cada
           ação pede uma confirmação explícita e fica na trilha de auditoria com o seu código.
         </p>
         <noscript>
-          <p className={`max-w-prose ${CAIXA}`}>
+          <p className="max-w-prose text-body">
             As ações do painel precisam de JavaScript. Ative o JavaScript no navegador e recarregue
             a página.
           </p>
         </noscript>
       </PageHead>
+      <PilhaDeAvisos />
 
       {/* Na casca do app, sem barra secundária: cada seção num cartão (docs/redesign-rallies/plano.md, f.4); as tabelas rolam dentro dele */}
       <div className="max-w-[960px] space-y-4">
@@ -106,6 +109,6 @@ export default withApiDown(async function AdminPage() {
           <CorporateEventForm labelledBy="evento-titulo" />
         </SecaoCartao>
       </div>
-    </>
+    </Avisos>
   );
 });

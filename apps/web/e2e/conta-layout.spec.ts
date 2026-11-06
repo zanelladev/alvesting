@@ -130,6 +130,11 @@ async function open(page: Page, screen: Screen, who: { request: APIRequestContex
       page.locator('[aria-invalid="true"], [role="alert"][tabindex="-1"]').first(),
     ).toBeVisible();
   }
+  // A cor do botão anda por 150 ms depois que ele fica habilitado (a hidratação, o envio): o axe mede o estado final, e não o meio da
+  // transição (no pixel-7 ele pegou o "Entrar" a meio caminho do cinza do desabilitado para o preto, com 1,6:1).
+  await page.waitForFunction(
+    () => !document.getAnimations().some((animation) => animation instanceof CSSTransition),
+  );
 }
 
 for (const screen of SCREENS) {
@@ -295,6 +300,112 @@ for (const screen of SCREENS) {
     );
   });
 }
+
+// Nenhuma rolagem horizontal da página de 360 a 1920 px nas telas da conta (a conta na casca do app, a tela dividida e os textos legais na do site),
+// e nenhuma barra de rolagem à vista.
+test.describe('as telas da conta de 360 a 1920 px', () => {
+  for (const screen of SCREENS.filter((s) =>
+    ['entrar', 'cadastro com todos os erros', 'termos de uso', 'conta'].includes(s.name),
+  )) {
+    test(
+      `${screen.name}: nenhuma largura rola na horizontal`,
+      { tag: '@tema' },
+      async ({ page, request, ip }) => {
+        await open(page, screen, { request, ip });
+        for (const width of [360, 390, 412, 768, 1024, 1280, 1440, 1920]) {
+          await page.setViewportSize({ width, height: 900 });
+          const sizes = await page.evaluate(() => ({
+            scroll: document.documentElement.scrollWidth,
+            client: document.documentElement.clientWidth,
+            body: document.body.scrollWidth,
+            bar: window.innerWidth - document.documentElement.clientWidth,
+          }));
+          expect(sizes.scroll, `${width} px`).toBeLessThanOrEqual(sizes.client);
+          expect(sizes.body, `${width} px`).toBeLessThanOrEqual(sizes.client);
+          expect(sizes.bar, `${width} px`).toBe(0);
+        }
+      },
+    );
+  }
+});
+
+// O sumário "Nesta página" dos textos legais (components/legal-text.tsx): a partir de 1280 px, preso à direita da coluna de leitura, com um link
+// por seção do texto (o id do h2 que ele abre); abaixo disso some, e o texto segue numa coluna só. Só HTML e CSS.
+// O formulário nasce desativado até a hidratação (sem JavaScript ele não pode se enviar), e o botão desativado é o cinza: na hidratação ele virava
+// a primária pela transição de 150 ms, um esmaecer da ação principal na abertura (o QA do fechamento, achado 6). Nada transiciona na hidratação;
+// o hover continua a andar em 150 ms, na ida e na volta.
+test.describe('o botão do formulário na abertura', () => {
+  test('nada transiciona quando o formulário fica ativo, e o hover ainda anda nos dois sentidos', async ({
+    page,
+  }, testInfo) => {
+    await page.addInitScript(() => {
+      const runs: string[] = [];
+      (window as unknown as { transicoes: string[] }).transicoes = runs;
+      document.addEventListener(
+        'transitionrun',
+        (event) => {
+          const target = event.target as Element;
+          if (target.closest?.('form')) runs.push(`${target.tagName}:${event.propertyName}`);
+        },
+        true,
+      );
+    });
+    await page.goto('/entrar');
+    const button = page.getByRole('button', { name: 'Entrar', exact: true });
+    await expect(button).toBeEnabled();
+    // o tempo de qualquer transição da abertura acabar (as do botão são de 150 ms)
+    await page.waitForTimeout(400);
+    const runs = () =>
+      page.evaluate(() => (window as unknown as { transicoes: string[] }).transicoes);
+    expect(await runs()).toEqual([]);
+    if (!testInfo.project.name.startsWith('desktop')) return;
+    await button.hover();
+    await expect.poll(runs).toContain('BUTTON:background-color');
+    const count = (await runs()).filter((run) => run === 'BUTTON:background-color').length;
+    await page.mouse.move(0, 0);
+    await expect
+      .poll(async () => (await runs()).filter((run) => run === 'BUTTON:background-color').length)
+      .toBeGreaterThan(count);
+  });
+});
+
+test.describe('o sumário "Nesta página" dos textos legais', () => {
+  for (const route of ['/termos', '/privacidade']) {
+    test(`em 1440 px fica à direita do texto e leva a cada seção; em 390 px some (${route})`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(route);
+      const nav = page.getByRole('navigation', { name: 'Nesta página' });
+      await expect(nav).toBeVisible();
+      const sections = page.getByRole('article').getByRole('heading', { level: 2 });
+      const titles = await sections.allInnerTexts();
+      expect(titles.length).toBeGreaterThanOrEqual(9);
+      const links = nav.getByRole('link');
+      await expect(links).toHaveText(titles);
+      // cada link aponta para o id do h2 da seção dele
+      for (const [i, link] of (await links.all()).entries()) {
+        const id = await sections.nth(i).getAttribute('id');
+        expect(id).toMatch(/^secao-/);
+        await expect(link).toHaveAttribute('href', `#${id}`);
+      }
+      // à direita da coluna de leitura, sem cobrir o texto
+      const text = (await page.getByRole('article').boundingBox())!;
+      const box = (await nav.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(text.x + text.width);
+      expect(box.x + box.width).toBeLessThanOrEqual(1440);
+      // o link leva à seção, e o sumário vai junto: o miolo fica preso no topo enquanto a página rola pelo texto
+      await links.nth(4).click();
+      await expect(page).toHaveURL(new RegExp(`#${await sections.nth(4).getAttribute('id')}$`));
+      await expect(sections.nth(4)).toBeInViewport();
+      expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(900);
+      await expect(nav.getByRole('link').first()).toBeInViewport();
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(nav).toBeHidden();
+    });
+  }
+});
 
 // A tela dividida (components/tela-dividida.tsx; plano do redesenho, f.6): a partir de 1024 px a metade direita é a moldura escura com a escadaria,
 // no quadro 0 e SEM o laço (o arquivo inteiro, o JSON dos quadros e o sprite grande, uns 3,2 MB, só toca na landing: o Arte com `laco={false}`).

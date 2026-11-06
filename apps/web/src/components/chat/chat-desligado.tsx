@@ -54,7 +54,7 @@ const SUGESTOES = [
 // enviar redondos (32 px visíveis na caixa de 44) e as sugestões em chips. Tudo dentro do fieldset desativado.
 export function ChatDesligado() {
   return (
-    <fieldset disabled className="w-full min-w-0 space-y-4">
+    <fieldset disabled className="chat-desligado w-full min-w-0 space-y-4">
       <legend className="sr-only">O chat, desligado</legend>
       <div className="flex justify-center gap-1">
         <button type="button" aria-pressed="true" className="chip cursor-not-allowed font-medium">

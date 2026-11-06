@@ -5,6 +5,7 @@ import { parseEnv } from './config/env.js';
 import { ensaioDatabaseUrl, parseArgs } from './ensaio/cli-args.js';
 import { runEnsaio } from './ensaio/driver.js';
 import { MAX_SESSIONS, MIN_SESSIONS } from './ensaio/market.js';
+import { seedSyntheticLogos } from './ensaio/synthetic-logos.js';
 import {
   applyMigrations,
   assertDisposable,
@@ -12,16 +13,18 @@ import {
   recreateDatabase,
 } from './infrastructure/database/database-admin.js';
 import { PrismaService } from './infrastructure/database/prisma.service.js';
+import { MarketRepository } from './modules/market-data/infrastructure/market.repository.js';
 
 // O ensaio da Temporada 0 (etapa 8, a parte local; docs/ENSAIO.md): a arena rodando sozinha por N pregões seguidos, com provedores fake,
 // os handlers de verdade, o relógio simulado e nenhuma rede.
-//   pnpm --filter @alvesting/api arena:ensaio [--pregoes 5] [--semente N]
+//   pnpm --filter @alvesting/api arena:ensaio [--pregoes 5] [--semente N] [--logos-sinteticos]
 // O banco é o de ENSAIO_DATABASE_URL (alvesting_ensaio no .env.example): recriado e migrado a cada execução, e nunca deduzido do
 // DATABASE_URL, então o de dev não entra. O Azurite (STORAGE_CONNECTION_STRING) guarda o que o ensaio escreve, em containers com o
 // prefixo "ensaio-". Recusa rodar com NODE_ENV=production.
-const USAGE = `Uso: arena:ensaio [--pregoes N] [--semente N]
-  --pregoes N   quantos pregões seguidos (${MIN_SESSIONS} a ${MAX_SESSIONS}; padrão 5)
-  --semente N   a semente do mercado, das notícias e do macro sintéticos (inteiro; padrão 1)
+const USAGE = `Uso: arena:ensaio [--pregoes N] [--semente N] [--logos-sinteticos]
+  --pregoes N          quantos pregões seguidos (${MIN_SESSIONS} a ${MAX_SESSIONS}; padrão 5)
+  --semente N          a semente do mercado, das notícias e do macro sintéticos (inteiro; padrão 1)
+  --logos-sinteticos   depois do relatório, os dois logos sintéticos que o e2e lê (o e2e:seed a passa)
 Variáveis (o .env.example traz as do docker compose): ENSAIO_DATABASE_URL, o banco que o ensaio recria (o nome tem de terminar em
 _ensaio ou _test), e STORAGE_CONNECTION_STRING, o Azurite. O relatório sai na tela e em .data/ensaio/ (fora do git).`;
 
@@ -37,7 +40,7 @@ async function main(argv: string[]): Promise<number> {
     console.error(`${parsed.message}\n${USAGE}`);
     return 2;
   }
-  const { sessions, seed } = parsed;
+  const { sessions, seed, syntheticLogos } = parsed;
 
   if (process.env.NODE_ENV === 'production') {
     console.error('O ensaio esvazia um banco e não roda com NODE_ENV=production.');
@@ -111,6 +114,11 @@ async function main(argv: string[]): Promise<number> {
     await writeFile(`${base}.json`, result.json);
     console.log(`\n${result.text}`);
     console.log(`relatório gravado em ${base}.txt e .json`);
+    // o seed do e2e: depois do relatório, que não os vê (o mesmo relatório com ou sem a bandeira)
+    if (syntheticLogos) {
+      const saved = await seedSyntheticLogos(new MarketRepository(prisma), new Date());
+      console.log(`logos sintéticos do e2e gravados: ${saved.join(', ')}`);
+    }
 
     console.log('\nmedidas desta máquina (fora do relatório, mudam a cada execução):');
     for (const [queue, m] of Object.entries(result.measures).sort(([a], [b]) => (a < b ? -1 : 1))) {

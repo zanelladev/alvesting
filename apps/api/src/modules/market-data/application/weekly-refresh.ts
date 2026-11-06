@@ -3,10 +3,15 @@ import { WINDOW_SESSIONS, historyStart, quoteTargets } from '../domain/bar-plan.
 import { isoWeek, type IsoDate } from '../domain/dates.js';
 import { seedOf, type InstrumentSeed } from '../domain/instruments.js';
 import type { TradingCalendar } from '../domain/trading-calendar.js';
-import { FETCH_BUDGET_MS, type BrapiClient } from '../infrastructure/brapi.client.js';
+import {
+  FETCH_BUDGET_MS,
+  describeError,
+  type BrapiClient,
+} from '../infrastructure/brapi.client.js';
 import type { MarketRepository } from '../infrastructure/market.repository.js';
 import type { UniverseRepository } from '../infrastructure/universe.repository.js';
 import type { BarLoader } from './bar-loader.js';
+import type { LogoRefresh } from './logo-refresh.js';
 
 export interface WeeklySummary {
   // quantos papéis a lista da brapi trouxe (ações à vista do lote padrão), ou nulo se a lista não veio
@@ -25,9 +30,13 @@ export interface WeeklySummary {
 //     o banco, e não "foi criado agora": se a carga de um papel novo falhou, na semana seguinte ele não é mais novo e ainda precisa do histórico.
 //  3. O que tem barra mas nenhuma dos 5 últimos pregões antes da segunda-feira recebe a semana. O banco é o cache: o conjunto diário não muda
 //     dentro da semana ISO, então ou o papel foi buscado a semana toda, ou nenhum dia; o buraco de um papel sem negócio não o pede de novo.
+//  4. No fim, os logos das ações (logo-refresh.ts, ADR 0036): a passada recebe a lista e o orçamento que sobrou, e baixa do icons.brapi.dev
+//     só o SVG que falta, que mudou de endereço ou que tem mais de 30 dias, dos papéis que o banco tem. Opcional (o 6º argumento): o ensaio
+//     e os testes que não a passam não pedem nada a ninguém.
 // A falha aqui nunca derruba o universo: a lista que não veio, a cota baixa, o tempo ou um papel sem resposta deixam candidatos com menos
-// presença na janela, e o universo sai do que o banco tem. Só o erro de configuração (401, 402, 403) sobe. A lista e as barras dividem UM
-// orçamento de tempo (FETCH_BUDGET_MS), porque o `universe` roda dentro da trava da fila market.
+// presença na janela, e o universo sai do que o banco tem; a passada dos logos que falha vira um aviso. Só o erro de configuração (401, 402,
+// 403) sobe. A lista, as barras e os logos dividem UM orçamento de tempo (FETCH_BUDGET_MS), porque o `universe` roda dentro da trava da
+// fila market.
 // ponytail: o papel listado sem nenhuma barra nos 3 meses (suspenso, por exemplo) pede os 3 meses toda semana: no máximo uma requisição por
 // papel por semana. Se passar de umas dezenas, guardar a última tentativa.
 export class WeeklyRefresh {
@@ -42,6 +51,7 @@ export class WeeklyRefresh {
     >,
     private readonly universe: Pick<UniverseRepository, 'tickersOf'>,
     private readonly calendar: Pick<TradingCalendar, 'tradingDaysBefore'>,
+    private readonly logos?: Pick<LogoRefresh, 'run'>,
   ) {}
 
   // `today`: o dia da execução, a base de `historyStart` (o pedido de 3 meses fica em 86 a 89 dias, abaixo dos 90 que a brapi aceita).
@@ -83,6 +93,20 @@ export class WeeklyRefresh {
       ],
       { budgetMs: Math.max(0, FETCH_BUDGET_MS - (Date.now() - startedAt)) },
     );
+    if (this.logos) {
+      try {
+        await this.logos.run(
+          list.listings,
+          Math.max(0, FETCH_BUDGET_MS - (Date.now() - startedAt)),
+        );
+      } catch (error) {
+        // o banco, por exemplo: os logos são enfeite, e o universo vem depois
+        this.logger.warn(
+          describeError(error),
+          'logos das ações: a passada falhou; a atualização segue',
+        );
+      }
+    }
 
     const summary = {
       listed: seeds.size,

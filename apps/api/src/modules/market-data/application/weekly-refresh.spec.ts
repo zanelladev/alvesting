@@ -5,6 +5,7 @@ import type { IsoDate } from '../domain/dates.js';
 import { loadTradingCalendar } from '../domain/trading-calendar.js';
 import { FETCH_BUDGET_MS } from '../infrastructure/brapi.client.js';
 import type { LoadOptions, LoadReport } from './bar-loader.js';
+import type { LogoRefresh } from './logo-refresh.js';
 import { WeeklyRefresh } from './weekly-refresh.js';
 
 // A atualização semanal sem rede e sem banco: o que pedir (papel novo, papel sem barra nos 3 meses, papel sem a semana) e quanto do orçamento
@@ -25,6 +26,10 @@ interface Options {
   daily?: { universe?: string[]; held?: string[]; portfolio?: string[] };
   // quanto a lista demora
   listMs?: number;
+  // quanto as barras demoram
+  loadMs?: number;
+  // a passada dos logos (ADR 0036): nenhuma, a que dá certo ou a que falha
+  logos?: 'none' | 'ok' | 'fails';
 }
 
 function setup(options: Options = {}) {
@@ -54,6 +59,7 @@ function setup(options: Options = {}) {
         loadOptions?: LoadOptions,
       ) => {
         loads.push({ requests: [...requests], ...loadOptions });
+        vi.setSystemTime(Date.now() + (options.loadMs ?? 0));
         return Promise.resolve({
           requests: requests.length,
           remaining: 8000,
@@ -83,8 +89,22 @@ function setup(options: Options = {}) {
     portfolioTickers: vi.fn(() => Promise.resolve(options.daily?.portfolio ?? [])),
   };
   const universe = { tickersOf: vi.fn(() => Promise.resolve(options.daily?.universe ?? [])) };
-  const refresh = new WeeklyRefresh(brapi, loader, market, universe, calendar);
-  return { refresh, brapi, loader, loads, market };
+  const logos = {
+    run: vi.fn(() =>
+      options.logos === 'fails'
+        ? Promise.reject(new Error('relation "instrument_logo" does not exist'))
+        : Promise.resolve({} as Awaited<ReturnType<LogoRefresh['run']>>),
+    ),
+  };
+  const refresh = new WeeklyRefresh(
+    brapi,
+    loader,
+    market,
+    universe,
+    calendar,
+    (options.logos ?? 'ok') === 'none' ? undefined : logos,
+  );
+  return { refresh, brapi, loader, loads, market, logos };
 }
 
 beforeEach(() => {
@@ -166,5 +186,45 @@ describe('WeeklyRefresh: o que pedir (o banco decide, não o que aconteceu nesta
     expect(summary).toEqual({ listed: null, created: 0, asked: 0, requests: 1 });
     expect(t.market.insertInstruments).not.toHaveBeenCalled();
     expect(t.loader.load).not.toHaveBeenCalled();
+  });
+});
+
+// Os logos das ações (ADR 0036): no fim da atualização semanal, depois da lista e das barras, para os papéis que a lista trouxe (a passada
+// confere quais o banco tem). A falha dela nunca derruba a atualização (nem o universo, que vem depois).
+describe('WeeklyRefresh: os logos no fim', () => {
+  it('a passada dos logos recebe a lista inteira e o orçamento que a lista e as barras deixaram', async () => {
+    const t = setup({ listed: ['PETR4', 'VALE3'], listMs: 30_000, loadMs: 60_000 });
+    await t.refresh.run(MONDAY, TODAY);
+    expect(t.logos.run).toHaveBeenCalledTimes(1);
+    const [listings, budgetMs] = t.logos.run.mock.calls[0] as unknown as [
+      Array<{ ticker: string }>,
+      number,
+    ];
+    expect(listings.map((listing) => listing.ticker)).toEqual(['PETR4', 'VALE3']);
+    expect(budgetMs).toBe(FETCH_BUDGET_MS - 90_000);
+    // depois das barras
+    expect(t.loader.load.mock.invocationCallOrder[0]).toBeLessThan(
+      t.logos.run.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('sem a lista, a passada dos logos não roda', async () => {
+    const t = setup({ listed: null });
+    await t.refresh.run(MONDAY, TODAY);
+    expect(t.logos.run).not.toHaveBeenCalled();
+  });
+
+  it('a falha da passada dos logos não derruba a atualização: o resumo sai igual, com um aviso', async () => {
+    const ok = await setup({ listed: ['PETR4'] }).refresh.run(MONDAY, TODAY);
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const failing = setup({ listed: ['PETR4'], logos: 'fails' });
+    await expect(failing.refresh.run(MONDAY, TODAY)).resolves.toEqual(ok);
+    expect(failing.logos.run).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls.some((call) => String(call[1]).includes('logos'))).toBe(true);
+  });
+
+  it('sem a passada dos logos (o ensaio, o market:universe), a atualização é a de antes', async () => {
+    const t = setup({ listed: ['PETR4'], logos: 'none' });
+    await expect(t.refresh.run(MONDAY, TODAY)).resolves.toMatchObject({ listed: 1 });
   });
 });

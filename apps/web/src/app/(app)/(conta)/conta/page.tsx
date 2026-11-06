@@ -5,19 +5,12 @@ import type { LegalDocumentId } from '@alvesting/contracts';
 import {
   AcceptConsentsForm,
   DeleteAccountForm,
+  ExportLink,
   SignOutForm,
 } from '../../../../components/account-forms';
+import { Avisos, PilhaDeAvisos } from '../../../../components/avisos';
 import { SecaoCartao } from '../../../../components/cartao';
-import {
-  Aviso,
-  BUTTON,
-  CAIXA,
-  Fact,
-  Facts,
-  LINK,
-  NavLink,
-  PageHead,
-} from '../../../../components/ui';
+import { Aviso, Fact, Facts, LINK, NavLink, PageHead } from '../../../../components/ui';
 import { authCookieHeader, readMe } from '../../../../lib/account';
 import { formatDateTime } from '../../../../lib/format';
 import { withApiDown } from '../../../../lib/with-api-down';
@@ -83,20 +76,23 @@ export default withApiDown(async function AccountPage() {
     </SecaoCartao>
   );
 
+  // a pilha de avisos (o toast: a exportação e o aceite, que chega depois da recarga) fica logo abaixo do título, na ordem do Tab; na tela,
+  // fixa no pé
   return (
-    <>
+    <Avisos foco="main h1">
       <PageHead title="Minha conta">
         <p className="max-w-prose text-15 text-pretty">
           O que a Alvesting guarda de você, e o que você pode fazer com isso: sair, baixar uma cópia
           ou apagar tudo.
         </p>
         <noscript>
-          <p className={`max-w-prose ${CAIXA}`}>
+          <p className="max-w-prose text-body">
             Sair, aceitar versões novas e excluir a conta precisam de JavaScript. Ative o JavaScript
             no navegador e recarregue a página.
           </p>
         </noscript>
       </PageHead>
+      <PilhaDeAvisos />
 
       {/* Na casca do app, sem barra secundária: o principal até 720 px e cada seção num cartão (docs/redesign-rallies/plano.md, f.4) */}
       <div className="max-w-[720px] space-y-4">
@@ -145,13 +141,11 @@ export default withApiDown(async function AccountPage() {
             vinculadas, as sessões, os aceites e a carteira com os lançamentos, em um arquivo JSON.
             Sem a senha nem as chaves.
           </p>
-          {/* um link comum, sem JavaScript: a api responde com Content-Disposition: attachment e o navegador baixa o arquivo */}
-          <a href="/api/v1/me/export" download="alvesting-meus-dados.json" className={BUTTON}>
-            Baixar meus dados (JSON)
-          </a>
+          {/* um link comum, sem JavaScript: a api responde com Content-Disposition: attachment e o navegador baixa o arquivo; com ele, o aviso */}
+          <ExportLink />
         </SecaoCartao>
 
-        {/* o cartão da exclusão leva o fio vermelho, e o botão fica na pílula cinza, e não na preta: não é a ação que a tela convida a fazer */}
+        {/* o cartão da exclusão leva o fio vermelho, e o botão fica na pílula cinza, e não na primária: não é a ação que a tela convida a fazer */}
         <SecaoCartao id="excluir" title="Excluir a conta" perigo>
           <p className="max-w-prose">A exclusão é definitiva. Ela apaga, no mesmo ato:</p>
           <ul className="max-w-prose list-disc space-y-1 pl-6">
@@ -170,6 +164,6 @@ export default withApiDown(async function AccountPage() {
           <DeleteAccountForm labelledBy="excluir-titulo" />
         </SecaoCartao>
       </div>
-    </>
+    </Avisos>
   );
 });

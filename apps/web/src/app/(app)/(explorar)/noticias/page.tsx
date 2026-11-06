@@ -14,11 +14,13 @@ import {
   Section,
 } from '../../../../components/ui';
 import { api } from '../../../../lib/api';
+import { versoesDosLogos } from '../../../../lib/logos';
 import { cursorOf, first, orNotFound, type SearchParams } from '../../../../lib/page';
 import { withApiDown } from '../../../../lib/with-api-down';
 
 // As notícias (plano §3; no desenho do Rallies, docs/redesign-rallies/plano.md, f.1: cada notícia como item de feed, com a barra "Explorar"
-// ao lado): título, fonte, hora, tickers e o link para o site de origem, da mais nova à mais antiga, com filtro por ticker. O filtro e a paginação são links e um formulário GET, então funcionam sem JavaScript. O trecho nunca é
+// ao lado): título, fonte, hora, tickers (com o logo de cada ação; docs/TELAS.md, 4a) e o link para o site de origem, da mais nova à mais
+// antiga, com filtro por ticker. O filtro e a paginação são links e um formulário GET, então funcionam sem JavaScript. O trecho nunca é
 // mostrado.
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Notícias' };
@@ -38,9 +40,10 @@ export default withApiDown(async function NewsPage({
   const parsed = typed === undefined ? undefined : tickerParamSchema.safeParse(typed);
   const ticker = parsed?.success ? parsed.data : undefined;
   const invalid = parsed !== undefined && !parsed.success;
-  const [page, populares] = await Promise.all([
+  const [page, populares, logos] = await Promise.all([
     invalid ? null : orNotFound(api.news({ ticker, cursor, limit: LIMIT })),
     lerPopulares(),
+    versoesDosLogos(),
   ]);
 
   const older = page?.nextCursor
@@ -83,9 +86,10 @@ export default withApiDown(async function NewsPage({
         <Section id="lista" title={ticker ? `Notícias de ${ticker}` : 'Todas as notícias'}>
           {page.rows.length > 0 ? (
             <>
-              <NewsList rows={page.rows} />
+              <NewsList rows={page.rows} logos={logos} />
               {older ? (
-                <NavLink href={older} className={`${BUTTON} btn-primary`}>
+                // a paginação é ação de apoio: a pílula cinza (a Regra da Voz Única)
+                <NavLink href={older} className={BUTTON}>
                   Mais antigas
                 </NavLink>
               ) : null}

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 import type { SeasonParams } from '@alvesting/contracts';
+import { Sumario } from '../../../components/legal-text';
 import { Empty, Fact, Facts, PageHead, Section } from '../../../components/ui';
 import { api } from '../../../lib/api';
 import { formatBRL, formatBps, formatDate, formatQuantity } from '../../../lib/format';
@@ -34,6 +35,19 @@ const P = ({ children }: { children: ReactNode }) => (
   <p className="max-w-prose text-base/[1.6]">{children}</p>
 );
 
+// o sumário "Nesta página" (o mesmo dos textos legais): as seções desta página, na ordem
+const SECOES = [
+  { id: 'o-que-e', titulo: 'O que é a arena' },
+  { id: 'regras', titulo: 'Regras da temporada' },
+  { id: 'prompt-oculto', titulo: 'O prompt oculto' },
+  { id: 'igualdade', titulo: 'Igualdade das entradas' },
+  { id: 'sorteio-e-monte-carlo', titulo: 'Sorteio e Monte Carlo' },
+  { id: 'referencias', titulo: 'Referências' },
+  { id: 'fontes', titulo: 'De onde vêm os dados' },
+  { id: 'limitacoes', titulo: 'Limitações' },
+  { id: 'aviso', titulo: 'Aviso' },
+] as const;
+
 async function loadSeason() {
   try {
     return await api.arenaCurrent();
@@ -48,9 +62,10 @@ export default async function HowItWorksPage() {
   const params = season?.params ?? PLAN;
   const prompt = current?.lastCycle?.prompt ?? null;
 
-  // a coluna de leitura (uns 768 px): os pares e a prosa não correm a largura inteira da casca do site
+  // a coluna de leitura (uns 768 px): os pares e a prosa não correm a largura inteira da casca do site; a partir de 1280 px, o sumário "Nesta
+  // página" à direita dela, na altura da página inteira (o miolo preso no topo)
   return (
-    <div className="max-w-3xl">
+    <div className="relative max-w-3xl">
       <PageHead title="Como funciona">
         <p className="max-w-prose text-15 text-pretty">
           A Alvesting é um projeto acadêmico (TCC). Tudo é com dinheiro fictício e nada aqui é
@@ -130,18 +145,17 @@ export default async function HowItWorksPage() {
           respostas públicas dos modelos. Padrão adotado: o texto é revelado no fim da temporada, e
           o hash publicado confere.
         </P>
-        {/* o hash é dado, não código: inteiro, na mono, num cartão (nada de bloco de código; o texto do prompt nunca aparece) */}
+        {/* o hash é dado, não código: inteiro, num cartão (nada de bloco de código; o texto do prompt nunca aparece). A versão e o SHA-256 são
+            identificadores em hexadecimal: a mono do hash (`.hash`, que quebra em qualquer ponto); o resto da página é a sans */}
         {prompt ? (
           <dl className="card space-y-4">
             <div className="space-y-1">
               <dt className="text-sm text-muted">Versão do prompt atual</dt>
-              <dd className="font-mono text-sm break-all text-ink">{prompt.version}</dd>
+              <dd className="hash text-sm text-ink">{prompt.version}</dd>
             </div>
             <div className="space-y-1">
               <dt className="text-sm text-muted">SHA-256 do prompt atual</dt>
-              <dd className="font-mono text-sm break-all text-ink">
-                {prompt.sha256 ?? 'sem registro'}
-              </dd>
+              <dd className="hash text-sm text-ink">{prompt.sha256 ?? 'sem registro'}</dd>
             </div>
             {current?.lastCycle ? (
               <div className="space-y-1">
@@ -255,6 +269,7 @@ export default async function HowItWorksPage() {
           sugestões para ninguém. O software não se responsabiliza pelas decisões do usuário.
         </P>
       </Section>
+      <Sumario itens={SECOES} className="absolute inset-y-0 left-[calc(100%+4rem)] w-60" />
     </div>
   );
 }

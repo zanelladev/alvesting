@@ -7,16 +7,21 @@ import {
   REGRAS,
   telasDaArena,
 } from '../../../../components/arena/pagina';
+import { BumpChart } from '../../../../components/beui/bump-chart';
 import { LeaderboardTable } from '../../../../components/tables';
 import { Empty, PageHead, Section } from '../../../../components/ui';
 import { api } from '../../../../lib/api';
+import { rankByDay } from '../../../../lib/chart';
 import { formatDate } from '../../../../lib/format';
+import { versoesDosLogos } from '../../../../lib/logos';
 import { orNotFound } from '../../../../lib/page';
 import { withApiDown } from '../../../../lib/with-api-down';
 
-// O ranking completo (plano §3; no desenho do Rallies, docs/redesign-rallies/plano.md, e.6): a aba "Ranking" da área da arena, com os
-// modelos, o Sorteio e as referências em tabelas separadas, com todas as métricas da liquidação, e o que cada coluna quer dizer. A barra
-// "Carteiras" fica ao lado, como na arena.
+// O ranking completo (plano §3; no desenho do Rallies, docs/redesign-rallies/plano.md, e.6): a aba "Ranking" da área da arena, com a posição
+// de cada competidor em cada pregão (o Bump Chart da beUI, pela mesma regra do ranking: lib/chart.ts, rankByDay), os modelos, o Sorteio e as
+// referências em tabelas separadas, com todas as métricas da liquidação e a tendência do patrimônio (a sparkline da beUI), e o que cada
+// coluna quer dizer. A barra "Carteiras" fica ao lado, como na arena. O "simulado" vai uma vez em cada contexto: na nota da tabela dos
+// modelos e na do título da barra.
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Ranking' };
 
@@ -29,16 +34,34 @@ const GROUPS = [
 export default withApiDown(async function RankingPage() {
   const { season, lastCycle } = await api.arenaCurrent();
   const board = season ? orNotFound(api.leaderboard(season.slug)) : null;
-  const [ranking, carteiras] =
+  const [ranking, carteiras, equity, logos] =
     season && board
-      ? await Promise.all([board, board.then((b) => lerCarteiras(b.rows, season.slug))])
-      : [null, []];
+      ? await Promise.all([
+          board,
+          board.then((b) => lerCarteiras(b.rows, season.slug)),
+          lastCycle ? api.equity(season.slug) : null,
+          versoesDosLogos(),
+        ])
+      : [null, [], null, new Map<string, string>()];
+  // a posição de cada competidor em cada pregão, e o patrimônio de cada um para a sparkline da tabela
+  const posicoes =
+    equity && season && equity.dates.length > 0
+      ? rankByDay(
+          equity.series.map((s) => s.equityCents),
+          season.params.capitalCents,
+        )
+      : null;
+  const tendencias = new Map(equity?.series.map((s) => [s.competitor.slug, s.equityCents]));
 
   return (
     <ComBarra
       largura={400}
       barra={
-        <BarraCarteiras carteiras={carteiras} capitalCents={season?.params.capitalCents ?? 0} />
+        <BarraCarteiras
+          carteiras={carteiras}
+          capitalCents={season?.params.capitalCents ?? 0}
+          logos={logos}
+        />
       }
     >
       <NavegacaoDaArea
@@ -61,6 +84,19 @@ export default withApiDown(async function RankingPage() {
 
       {ranking && ranking.rows.length > 0 ? (
         <>
+          {equity && posicoes ? (
+            <Section id="posicoes" title="Posição por pregão">
+              <BumpChart
+                id="ranking-posicoes"
+                label="Posição por pregão"
+                dates={equity.dates}
+                series={equity.series.map((s, i) => ({
+                  competitor: s.competitor,
+                  ranks: posicoes[i]!,
+                }))}
+              />
+            </Section>
+          ) : null}
           {GROUPS.map(({ id, title, types }) => (
             <Section key={id} id={id} title={title}>
               <LeaderboardTable
@@ -68,6 +104,7 @@ export default withApiDown(async function RankingPage() {
                   (types as readonly string[]).includes(row.competitor.type),
                 )}
                 label={`Ranking: ${title.toLowerCase()}`}
+                tendencias={tendencias}
               />
             </Section>
           ))}

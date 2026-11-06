@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { ROUTES, dmy, fetchBars } from './data';
+import { MODEL, ROUTES, dmy, fetchBars } from './data';
 import { abrirMenu } from './menu';
 
 // Mobile primeiro (plano §13): em TODA tela, em pixel-7, iphone-15 e desktop, sem rolagem horizontal em 360 px, alvos de toque de
@@ -71,13 +71,14 @@ for (const route of ROUTES) {
       },
     );
 
-    // A largura do Rallies (o fechamento da onda): o app enche a tela até 1440 px e além, sem teto. Em nenhuma largura do celular ao desktop
-    // a página rola para o lado (o de 360 px, acima, mede também os alvos).
-    test('de 390 a 1440 px não rola na horizontal', async ({ page }) => {
+    // A largura do Rallies (o fechamento da onda): o app enche a tela até a coluna de 1.550 px, e acima dela a coluna fica no centro, com o fio
+    // de cada lado (a T2 das linhas, que trouxe os 1920 px: a moldura e os fios de borda a borda comem o respiro do principal, e nada pode
+    // passar da largura). Em nenhuma largura do celular ao desktop largo a página rola para o lado (o de 360 px, acima, mede também os alvos).
+    test('de 390 a 1920 px não rola na horizontal', async ({ page }) => {
       await page.goto(route);
       await loaded(page);
       const wide: string[] = [];
-      for (const width of [390, 412, 768, 1024, 1280, 1440]) {
+      for (const width of [390, 412, 768, 1024, 1280, 1440, 1920]) {
         await page.setViewportSize({ width, height: 900 });
         const over = await page.evaluate(
           () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -312,6 +313,179 @@ test.describe('casca do app', () => {
     await page.goto('/chat');
     const chat = (await page.getByRole('group', { name: 'O chat, desligado' }).boundingBox())!;
     expect(Math.abs(chat.x + chat.width / 2 - (80 + 1360 / 2))).toBeLessThanOrEqual(1);
+  });
+
+  // A moldura do Rallies, medida na captura do Artur (a Arena logado numa janela de 1.917 px, .data/rallies-referencia/arena-1917-logado.png):
+  // com a janela mais larga que a coluna do app (1.550 px), a coluna fica no centro, com o fio de cada lado (o da esquerda é o do trilho, o da
+  // direita é o da coluna, como lá) e o fundo fora dela, e o trilho, a barra, o principal e o menu "Mais" andam juntos. Os fios entre as
+  // carteiras vão de uma borda da barra à outra, e os da faixa dos modelos, de uma borda do principal à outra (antes paravam no respiro). Em
+  // 1440 px a coluna enche a tela, sem os fios dos lados, como antes.
+  test('em 1920 px a coluna do app fica no centro, com o fio de cada lado, e os fios vão de borda a borda', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto('/arena');
+    const measure = () =>
+      page.evaluate(() => {
+        const box = (el: Element | null) => {
+          const b = el!.getBoundingClientRect();
+          return [b.x, b.width];
+        };
+        const app = document.querySelector('.app')!;
+        const rail = document.querySelector('.app-topo')!;
+        return {
+          app: box(app),
+          rail: box(rail),
+          main: box(document.querySelector('main')),
+          bar: box(document.querySelector('#carteiras')!.parentElement),
+          h1: box(document.querySelector('h1'))[0],
+          faixa: box(document.querySelector('[role="region"][aria-label^="Modelos e Sorteio"]')),
+          carteiras: [...document.querySelectorAll('[data-carteira]')].map(box),
+          sides: [getComputedStyle(rail).borderLeftWidth, getComputedStyle(app).borderRightWidth],
+          outside: [92, 1828].map((x) => document.elementFromPoint(x, 540)?.tagName),
+        };
+      });
+    const wide = await measure();
+    // (1920 − 1550) ÷ 2 = 185: o trilho de 80 px, a barra de 400 e o principal até o fio da direita (1550 − 80 − 1)
+    expect(wide.app).toEqual([185, 1550]);
+    expect(wide.rail).toEqual([185, 80]);
+    expect(wide.main).toEqual([265, 1469]);
+    expect(wide.bar).toEqual([265, 400]);
+    expect(wide.h1).toBe(265 + 400 + 24);
+    expect(wide.sides).toEqual(['1px', '1px']);
+    expect(wide.outside).toEqual(['BODY', 'BODY']);
+    // a faixa vai do fio da barra ao fio da direita, e cada carteira enche a barra até o fio dela
+    expect(wide.faixa).toEqual([665, 1734 - 665]);
+    expect(wide.carteiras.length).toBeGreaterThan(0);
+    for (const carteira of wide.carteiras) expect(carteira).toEqual([265, 399]);
+    // o menu "Mais" abre ao lado do trilho, onde quer que a coluna esteja
+    await page.getByRole('button', { name: 'Mais', exact: true }).click();
+    const menu = (await page.locator('#mais').boundingBox())!;
+    expect(menu.x).toBeGreaterThanOrEqual(265);
+    expect(menu.x).toBeLessThanOrEqual(281);
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const narrow = await measure();
+    expect(narrow.app).toEqual([0, 1440]);
+    expect(narrow.rail).toEqual([0, 80]);
+    expect(narrow.sides).toEqual(['0px', '0px']);
+  });
+
+  // O fio contínuo embaixo da barra do topo, como o do Rallies (y = 44 na captura do Artur, embaixo de "Portfolios" e de "Arena / My Funds /
+  // Popular Funds"): a linha de abas do principal e o título da barra secundária têm 45 px (os 44 e o fio), e os dois fios ficam na mesma
+  // altura, cada um de uma borda à outra da sua coluna. Na tela sem barra (o modelo), o fio da linha de abas vai do trilho à borda; no
+  // Explorar o principal não tem linha de abas (como o Discover), e o fio é o do título da barra.
+  test('o fio embaixo da barra do topo fica na mesma altura na barra secundária e no principal', async ({
+    page,
+  }) => {
+    const lines = () =>
+      page.getByRole('navigation', { name: 'Telas da arena' }).evaluate((nav) => {
+        const edges = (el: Element | null) => {
+          if (!el) return null;
+          const b = el.getBoundingClientRect();
+          return {
+            left: b.left,
+            right: b.right,
+            top: b.top,
+            bottom: b.bottom,
+            line: getComputedStyle(el).borderBottomWidth,
+          };
+        };
+        return {
+          tabs: edges(nav.parentElement),
+          title: edges(document.querySelector('#carteiras-titulo')),
+          bar: edges(document.querySelector('#carteiras')?.parentElement ?? null),
+          main: edges(document.querySelector('main')),
+        };
+      });
+    for (const width of [1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const route of ['/arena', '/ranking']) {
+        await page.goto(route);
+        const { tabs, title, bar, main } = await lines();
+        const where = `${route} em ${width} px`;
+        expect({ top: tabs!.top, bottom: tabs!.bottom, line: tabs!.line }, where).toEqual({
+          top: 0,
+          bottom: 45,
+          line: '1px',
+        });
+        expect({ top: title!.top, bottom: title!.bottom, line: title!.line }, where).toEqual({
+          top: 0,
+          bottom: 45,
+          line: '1px',
+        });
+        // de uma borda à outra: o título, da borda da barra até o fio dela; a linha de abas, do fio da barra até a borda do principal
+        expect([title!.left, title!.right], where).toEqual([bar!.left, bar!.right - 1]);
+        expect([tabs!.left, tabs!.right], where).toEqual([bar!.right, main!.right]);
+      }
+      await page.goto(`/modelos/${MODEL}`);
+      const modelo = await lines();
+      expect(modelo.title).toBeNull();
+      expect(modelo.tabs).toMatchObject({ top: 0, bottom: 45, line: '1px' });
+      expect([modelo.tabs!.left, modelo.tabs!.right]).toEqual([
+        modelo.main!.left,
+        modelo.main!.right,
+      ]);
+      await page.goto('/explorar');
+      const explorar = (await page.locator('#explorar-titulo').boundingBox())!;
+      expect([explorar.y, explorar.y + explorar.height]).toEqual([0, 45]);
+    }
+  });
+
+  // Nenhuma barra de rolagem à vista (o pedido do Artur): o macOS dele mostra as barras clássicas, e o Playwright sem janela as esconde (o
+  // --hide-scrollbars que ele passa ao Chromium), então o teste lê o que o CSS manda: o `scrollbar-width` calculado é `none` na raiz (a
+  // página), na barra das carteiras e na faixa. A captura de antes e de depois com as barras à vista está no relatório da T2
+  // (docs/redesign-rallies/relatorios/linhas-barras.md).
+  test('o scrollbar-width é none na página, na barra das carteiras e na faixa', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/arena');
+    const widths = await page.evaluate(() =>
+      [
+        document.documentElement,
+        document.querySelector('#carteiras')!.parentElement!,
+        document.querySelector('[role="region"][aria-label^="Modelos e Sorteio"]')!,
+      ].map((el) => getComputedStyle(el).getPropertyValue('scrollbar-width')),
+    );
+    expect(widths).toEqual(['none', 'none', 'none']);
+  });
+
+  // Sem a barra, a rolagem continua: a roda rola a barra das carteiras (presa no topo, com a própria rolagem), e na faixa dos modelos o botão
+  // redondo "›" do Rallies (o `::scroll-button()` do Chromium, só CSS, a 8 px da borda e no meio da altura) e as setas do teclado, com o foco
+  // nela, rolam para o lado. O botão é do mouse (`pointer: fine`): os projetos de toque rolam com o dedo, e o WebKit não tem o botão. O foco
+  // que sai do "›" depois do fim da rolagem não pode derrubar a aba (com `display: none` no botão desabilitado, o Chromium 156 caía aqui).
+  test('sem a barra, a roda rola a barra das carteiras, e o "›" e o teclado rolam a faixa', async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'desktop',
+      'o botão e a roda são do mouse; o toque rola com o dedo',
+    );
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto('/arena');
+    const bar = page.locator('#carteiras').locator('..');
+    const barBox = (await bar.boundingBox())!;
+    await page.mouse.move(barBox.x + barBox.width / 2, barBox.y + 300);
+    await page.mouse.wheel(0, 400);
+    await expect.poll(() => bar.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+
+    const faixa = page.getByRole('region', { name: 'Modelos e Sorteio, por retorno' });
+    await faixa.scrollIntoViewIfNeeded();
+    const box = (await faixa.boundingBox())!;
+    const scrolled = () => faixa.evaluate((el) => el.scrollLeft);
+    expect(await scrolled()).toBe(0);
+    await page.mouse.click(box.x + box.width - 8 - 22, box.y + box.height / 2);
+    await expect.poll(scrolled).toBeGreaterThan(0);
+    await faixa.focus();
+    const end = await scrolled();
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(scrolled).toBeLessThan(end);
+    // o cartão focado pelo Tab para antes do "›": a rolagem que leva o foco à vista deixa a largura do botão livre na ponta (o QA do
+    // fechamento, achado 15: o anel do cartão da ponta ficava embaixo do botão)
+    expect(
+      await faixa.evaluate((el) => parseFloat(getComputedStyle(el).scrollPaddingInlineEnd)),
+    ).toBeGreaterThanOrEqual(52);
   });
 
   // Em 360 px a barra de abas fica no pé, com os seis alvos (Arena, Explorar, Carteira, Chat, Mais e Conta) de 60 × 56 px dentro da largura.
@@ -651,5 +825,35 @@ test.describe('casca do site', () => {
       expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
       expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(1280);
     }
+  });
+
+  // O cabeçalho do site anda como o resto (o QA do fechamento, achado 13: os links e a pílula "Entrar" trocavam de cor na hora, e a pílula não
+  // encolhia no toque): a cor dos links em 150 ms, o fundo da pílula em 150 ms, e o toque a encolhe a 0,96, como o botão.
+  test('em 1280 px os links e a pílula "Entrar" do cabeçalho andam em 150 ms, e a pílula encolhe no toque', async ({
+    page,
+  }, testInfo) => {
+    test.skip(!testInfo.project.name.startsWith('desktop'), 'o hover e o clique são do mouse');
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto('/como-funciona');
+    const banner = page.getByRole('banner');
+    const link = banner.getByRole('navigation', { name: 'Principal' }).getByRole('link').first();
+    const pill = banner.getByRole('link', { name: 'Entrar', exact: true });
+    expect(
+      await link.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return `${style.transitionProperty} ${style.transitionDuration}`;
+      }),
+    ).toBe('color 0.15s');
+    expect(
+      await pill.evaluate((el) => getComputedStyle(el, '::before').transitionProperty),
+    ).toContain('background-color');
+    expect(await pill.evaluate((el) => getComputedStyle(el).transitionProperty)).toContain('scale');
+    const box = (await pill.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await expect.poll(() => pill.evaluate((el) => getComputedStyle(el).scale)).toBe('0.96');
+    // solta fora da pílula: não navega
+    await page.mouse.move(0, 0);
+    await page.mouse.up();
   });
 });

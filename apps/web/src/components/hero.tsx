@@ -7,14 +7,23 @@ import { BUTTON, NavLink } from './ui';
 
 // O hero da landing (ADR 0035; docs/redesign-rallies/plano.md, d.2 e d.3), no desenho do Rallies com a arte de antes. Em cima, duas colunas a
 // partir de 1024 px: o título e os dois CTAs à esquerda; a pílula da temporada, o parágrafo e o aviso da arena simulada à direita (no celular,
-// uma coluna nessa ordem, os CTAs em largura cheia). Embaixo, a moldura grande, escura nos dois temas (`.moldura`: a arte é âmbar sobre preto, e
-// no claro sumiria no branco): a escadaria enche o palco, e no pé, por dentro, a legenda com o crédito das cotações e a fita. O cartão
-// "Arena agora" segue o tema da página, então fica fora do elemento da moldura: por cima dela, à esquerda e embaixo, a partir de 1024 px (o
-// lado esquerdo da arte é o vazio preto, e o touro fica à direita), e embaixo dela no celular. Componente de servidor, sem entrada animada: o
-// título e o parágrafo nascem visíveis no HTML, antes da moldura (o LCP do celular, d.10).
+// uma coluna nessa ordem, os CTAs em largura cheia). Embaixo, a moldura grande, escura nos dois temas (`.moldura`: a arte é o azul claro da
+// marca sobre o preto, e no claro sumiria no branco): a escadaria enche o palco, e no pé, por dentro, a legenda com o crédito das cotações e a
+// fita. O cartão "Arena agora" segue o tema da página, então fica fora do elemento da moldura: por cima dela, à esquerda e embaixo, a partir de
+// 1024 px (o lado esquerdo da arte é o vazio preto, e o touro fica à direita), e embaixo dela no celular. Componente de servidor, sem entrada
+// animada: o título e o parágrafo nascem visíveis no HTML, antes da moldura (o LCP do celular, d.10). O que se mexe aqui é CSS: o toque nos
+// botões e a seta que anda no hover (`.seta`, globals.css, o bloco da landing).
 
+// a seta dos CTAs e da pílula da temporada: anda 2 px para a frente no hover (`.seta`)
 const Seta = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    aria-hidden="true"
+    focusable="false"
+    className="seta"
+  >
     <path
       d="M3 8h10M9 4l4 4-4 4"
       fill="none"
@@ -65,7 +74,7 @@ export function heroPill({
     : null;
 }
 
-// Os dois CTAs, no hero e no fim da landing: a pílula preta leva à arena e a cinza às regras.
+// Os dois CTAs, no hero e no fim da landing: a pílula primária (a ação principal da superfície) leva à arena e a cinza às regras.
 export const Chamadas = ({ className = '' }: { className?: string }) => (
   <div className={`flex flex-wrap gap-2 ${className}`}>
     <NavLink href="/arena" className={`${BUTTON} btn-primary`}>
@@ -100,9 +109,10 @@ export function Hero({ pill, simulated, caption, tape, card }: HeroProps) {
             hash publicado. As ordens fictícias executam na abertura, a preço real, com a
             justificativa aberta.
           </p>
+          {/* o aviso da página (o `[!]` do sistema, na sans: a mono é só do hash), numa linha discreta, sem caixa */}
           {simulated ? (
             <p className="flex gap-2 text-xs text-muted">
-              <span aria-hidden="true" className="font-mono">
+              <span aria-hidden="true" className="shrink-0">
                 [!]
               </span>
               <span>

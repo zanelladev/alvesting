@@ -1,14 +1,23 @@
 import type { NewsItem } from '@alvesting/contracts';
 import { formatDateTime, formatDay } from '../lib/format';
+import { LogoDoPapel } from './logo-do-papel';
 import { LINK, NavLink } from './ui';
 
 // A lista de notícias (plano §3; no desenho do Rallies, docs/redesign-rallies/plano.md, f.1: cada notícia como um item de feed, separado do
-// de cima por um fio): título, fonte, hora de Brasília, tickers e o link para o site de origem. Título e link são dado de terceiro (docs/DADOS.md, seção 13): o título entra como texto (o React o escapa), o link
-// já passou pelo contrato (só http e https, sem usuário nem senha) e abre noutra aba sem entregar a janela de origem nem a página de onde
-// veio (`noopener noreferrer`) e sem passar a nossa reputação a quem o sistema não escolheu (`nofollow`). O trecho (snippet) nunca chega
-// aqui: a api não o manda. O documento da CVM chega só com o dia (a api o guarda à meia-noite de Brasília): mostrar "00:00" seria uma hora
-// que o dado não tem. Os tickers são filtros em link (`chip`), cada um levando à página da ação.
-export function NewsList({ rows }: { rows: readonly NewsItem[] }) {
+// de cima por um fio): título, fonte, hora de Brasília, tickers e o link para o site de origem. Título e link são dado de terceiro
+// (docs/DADOS.md, seção 13): o título entra como texto (o React o escapa), o link já passou pelo contrato (só http e https, sem usuário nem
+// senha) e abre noutra aba sem entregar a janela de origem nem a página de onde veio (`noopener noreferrer`) e sem passar a nossa reputação
+// a quem o sistema não escolheu (`nofollow`). O trecho (snippet) nunca chega aqui: a api não o manda. O documento da CVM chega só com o dia
+// (a api o guarda à meia-noite de Brasília): mostrar "00:00" seria uma hora que o dado não tem. Os tickers são filtros em link (`chip`), cada
+// um levando à página da ação, com o logo da empresa à esquerda (ADR 0036; docs/TELAS.md, 4a; `logos`, a versão de cada ticker, de
+// lib/logos.ts: sem ela, o monograma), na sans 500 como as ordens do feed.
+export function NewsList({
+  rows,
+  logos,
+}: {
+  rows: readonly NewsItem[];
+  logos?: ReadonlyMap<string, string>;
+}) {
   return (
     <ul aria-label="Notícias" className="max-w-2xl">
       {rows.map((news) => (
@@ -18,8 +27,8 @@ export function NewsList({ rows }: { rows: readonly NewsItem[] }) {
         >
           {/* o título é de terceiro e pode ter uma palavra sem espaço (hashtag, URL): `anywhere` a deixa quebrar também no cálculo da
               largura mínima do link (o `break-word` do html não encolhe), senão ela alarga a página em 360 px. O respiro de 12 px em
-              cima e embaixo dá o alvo de 44 px com uma linha e com duas, e o mesmo ritmo nos dois cartões (a altura mínima centralizada
-              deixava 11 px a mais em volta do título curto, e nenhum no comprido) */}
+              cima e embaixo dá o alvo de 44 px com uma linha e com duas, e o mesmo ritmo com o título curto e com o comprido (a altura
+              mínima centralizada deixava 11 px a mais em volta do curto, e nenhum no comprido) */}
           <a
             href={news.url}
             target="_blank"
@@ -40,7 +49,8 @@ export function NewsList({ rows }: { rows: readonly NewsItem[] }) {
           {news.tickers.length > 0 ? (
             <p className="flex flex-wrap gap-x-2 pt-1">
               {news.tickers.map((ticker) => (
-                <NavLink key={ticker} href={`/acoes/${ticker}`} className="chip font-mono">
+                <NavLink key={ticker} href={`/acoes/${ticker}`} className="chip font-medium">
+                  <LogoDoPapel ticker={ticker} versao={logos?.get(ticker)} />
                   {ticker}
                 </NavLink>
               ))}

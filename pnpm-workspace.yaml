@@ -8,3 +8,9 @@ allowBuilds:
   prisma: true
   protobufjs: false
   unrs-resolver: false
+# ponytail: o @nestjs/platform-express importa o rxjs (multer.utils.js) sem declará-lo e pegava o rxjs@6.6.7 do inquirer içado em
+# node_modules/.pnpm/node_modules; como par declarado ele recebe o 7.8.2 da api. Sai quando o Nest declarar o rxjs no platform-express.
+packageExtensions:
+  '@nestjs/platform-express':
+    peerDependencies:
+      rxjs: ^7.1.0

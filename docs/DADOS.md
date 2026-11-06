@@ -26,6 +26,7 @@ worker-data roteia `eod {pregão}` e `universe {semana}`; o `sched-eod` e o `sch
 | Fonte | Uso | Onde está documentada |
 |---|---|---|
 | brapi (`/api/v2/stocks/historical` e `/api/quote/list`) | As barras diárias (abertura, máxima, mínima, fechamento e quantidade) de todo papel do universo, do BOVA11, dos papéis em posição e das carteiras; a lista de ações que semeia papel novo | seções 2, 6, 7 e 8 |
+| Logos da brapi (`icons.brapi.dev`, o campo `logo` da lista) | O SVG do logo da empresa, copiado para o nosso banco (`instrument_logo`) e servido pelo site do próprio domínio (ADR 0036) | seção 3a |
 | Lista de feriados da B3 (`b3-holidays.json`) | Calendário futuro e "hoje é pregão?" dos agendadores. Datas de feriado são fato, e nada as baixa: o arquivo é escrito à mão | seção 5 |
 | Yahoo Finance (consulta manual, uma vez) | Fonte independente da conferência de 01/11/2026 | seção 9 |
 
@@ -75,8 +76,9 @@ Os dois endpoints que o código usa (docs salvos de 03/11/2026 e a página de au
   ver "Preço ajustado" na seção 4. Cada item de `results` traz `symbol` e `changed` (nos papéis da prova, o mesmo código e `false`):
   `changed = true` é ticker trocado, e os preços são da série de outro código. `data` traz também `usedInterval` e `usedRange`, que o
   código ignora.
-- `GET /api/quote/list?type=stock&limit=1000&page=1`: `stocks[]` com `stock` (o código), `name`, `close`, `volume`, `type` e `subType`
-  (`stock`, `unit`...), `currentPage`, `totalPages`, `totalCount` e `hasNextPage`. É a lista que semeia papel novo (seção 8). É o endpoint
+- `GET /api/quote/list?type=stock&limit=1000&page=1`: `stocks[]` com `stock` (o código), `name`, `close`, `volume`, `type`, `subType`
+  (`stock`, `unit`...) e `logo` (o endereço do SVG do logo em `icons.brapi.dev`, seção 3a), `currentPage`, `totalPages`, `totalCount` e
+  `hasNextPage`. É a lista que semeia papel novo (seção 8) e aponta os logos. É o endpoint
   antigo (v1): a doc manda usar o `/api/v2/tickers` nas integrações novas e diz que o v1 "continua ativo e sem data de remoção". Na prova
   controlada o `limit=1000` foi aceito: **785 ações em uma página** (`hasNextPage` falso), todas `type = stock`, com `subType` `stock`
   (773) ou `unit` (12), nenhum nulo, e **375 viram semente** pelas regras da seção 3 (272 ON, 69 PN, 15 PNA, 9 PNB, 1 PNC, 9 UNT). A
@@ -197,6 +199,86 @@ Nada no código depende do ISIN nem da classe para decidir: o vínculo do CNPJ p
 código; o universo e a carteira filtram por `kind`. O ISIN nulo fica registrado em `deferred`: quem precisar dele (um cruzamento com a
 CVM por ISIN, por exemplo) o busca depois. Como a brapi cota por unidade, não existe o papel por lote que o arquivo antigo trazia (o
 fator de cota, `quote_factor`, saiu do schema em 04/11/2026, seção 1).
+
+### 3a. Os logos das ações (ADR 0036, 05/11/2026)
+
+O logo da empresa ao lado do ticker, como o Rallies faz nas carteiras. A brapi dá acesso aos logos em todos os planos (o FAQ, citado no
+ADR), e a lista que a atualização semanal já pede (`/api/quote/list`, seção 2) traz em cada ação o campo `logo`, o endereço de um SVG em
+`https://icons.brapi.dev/icons/<TICKER>.svg`. Decisão do Artur: **"Cópia guardada por nós"**. O job baixa o SVG, recusa o inseguro e o
+guarda no banco; o site o serve do próprio domínio (rota da T3), lendo-o das rotas internas da api (`docs/API.md`, seção 6). Nenhum dado
+do visitante vai à brapi, a política de privacidade não muda e **nenhum SVG entra no git**. Código: `application/logo-refresh.ts` (a
+passada), `domain/svg-check.ts` (o validador), `infrastructure/brapi.client.ts` (`logoUrl`) e `infrastructure/market.repository.ts`.
+
+**O que vale da lista.** Só o endereço exato `https://icons.brapi.dev/icons/<nome>.svg` (o nome com letras, dígitos, `_` e `-`, até 32;
+sem porta, usuário, query, fragmento, ponto nem percent-encoding). Qualquer outra coisa (ausente, nula, número, `http`, outro host, outro
+caminho) é "sem logo", e o valor torto num papel nunca derruba a lista. O **ícone padrão** que a brapi põe para quem não tem logo,
+`https://icons.brapi.dev/icons/BRAPI.svg`, também é "sem logo".
+
+**A tabela `instrument_logo`** (migration `20261105120000_instrument_logo`, só aditiva): um logo por papel (a chave é o `instrument_id`, com
+cascata: o logo some com o papel), a URL de origem, o SVG (o texto baixado, byte a byte, o BOM inclusive), o SHA-256 dos bytes, os bytes e a
+data da última busca que passou no validador. Um `CHECK` é a rede de segurança: de 1 byte a 200 KB, o tamanho é o do próprio SVG em UTF-8 e o
+SHA-256 é hexadecimal minúsculo. A api só lê (`SELECT`, matriz `table-policy.ts`); quem grava é o worker e o `market:logos`. Não é dado
+pessoal: entra no dump mensal.
+
+**A passada** (`LogoRefresh`): no fim da atualização semanal (seção 8, item 4), depois da lista e das barras, com o que sobra do orçamento de
+4 minutos, e no `market:logos` (sem rede por padrão; busca só com `--confirmo-banco <nome>`, como o `market:backfill`; sem teto de tempo).
+
+1. **Reconfere todo SVG guardado** com o validador de hoje e apaga o que ele recusa (o ticker e o motivo vão ao log, nunca o conteúdo). A
+   tabela só guarda o que passa na regra de hoje, e por isso as rotas internas leem o banco como está. **Depois de mudar o validador,
+   roda-se o `market:logos`** (RUNBOOK, 12.7).
+2. **Baixa só o que precisa**, dos papéis do banco que a lista traz com logo: sem logo guardado, endereço trocado ou guardado há mais de 30
+   dias (`LOGO_MAX_AGE_MS`). Um pedido por vez, no endereço que o `logoUrl` conferiu, sem token nem cookie, sem seguir redirecionamento
+   (`redirect: 'error'`), com prazo de 10 s (o corpo inclusive), `Content-Type` `image/svg+xml` e teto de 200 KB lido do corpo **já
+   descomprimido** (o host comprime: o `Content-Length` do ABEV3 era 888 e o corpo lido, 1.617 bytes; a leitura para no teto, sem ler o resto). 5 falhas seguidas
+   (rede, prazo, HTTP diferente de 200, tipo errado) são o host fora do ar e param a passada; a recusa do validador não conta como falha.
+3. **Grava**: o SVG novo, ou com outro SHA-256, entra inteiro; o mesmo SHA-256 não regrava o SVG (só a URL e a data andam, e os 30 dias
+   contam de novo). O recusado vira "sem logo" nesta passada, com o motivo e o ticker no log, e não apaga o guardado antes (que passou no
+   passo 1). Nada aqui sobe exceção de rede, e a falha da passada inteira (o banco, por exemplo) vira um aviso: a atualização e o universo
+   seguem.
+
+**O validador** (`svgRefusal`, função pura, sem dependência): lê o XML com um leitor pequeno que entende só a declaração (em UTF-8),
+comentários, CDATA, elementos e atributos entre aspas, e **recusa o resto** (na dúvida, o monograma). A raiz é `<svg>`. Recusa: `<script>`,
+`<foreignObject>`, `<iframe>`, `<frame>`, `<embed>`, `<object>`, `<applet>`, a animação que troca atributo (`<set>`, `<animate>`,
+`<animateMotion>`, `<animateTransform>`, `<animateColor>`, `<discard>`), `<handler>`, `<listener>`, `<meta>`, `<link>` e `<base>`; atributo
+`on*`; `<!DOCTYPE>` e `<!ENTITY>` (e entidade sem declaração); instrução de processamento; `xml:base`; `javascript:` (e `vbscript:`) em
+qualquer atributo; `href` e `src` que não sejam `#id` ou imagem embutida em `data:image/(png|jpeg|gif|webp);base64`; `url()` que não seja
+`#id` ou essa imagem; `@import` e endereço (`//`) no `<style>` e no atributo `style`; o caractere nulo; e o que passa de 200 KB. Nomes valem
+sem o prefixo de namespace e sem caixa (`svg:script` e `SCRIPT` são `<script>`); valores, depois das entidades do XML (`&#106;`), dos
+escapes do CSS (`\75`) e sem os espaços e controles que o navegador ignora num endereço (`java&#9;script:`); o texto do `<style>` é
+conferido inteiro (um comentário no meio de `@import` não o esconde). Os casos de teste (`svg-check.spec.ts`) levam os ataques conhecidos de
+SVG e os disfarces deles.
+
+**A prova real** (05/11/2026, a única chamada externa da onda junto com a carga, abaixo): pelo código de verdade (o `BrapiClient`, o
+`LogoRefresh` e o `MarketRepository` do `dist`), num banco descartável (`alvesting_t1_prova_test`, criado com as 22 migrations e apagado no
+fim), com um `fetch` contador que barrava a 2ª requisição à brapi e o 11º SVG:
+
+| O que | Resultado |
+|---|---|
+| A lista (`/api/quote/list?type=stock&limit=1000&page=1`) | 200 em 230 ms; 783 ações em uma página (`hasNextPage` falso); só o limitador de 20 por minuto (`RateLimit-Limit 20`, `RateLimit-Remaining 20`, `RateLimit-Reset 60`) e nenhum `X-RateLimit-*`: não gasta cota (seção 2) |
+| O campo `logo` | 783 de 783 com texto, todos na forma exata; 752 com o nome do próprio ticker; **31 com o mesmo endereço, `BRAPI.svg`: o ícone padrão** (o único repetido); 373 sementes (seção 3) |
+| Os 10 SVG (ABEV3, B3SA3, BBAS3, BBDC4, ITUB4, MGLU3, PETR4, TAEE11, VALE3, WEGE3) | 200, `Content-Type: image/svg+xml`, `server: GitHub.com` (o GitHub Pages), `Cache-Control: max-age=600`, comprimido (o `Content-Length` menor que o corpo lido); 14 a 166 ms; nenhum com o token (`Authorization` ausente) |
+| O que veio | 263 a 2.191 bytes (11.439 no total); a raiz `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56">`, sem `viewBox`, nos 10; nenhuma declaração XML, `<style>` nem imagem embutida; gradiente só no PETR4 |
+| O validador | aceitou os 10 (nenhum recusado); os 10 gravados |
+
+**A carga do dev** (05/11/2026, uma vez, `market:logos --confirmo-banco alvesting_dev` sobre o `dist` recém-compilado, sem a guarda de rede;
+antes, a migration pelo `migrate:deploy`, que não mudou nenhuma linha: 20.029 barras e `sum(close_cents)` 36.505.401, 376 papéis e 60 pregões
+antes e depois):
+
+| O que | Resultado |
+|---|---|
+| Pedidos | **1 à lista** e **357 ao icons.brapi.dev**; **nenhum ao histórico** (a cota da brapi não muda: a lista não traz o `X-RateLimit-Remaining`) |
+| A lista | 783 ações, 752 com logo; 357 das 375 ações do banco com logo |
+| Gravado | **357 logos**, 0 iguais, **0 recusados**, 0 sem resposta, em **44,1 s** (uns 0,12 s por SVG) |
+| Tamanho | **507.174 bytes**: de 222 a 15.198 (AXIA3 e AXIA7), média 1.421, mediana 1.006; 296 SHA-256 distintos (a ON e a PN de uma empresa dividem o logo) |
+| Forma | nenhuma imagem embutida, `<image>`, `<style>` nem declaração XML; 69 com gradiente; 57 com `viewBox`; 223 com a raiz exata `<svg ... width="56" height="56">` |
+| Sem logo | 18 ações do banco: AUAU3, B1003, CALI3, CASN3, CASN4, CEED3, EQPA5, EQPA6, FASA3, HBTS5, JOPA4, MAPT3, MSPA4, MWET4, NATU3, PATI4, SHUL3 e TOKY3 (o ícone padrão, ou fora da lista de hoje) |
+
+Depois: `prisma migrate status` em dia e `prisma migrate diff` vazio no `alvesting_dev`. O `alvesting_ensaio` (a demo) não recebeu a
+migration (o coordenador a aplica). Os números acima são contagens e formas: nenhum SVG ficou fora do banco.
+
+**Não visto:** o 429, o 5xx e o redirecionamento do icons.brapi.dev (cobertos por teste com `fetch` falso); um logo de verdade com imagem
+embutida, `<style>` ou algo que o validador recuse (nenhum dos 357); e se a brapi conta o SVG no limite de 1 requisição por vez da conta (a
+passada não toma a trava consultiva da brapi: o host é outro e estático).
 
 ### 4. Preço e volume
 
@@ -370,8 +452,11 @@ nunca teria barra, e o universo nunca o veria entrar.
    papel por semana).
 3. O candidato que tem barra mas **nenhuma dos 5 últimos pregões** recebe a semana. O conjunto diário não muda dentro da semana ISO,
    então o papel ou foi buscado a semana toda ou em dia nenhum; o buraco de um papel sem negócio não o pede de novo.
+4. No fim, **os logos das ações** (seção 3a, ADR 0036): com a mesma lista, a passada reconfere os SVG guardados e baixa do icons.brapi.dev só
+   o que falta, mudou de endereço ou tem mais de 30 dias, dos papéis que o banco tem. A falha dela vira um aviso e nunca derruba o universo.
 
-A lista e as barras dividem **um** orçamento de tempo de 4 minutos (seção 2): a atualização passa às barras o que a lista deixou.
+A lista, as barras e os logos dividem **um** orçamento de tempo de 4 minutos (seção 2): a atualização passa às barras o que a lista deixou,
+e aos logos o que as barras deixaram.
 
 A falha aqui nunca derruba o universo (a cota baixa, a lista que não veio e um papel sem resposta deixam o candidato com menos
 presença); só o erro de configuração (401, 402, 403) sobe. O `sched-universe` roda no domingo às 09:00 e publica a semana ISO **da
@@ -528,6 +613,10 @@ universos e, do schema, o valor e as colunas que só existiam para o arquivo.
 | O volume do universo é estimado (quantidade × fechamento) | A brapi informa a quantidade, não o volume em reais; menos de 1% de diferença nos cinco papéis conferidos (seção 9) |
 | O legado do COTAHIST saiu do schema e do código (04/11/2026) | Sem produção nem dado legado, e o dev recriado do zero: o valor dos enums, `cotahist_sha256`, `quote_factor` e `daily_bar.trades` saíram numa migration não aditiva, exceção registrada na ADR 0032, com guarda que recusa se sobrar dado |
 | A atualização semanal fica dentro do `universe` | O mínimo que funciona: lista, papel novo e a semana dos candidatos, antes de escolher |
+| Os logos das ações são uma cópia própria dos SVG do icons.brapi.dev, no banco (ADR 0036) | O visitante não fala com a brapi; o SVG passa pelo validador antes de entrar, e o site o serve do próprio domínio |
+| Só o endereço exato do icons.brapi.dev vale, e o ícone padrão (`BRAPI.svg`) é sem logo | O job baixa desse endereço: nada de outro host, porta, query ou caminho; o ícone padrão (31 das 783 ações na prova de 05/11/2026) não é o logo da empresa |
+| A passada reconfere os SVG guardados e apaga o que o validador de hoje recusa | A tabela só guarda o que passa na regra de hoje, e as rotas internas leem o banco como está (a lista e o SVG nunca discordam) |
+| O mesmo SHA-256 não regrava o SVG; mais de 30 dias pede de novo | O logo muda pouco: uma semana comum não pede nada, e o que mudou entra em até 30 dias |
 | `trading_day` `CALENDAR` é previsão, não fonte de leitura | A lista muda (2027 é provisório) e a linha não acompanha. Ver seção 5 |
 | `CHECK` no banco e índice na FK de `universe_member` | Rede de segurança para a brapi; migration só aditiva (o `CHECK` de `daily_bar` foi refeito sem a coluna `trades` em 04/11/2026) |
 | Universo vazio ou janela incompleta falham | Universo é congelado por semana: um errado não tem como ser refeito |

@@ -31,7 +31,7 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
         <p className="text-15 text-pretty">
           O seu e-mail está confirmado. Agora você já pode entrar.
         </p>
-        {/* a única ação da tela: a pílula preta */}
+        {/* a única ação da tela: a pílula primária */}
         <p className="pt-4">
           <NavLink href="/entrar" className={`${BUTTON} btn-primary`}>
             Entrar

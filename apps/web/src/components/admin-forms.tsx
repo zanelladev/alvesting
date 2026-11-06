@@ -9,6 +9,7 @@ import {
 } from '../lib/admin-client';
 import { checked } from '../lib/account-validation';
 import { formatDate } from '../lib/format';
+import { useAvisar } from './avisos';
 import {
   AccountForm,
   CheckField,
@@ -21,7 +22,8 @@ import {
 // Os formulários do painel de admin (etapa 10, parte 2; docs/TELAS.md, seção 8). Cada ação pede a confirmação explícita: uma caixa de
 // marcar, nunca marcada, com a frase do que vai acontecer; sem ela nada é enviado. Reusam o molde dos formulários da conta (form-kit.tsx):
 // o fieldset nasce desativado e só liga depois da hidratação (um <form> sem handler faria um GET), o erro vai ligado ao campo e o foco vai
-// ao primeiro erro. O resultado (o que a api fez) fica na tela, sem navegar: a lista abaixo mostra o estado de antes até recarregar. Este
+// ao primeiro erro. O resultado (o que a api fez) fica na tela, sem navegar: a lista abaixo mostra o estado de antes até recarregar; e um aviso
+// curto na pilha da página (o toast, components/avisos.tsx) confirma que a ação foi aceita, sem repetir o resultado inteiro. Este
 // módulo e o que ele importa vão ao navegador: nenhum valor do pacote de contratos (leva o zod), só tipos. A api valida tudo de novo.
 
 const MISSING_CONFIRM = 'Marque a caixa para confirmar esta ação.';
@@ -54,13 +56,16 @@ export function ResubmitDlqForm({
   messageId: string;
   labelledBy: string;
 }) {
+  const avisar = useAvisar();
   async function run(data: FormData): Promise<Outcome | void> {
     if (!checked(data, 'confirm')) return { fields: { confirm: MISSING_CONFIRM } };
     const out = await adminSend(`${API}/dlq/${encodeURIComponent(queue)}/resubmit`, {
       method: 'POST',
       body: { messageIds: [messageId] },
     });
-    return out.ok ? { status: summarizeDlq(out.data) } : { form: describeAdminError(out) };
+    if (!out.ok) return { form: describeAdminError(out) };
+    avisar(`Pedido de reenvio feito para a fila ${queue}.`);
+    return { status: summarizeDlq(out.data) };
   }
   return (
     <AccountForm submit="Reenviar para a fila" run={run} labelledBy={labelledBy} noscript={false}>
@@ -77,6 +82,7 @@ export function RerunCycleForm({
   defaultDate: string;
   labelledBy: string;
 }) {
+  const avisar = useAvisar();
   async function run(data: FormData): Promise<Outcome | void> {
     const fields: Record<string, string> = {};
     const date = text(data, 'date');
@@ -84,7 +90,9 @@ export function RerunCycleForm({
     if (!checked(data, 'confirm')) fields.confirm = MISSING_CONFIRM;
     if (Object.keys(fields).length > 0) return { fields };
     const out = await adminSend(`${API}/cycles/${date}/rerun`, { method: 'POST' });
-    return out.ok ? { status: summarizeRerun(out.data) } : { form: describeAdminError(out) };
+    if (!out.ok) return { form: describeAdminError(out) };
+    avisar(`Pedido de reprocesso do pregão ${formatDate(date)} feito.`);
+    return { status: summarizeRerun(out.data) };
   }
   return (
     <AccountForm submit="Reprocessar o ciclo" run={run} labelledBy={labelledBy} noscript={false}>
@@ -112,6 +120,7 @@ const EVENT_KINDS = [
 // Registrar um desdobramento, grupamento ou bonificação em ações. Enfileira a reliquidação das temporadas que já passaram da data ex (o worker
 // liquida, e então muda resultado publicado).
 export function CorporateEventForm({ labelledBy }: { labelledBy: string }) {
+  const avisar = useAvisar();
   async function run(data: FormData): Promise<Outcome | void> {
     const fields: Record<string, string> = {};
     const ticker = text(data, 'ticker').trim();
@@ -126,7 +135,9 @@ export function CorporateEventForm({ labelledBy }: { labelledBy: string }) {
       method: 'POST',
       body: { ticker, exDate, kind: text(data, 'kind'), factor },
     });
-    return out.ok ? { status: summarizeEvent(out.data) } : { form: describeAdminError(out) };
+    if (!out.ok) return { form: describeAdminError(out) };
+    avisar(`Pedido de registro do evento de ${ticker.toUpperCase()} feito.`);
+    return { status: summarizeEvent(out.data) };
   }
   return (
     <AccountForm submit="Registrar o evento" run={run} labelledBy={labelledBy} noscript={false}>
@@ -159,6 +170,7 @@ const SEASON_HINT =
 
 // Criar a temporada (rascunho) a partir do arquivo JSON.
 export function CreateSeasonForm({ labelledBy }: { labelledBy: string }) {
+  const avisar = useAvisar();
   async function run(data: FormData): Promise<Outcome | void> {
     const fields: Record<string, string> = {};
     const file = parseObject(text(data, 'file'));
@@ -168,6 +180,7 @@ export function CreateSeasonForm({ labelledBy }: { labelledBy: string }) {
     const out = await adminSend(`${API}/seasons`, { method: 'POST', body: file.value });
     if (!out.ok) return { form: describeAdminError(out) };
     const slug = (out.data as { slug?: unknown } | undefined)?.slug;
+    avisar('Temporada criada como rascunho.');
     return {
       status: `Temporada ${typeof slug === 'string' ? slug : ''} criada como rascunho. Recarregue a página para vê-la na lista.`,
     };
@@ -192,6 +205,7 @@ export function EditSeasonForm({
   initialJson: string;
   labelledBy: string;
 }) {
+  const avisar = useAvisar();
   async function run(data: FormData): Promise<Outcome | void> {
     const fields: Record<string, string> = {};
     const file = parseObject(text(data, 'file'));
@@ -202,9 +216,9 @@ export function EditSeasonForm({
       method: 'PATCH',
       body: file.value,
     });
-    return out.ok
-      ? { status: 'Rascunho salvo. Recarregue a página para ver a lista atualizada.' }
-      : { form: describeAdminError(out) };
+    if (!out.ok) return { form: describeAdminError(out) };
+    avisar('Rascunho da temporada salvo.');
+    return { status: 'Rascunho salvo. Recarregue a página para ver a lista atualizada.' };
   }
   return (
     <AccountForm submit="Salvar o rascunho" run={run} labelledBy={labelledBy} noscript={false}>
@@ -232,6 +246,7 @@ export function StartSeasonForm({
   slug: string;
   labelledBy: string;
 }) {
+  const avisar = useAvisar();
   async function run(data: FormData): Promise<Outcome | void> {
     if (!checked(data, 'confirm')) return { fields: { confirm: MISSING_CONFIRM } };
     const out = await adminSend(`${API}/seasons/${encodeURIComponent(id)}`, {
@@ -239,6 +254,7 @@ export function StartSeasonForm({
       body: { status: 'RUNNING' },
     });
     if (!out.ok) return { form: describeAdminError(out) };
+    avisar(`Temporada ${slug} iniciada.`);
     const start = (out.data as { startDate?: unknown } | undefined)?.startDate;
     return {
       status: `Temporada em andamento.${typeof start === 'string' ? ` Primeiro pregão: ${formatDate(start)}.` : ''} Recarregue a página para ver a lista atualizada.`,

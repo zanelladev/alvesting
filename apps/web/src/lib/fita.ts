@@ -49,8 +49,8 @@ export const tapeText = (parts: readonly string[]): string =>
 
 // Uma volta da fita: a linha e o separador, repetidos até passar de `min` caracteres. O trilho leva duas voltas e anda uma (50%): com a
 // volta mais larga que a tela, a ponta da direita nunca fica vazia.
-// ponytail: 320 caracteres de 13 px na mono dão uns 2.500 px; tela mais larga que isso mostraria o fim do trilho. Suba o mínimo se
-// aparecer.
+// ponytail: 320 caracteres de 13 px na sans dão uns 2.100 px, e a moldura para nos 1.216 px da coluna do site; uma moldura mais larga que a
+// volta mostraria o fim do trilho. Suba o mínimo se a coluna crescer.
 export function tapeLoop(text: string, min = 320): string {
   const unit = `${text}${TAPE_SEPARATOR}`;
   return unit.repeat(Math.max(1, Math.ceil(min / unit.length)));

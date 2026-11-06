@@ -42,6 +42,8 @@ export interface FakeBrapiOptions {
   publishedAt?: ReadonlyMap<IsoDate, Date>;
   // a cota do ciclo no começo (os testes da reserva a aproximam do limite)
   quota?: number;
+  // o campo `logo` da lista, por papel (os testes dos logos, ADR 0036); sem ele, a lista vem sem logo, como no ensaio
+  logos?: ReadonlyMap<string, unknown>;
 }
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
@@ -108,6 +110,9 @@ export function createFakeBrapi(options: FakeBrapiOptions): FakeBrapi {
               close: 10,
               type: 'stock',
               subType: stock.spec.startsWith('UNT') ? 'unit' : 'stock',
+              ...(options.logos?.has(stock.ticker)
+                ? { logo: options.logos.get(stock.ticker) }
+                : {}),
             })),
             hasNextPage: false,
             requestedAt: now.toISOString(),

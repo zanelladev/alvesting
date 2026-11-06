@@ -18,15 +18,32 @@ export const INPUT = 'field';
 // api que ninguém fez. O endereço é um <a href> comum, então funciona sem JavaScript.
 export const NavLink = (props: ComponentProps<typeof Link>) => <Link prefetch={false} {...props} />;
 
-// O cabeçalho de página do Rallies: o h1 na Geist de 26 e o que o explica em muted, embaixo (a descrição herda a cor).
-export const PageHead = ({ title, children }: { title: ReactNode; children?: ReactNode }) => (
+// O cabeçalho de página do Rallies: o h1 na sans 600 de 26 e o que o explica em muted, embaixo (a descrição herda a cor). `logo`: o logo do
+// competidor ao lado do título, fora do texto dele, para a linha que quebrar no celular começar embaixo do nome e não embaixo do logo (o QA do
+// fechamento, achado 5); o teto de 32 ch deixa "DeepSeek V4 Pro (0813)" numa linha no desktop.
+export const PageHead = ({
+  title,
+  logo,
+  children,
+}: {
+  title: ReactNode;
+  logo?: ReactNode;
+  children?: ReactNode;
+}) => (
   <header className="space-y-2 pb-6 text-muted">
-    <h1 className="max-w-[24ch] font-display text-26 text-balance">{title}</h1>
+    {logo ? (
+      <div className="flex items-start gap-3">
+        <span className="shrink-0 pt-0.5">{logo}</span>
+        <h1 className="max-w-[32ch] min-w-0 font-display text-26 text-balance">{title}</h1>
+      </div>
+    ) : (
+      <h1 className="max-w-[32ch] font-display text-26 text-balance">{title}</h1>
+    )}
     {children}
   </header>
 );
 
-// Uma seção da página: 48 px de respiro, o título na Geist de 22 e o conteúdo. A região tem o nome do título, que é como o leitor de tela e
+// Uma seção da página: 48 px de respiro, o título na sans 600 de 22 e o conteúdo. A região tem o nome do título, que é como o leitor de tela e
 // o e2e a encontram.
 export function Section({
   id,
@@ -95,15 +112,17 @@ export const StripItem = ({ term, children }: { term: string; children: ReactNod
 // Nada para mostrar ainda: a tela diz o que falta em vez de ficar em branco.
 export const Empty = ({ children }: { children: ReactNode }) => <p className="vazio">{children}</p>;
 
-// A caixa de recado (o status de um formulário, o aviso de página) e a de erro, com o fio vermelho (o erro do formulário, a leitura que
-// falhou): o mesmo desenho em toda tela, num lugar só (docs/TELAS.md, seção 10).
-export const CAIXA = 'rounded-lg border border-hairline bg-surface-card p-4 text-ink';
+// A caixa de erro, com o fio vermelho (o erro do formulário, a leitura que falhou): o mesmo desenho em toda tela, num lugar só (docs/TELAS.md,
+// seção 10).
 export const CAIXA_ERRO = 'rounded-lg border border-semantic-error/60 bg-surface-card p-4 text-ink';
 
-// O aviso de página: `[!]` em cinza numa caixa. Não há cor de aviso no sistema visual: o âmbar leria como "escolhido".
+// O aviso de página: o `[!]` em cinza numa linha discreta, sem caixa nem fundo (docs/DESIGN.md: a honestidade é obrigatória, o peso não), lido
+// pelo leitor de tela como o parágrafo que é. Não há cor de aviso no sistema visual: a primária leria como "escolhido".
 export const Aviso = ({ children, className }: { children: ReactNode; className?: string }) => (
-  <p className={`${className ? `${className} ` : ''}flex max-w-2xl gap-3 ${CAIXA}`}>
-    <span aria-hidden="true" className="font-mono text-muted">
+  <p
+    className={`${className ? `${className} ` : ''}flex max-w-2xl gap-2.5 text-sm text-pretty text-body`}
+  >
+    <span aria-hidden="true" className="shrink-0 font-medium text-muted">
       [!]
     </span>
     <span className="min-w-0">{children}</span>
@@ -111,31 +130,73 @@ export const Aviso = ({ children, className }: { children: ReactNode; className?
 );
 
 // A direção de um número com sinal, para o glifo ▲ ▼ ■ que o CSS põe antes dele (`[data-dir]` em globals.css): fora do texto, que o leitor de
-// tela e o e2e leem. Só em valor com sinal; o que não existe ("—") fica sem.
+// tela e o e2e leem. Só no número principal da linha (a Regra do Glifo, docs/DESIGN.md): o outro número com sinal da mesma linha leva só o
+// sinal, na cor do texto. O que não existe ("—") fica sem.
 export const direction = (value: number) => (value > 0 ? 'up' : value < 0 ? 'down' : 'flat');
 
-// A arena simulada: o modelo cujas decisões vêm do provedor fake (os modelos ainda não estão conectados) leva a etiqueta "simulado"
-// logo depois do nome, onde o nome aparece. A borda tracejada, como a do HOLD, se lê sem cor. Quando o elenco passa ao provedor de
-// verdade, a etiqueta some sozinha. O espaço antes dela vai junto: o leitor de tela e o texto da linha leem "Nome simulado".
+// A arena simulada: o modelo cujas decisões vêm do provedor fake (os modelos ainda não estão conectados). O "simulado" aparece visível,
+// discreto e uma vez por contexto (docs/DESIGN.md): a nota no cabeçalho da faixa, da tabela e da barra das carteiras, a etiqueta junto do
+// título na página do modelo e no item de decisão sozinho, e o `Aviso` da página que mostra muitos. Quando o elenco passa ao provedor de
+// verdade, tudo some sozinho. A etiqueta é a pílula cinza sem borda, de 20 px; o espaço antes dela vai junto (o texto lê "Nome simulado").
 export const isSimulated = (competitor: Pick<PublicCompetitor, 'type' | 'provider'>): boolean =>
   competitor.type === 'MODEL' && competitor.provider === 'fake';
 export const SimulatedTag = () => (
   <>
     {' '}
-    <span className="badge border-dashed">simulado</span>
+    <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-surface-strong px-2 align-middle text-xs leading-none font-medium whitespace-nowrap text-muted">
+      simulado
+    </span>
   </>
 );
 
+// Quem a nota cobre: todos os modelos (a arena de hoje) ou os nomes dos simulados (uma temporada mista), para a nota nunca dizer que um modelo
+// de verdade é simulado; a frase concorda com quantos são. Nenhum simulado: nada. `parcial`: a lista é só uma parte do elenco (o feed
+// filtrado, antes da primeira liquidação), e então a nota nomeia os simulados que vê, sem concluir que são todos.
+export function quemSimula(
+  competitors: ReadonlyArray<Pick<PublicCompetitor, 'name' | 'type' | 'provider'>>,
+  parcial = false,
+): string | null {
+  // um modelo por nome: o feed repete o modelo em cada decisão dele
+  const models = [
+    ...new Map(competitors.filter((c) => c.type === 'MODEL').map((c) => [c.name, c])).values(),
+  ];
+  const nomes = models.filter(isSimulated).map((c) => c.name);
+  if (nomes.length === 0) return null;
+  if (!parcial && nomes.length === models.length) return 'Os modelos ainda não estão conectados.';
+  return nomes.length === 1
+    ? `${nomes[0]} ainda não está conectado.`
+    : `${nomes.slice(0, -1).join(', ')} e ${nomes.at(-1)} ainda não estão conectados.`;
+}
+// A nota do cabeçalho de uma peça (a faixa, a tabela, a barra das carteiras): a etiqueta e uma frase curta, numa linha.
+export function NotaSimulada({
+  competitors,
+  className,
+}: {
+  competitors: ReadonlyArray<Pick<PublicCompetitor, 'name' | 'type' | 'provider'>>;
+  className?: string;
+}) {
+  const frase = quemSimula(competitors);
+  return frase ? (
+    <p className={className ? `nota-simulada ${className}` : 'nota-simulada'}>
+      <SimulatedTag /> {frase}
+    </p>
+  ) : null;
+}
+
 // A tabela larga rola dentro da própria caixa, nunca a página (WCAG 1.4.10 deixa a tabela de dados em duas dimensões). A caixa recebe
-// o foco do teclado e tem nome, para quem não usa o mouse poder rolar.
+// o foco do teclado e tem nome, para quem não usa o mouse poder rolar. Sem a barra de rolagem à vista, a pista de que há mais colunas é só CSS
+// (globals.css, `.tabela-rola`): a borda da direita esmaece enquanto há mais para lá, e com o mouse o "›" redondo da faixa rola a tabela. O
+// botão se põe sobre a caixa pela casca de fora (`.tabela`).
 export const TableScroll = ({ label, children }: { label: string; children: ReactNode }) => (
-  <div
-    role="region"
-    aria-label={label}
-    tabIndex={0}
-    className="overflow-x-auto rounded-lg border border-hairline bg-canvas"
-  >
-    {children}
+  <div className="tabela">
+    <div
+      role="region"
+      aria-label={label}
+      tabIndex={0}
+      className="tabela-rola overflow-x-auto rounded-lg border border-hairline bg-canvas"
+    >
+      {children}
+    </div>
   </div>
 );
 
@@ -200,9 +261,9 @@ export function SearchForm({
 }
 
 // A navegação de dentro das telas (plano, c.2). Os itens são links com a caixa de 44 px; o escolhido leva `aria-current` (o valor de cada um:
-// `page` para a tela, `true` para o filtro). O segmentado são as sub-telas de uma área no celular ("Arena | Ranking | Último ciclo"; o
-// `preto` é o filtro do feed, mono e com a pílula preta), as abas são a linha do topo do principal (as `grandes`, os títulos de aba do
-// celular, na Geist de 20) e a trilha é o "Início › Arena" do celular, que a própria página escreve (a casca não sabe o caminho).
+// `page` para a tela, `true` para o filtro). O segmentado são as sub-telas de uma área no celular ("Arena | Ranking | Último ciclo") e as vistas
+// da arena ("Decisões | Carteiras"); o `preto` é o filtro do feed, na sans 12/500 e com a pílula da primária. As abas são a linha do topo do
+// principal, e a trilha é o "Início › Arena" do celular, que a própria página escreve (a casca não sabe o caminho).
 export interface ItemDeNavegacao {
   label: string;
   href: string;
@@ -229,17 +290,9 @@ export const Segmentado = ({
     </ul>
   </nav>
 );
-export const Abas = ({
-  label,
-  items,
-  grandes = false,
-}: {
-  label: string;
-  items: readonly ItemDeNavegacao[];
-  grandes?: boolean;
-}) => (
+export const Abas = ({ label, items }: { label: string; items: readonly ItemDeNavegacao[] }) => (
   <nav aria-label={label}>
-    <ul className={grandes ? 'abas abas-grandes' : 'abas'}>
+    <ul className="abas">
       {items.map((item) => (
         <li key={item.href}>
           <NavLink href={item.href} aria-current={item.atual}>

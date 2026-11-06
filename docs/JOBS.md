@@ -96,7 +96,7 @@ consumida pelo worker: quem a consome é o `job-worker-decisions`, com `Messagin
 | Mensagem | Chave em `job_run` | O que faz | Detalhe |
 |---|---|---|---|
 | `eod {pregão}` | `eod` + pregão | pede à brapi, um papel por vez, só as barras que o banco não tem (o universo da semana, o BOVA11 e as posições; depois as carteiras), grava cada papel assim que chega, confirma o pregão e pede a liquidação | seção 4; `docs/DADOS.md`, seções 6 e 7 |
-| `universe {semana}` | `universe` + semana | antes de escolher, a atualização semanal da brapi (a lista de ações semeia papel novo, que recebe 3 meses, e o candidato fora do conjunto diário recebe a semana); depois congela o universo da semana a partir dos 60 pregões anteriores à segunda-feira (até 500 ações, presença de 90%), sobre as barras da brapi (volume estimado) | `docs/DADOS.md`, seção 8 |
+| `universe {semana}` | `universe` + semana | antes de escolher, a atualização semanal da brapi (a lista de ações semeia papel novo, que recebe 3 meses, e o candidato fora do conjunto diário recebe a semana; no fim, os logos das ações, do icons.brapi.dev, só o que falta, mudou de endereço ou tem mais de 30 dias: ADR 0036); depois congela o universo da semana a partir dos 60 pregões anteriores à segunda-feira (até 500 ações, presença de 90%), sobre as barras da brapi (volume estimado) | `docs/DADOS.md`, seção 8 |
 | `fetch {fonte, slot}` | `fetch` + `fonte:slot` | busca uma fonte: RSS e CVM IPE viram `news_item`, BCB SGS vira `macro_daily` | `docs/DADOS.md`, seções 13 a 16 |
 | `freeze {pregão}` | `freeze` + pregão | monta o briefing das 07:30, grava os bytes no Blob (`briefings/<pregão>/<sha256>.json`) e a linha de `briefing` | seção 4; `docs/DADOS.md`, seção 18 |
 | `decide {ciclo, competidor}` | `decide` + `ciclo:competidor` | uma decisão de um modelo: prazo, prompt, briefing, gateway com 1 reparo, validação, IO bruto no Blob `llm-io` e a `decision`. É do `job-worker-decisions`, não do worker | seção 3.2; `docs/ARENA.md` |
@@ -227,8 +227,9 @@ que a migration `20261103100000_api_role` cria) e define a senha dele, lida da `
   conclui e o `eod-barras-ausentes` alerta). O `eod` da noite seguinte pede, a cada papel, do pregão mais antigo que lhe falta na
   janela de 5 pregões até o de hoje (uma requisição por papel), confirma os dois pregões e a liquidação do mais novo refaz a temporada
   do zero, na ordem das datas. Fora da janela (mais de 5 pregões sem brapi), o `market:backfill` com `--de` recupera (RUNBOOK).
-- **A noite do `universe`:** o domingo começa pela atualização semanal (a lista de ações, o papel novo e a semana dos candidatos) e só
-  depois escolhe. O `universe` exige os 60 pregões confirmados: se algum falta (a brapi fora por mais de 5 pregões, a carga inicial que
+- **A noite do `universe`:** o domingo começa pela atualização semanal (a lista de ações, o papel novo, a semana dos candidatos e, no
+  fim, os logos das ações: a passada reconfere os SVG guardados e baixa o que precisa, `docs/DADOS.md`, seção 3a) e só depois escolhe. A
+  falha dos logos vira um aviso e nunca derruba o universo. O `universe` exige os 60 pregões confirmados: se algum falta (a brapi fora por mais de 5 pregões, a carga inicial que
   não rodou), falha dizendo os dias e pedindo a carga (`market:backfill`, seção 6), repete até 10 vezes e vai para a DLQ; corrigido o
   dado, reenviar a `universe`.
 - **O `freeze` das 07:30 (etapa 5):** monta o briefing do banco (o universo congelado da semana, embaralhado pela semente do
@@ -388,6 +389,7 @@ fila (um não repete o outro); os demais não criam `job_run`:
 ```bash
 pnpm --filter @alvesting/api market:backfill                   # carga da brapi: modo SEM rede (mostra o banco e a conta); --confirmo-banco <nome> busca de verdade
 pnpm --filter @alvesting/api market:universe <AAAA-Www>        # congela o universo da semana (2026-W45)
+pnpm --filter @alvesting/api market:logos                      # logos das ações: modo SEM rede (mostra o banco e a conta); --confirmo-banco <nome> busca a lista e os SVG
 pnpm --filter @alvesting/api news:fetch <fonte>                # uma fonte agora, na rede de verdade
 pnpm --filter @alvesting/api news:import <fonte-rss> <arquivo.xml> [--at <ISO com fuso>]   # RSS salvo em disco (replay)
 pnpm --filter @alvesting/api briefing:freeze <AAAA-MM-DD>      # congela o briefing do pregão; falha se já existe um posterior

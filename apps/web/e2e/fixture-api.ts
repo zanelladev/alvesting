@@ -14,6 +14,7 @@ import type {
   DecisionsPage,
   Equity,
   InternalBars,
+  InternalLogos,
   InternalTape,
   Leaderboard,
   NewsPage,
@@ -408,6 +409,11 @@ function route(
   if (rest === '/interno/fita') {
     if (authorization !== `Bearer ${QUOTES_SECRET}`) return notFound();
     return ok({ date: null, rows: [] } satisfies InternalTape);
+  }
+  // o índice dos logos (ADR 0036): os papéis daqui não têm logo, e as telas mostram os monogramas (sem ele, o site registraria a falha)
+  if (rest === '/interno/logos') {
+    if (authorization !== `Bearer ${QUOTES_SECRET}`) return notFound();
+    return ok({ logos: [] } satisfies InternalLogos);
   }
   const ticker = /^\/stocks\/([A-Z0-9]+)$/.exec(rest)?.[1];
   if (ticker === 'SEMN3' || ticker === 'COTA3' || ticker === 'CACH3' || ticker === 'RECU3') {

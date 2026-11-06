@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { databaseLabel, parseBackfillArgs } from './market-cli-args.js';
+import { databaseLabel, parseBackfillArgs, parseLogosArgs } from './market-cli-args.js';
 
 describe('parseBackfillArgs', () => {
   it('sem argumentos: a carga inicial, no modo sem rede', () => {
@@ -38,6 +38,26 @@ describe('parseBackfillArgs', () => {
     [['PETR4'], /pede um valor/],
   ])('recusa %j', (argv, message) => {
     expect(() => parseBackfillArgs(argv)).toThrow(message);
+  });
+});
+
+// market:logos (ADR 0036): só a confirmação do banco; sem ela, o modo sem rede.
+describe('parseLogosArgs', () => {
+  it('sem argumentos: o modo sem rede; com a confirmação, o nome do banco', () => {
+    expect(parseLogosArgs([])).toEqual({});
+    expect(parseLogosArgs(['--confirmo-banco', 'alvesting_dev'])).toEqual({
+      confirmDatabase: 'alvesting_dev',
+    });
+  });
+
+  it.each([
+    [['--confirmo-banco'], /pede um valor/],
+    [['--confirmo-banco', '--papeis'], /pede um valor/],
+    [['--papeis', 'PETR4'], /argumento desconhecido/],
+    [['--confirmo-banco', 'a', '--confirmo-banco', 'b'], /repetido/],
+    [['alvesting_dev'], /argumento desconhecido/],
+  ])('recusa %j', (argv, message) => {
+    expect(() => parseLogosArgs(argv)).toThrow(message);
   });
 });
 

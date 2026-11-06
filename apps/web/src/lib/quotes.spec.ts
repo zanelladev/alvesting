@@ -1,11 +1,25 @@
 import { inspect } from 'node:util';
-import { PUBLIC_CACHE_TTL_SECONDS, QUOTES_SECRET_MIN_LENGTH, ok, fail } from '@alvesting/contracts';
+import {
+  LOGO_NOT_FOUND,
+  PUBLIC_CACHE_TTL_SECONDS,
+  QUOTES_SECRET_MIN_LENGTH,
+  ok,
+  fail,
+} from '@alvesting/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError, type ApiDeps } from './api';
 
 // O marcador `server-only` é do Next (o build quebra se um componente de cliente importar o módulo); fora do Next, no vitest, ele não existe.
 vi.mock('server-only', () => ({}));
-const { REFERENCE_TICKER, readBars, readTape } = await import('./quotes');
+const {
+  LOGO_MAX_BYTES,
+  LOGOS_TTL_SECONDS,
+  REFERENCE_TICKER,
+  readBars,
+  readLogoSvg,
+  readLogos,
+  readTape,
+} = await import('./quotes');
 
 // A leitura das barras de preço pela rota interna da api (docs/API.md, seção 6; ADR 0033): o SSR manda o segredo do servidor em
 // `Authorization: Bearer`, com o X-Azure-FDID, pelo cache de dados do Next (as tags e o tempo de vida da API pública). Nenhum teste chama rede.
@@ -424,5 +438,237 @@ describe('readTape', () => {
   ])('resposta fora do contrato (%s) é INVALID_RESPONSE', async (_name, body) => {
     const { deps } = fakeFetch(() => json(ok(body)));
     await expect(readTape(deps)).rejects.toMatchObject({ status: 502, code: 'INVALID_RESPONSE' });
+  });
+});
+
+// Os logos das ações (ADR 0036; docs/API.md, seção 6): o índice de quem tem logo, com a versão do SVG, e o SVG de um papel, pelas rotas
+// internas da api, com o mesmo segredo e as mesmas conferências da fita e das barras. O logo é enfeite: a falha nunca derruba a tela.
+describe('readLogos', () => {
+  const LOGOS = [
+    { ticker: 'ABEV3', version: '40bd304825b00630' },
+    { ticker: 'PETR4', version: '659e50f6c54d8fca' },
+  ];
+
+  it('chama o índice no endereço interno, com o segredo em Bearer e o X-Azure-FDID, e devolve a lista', async () => {
+    const { calls, deps } = fakeFetch(() => json(ok({ logos: LOGOS })));
+    await expect(readLogos(deps)).resolves.toEqual(LOGOS);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe('http://127.0.0.1:4310/api/v1/interno/logos');
+    expect(calls[0]!.headers.authorization).toBe(`Bearer ${SECRET}`);
+    expect(calls[0]!.headers['x-azure-fdid']).toBe(FDID);
+    expect(calls[0]!.init.redirect).toBe('error');
+  });
+
+  // O logo novo chega com a atualização semanal (domingo): uma hora no cache de dados do Next basta, e a liquidação diária (a tag `arena`)
+  // não o pede de novo. Nunca no-store: a api seria lida a cada página.
+  it('lê pelo cache de dados do Next, por uma hora e sem tag', async () => {
+    const { calls, deps } = fakeFetch(() => json(ok({ logos: [] })));
+    await expect(readLogos(deps)).resolves.toEqual([]);
+    expect(LOGOS_TTL_SECONDS).toBe(3600);
+    expect(calls[0]!.init.next).toEqual({ revalidate: 3600 });
+    expect(calls[0]!.init.cache).toBeUndefined();
+  });
+
+  describe('a falha vira "nenhum logo": a tela mostra os monogramas e nunca cai por isso', () => {
+    it.each([
+      ['a api fora', () => new TypeError('fetch failed')],
+      ['o erro da api', () => json(fail('INTERNAL_ERROR', `falha com ${SECRET}`), 500)],
+      [
+        'o segredo recusado (o 404 da rota)',
+        () => json(fail('NOT_FOUND', `Cannot GET /x?t=${SECRET}`), 404),
+      ],
+      ['o campo a mais', () => json(ok({ logos: LOGOS, total: 2 }))],
+      ['a ordem errada', () => json(ok({ logos: [...LOGOS].reverse() }))],
+      ['a versão torta', () => json(ok({ logos: [{ ticker: 'PETR4', version: 'xyz' }] }))],
+      ['o corpo que não é JSON', () => new Response('<html>502</html>', { status: 200 })],
+    ])('%s: lista vazia, com uma linha de log sem o segredo', async (_name, respond) => {
+      const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        const { deps } = fakeFetch(respond);
+        await expect(readLogos(deps)).resolves.toEqual([]);
+        expect(log).toHaveBeenCalledTimes(1);
+        const line = log.mock.calls[0]!.map((part) => inspect(part, { depth: null })).join(' ');
+        expect(line).toMatch(/logos/);
+        expect(line).not.toContain(SECRET);
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it('o segredo ausente ou torto: lista vazia, sem chamar a api, e só a linha da configuração (sem o valor)', async () => {
+      const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        const bad = `${'x'.repeat(20)}\n${'y'.repeat(20)}`;
+        for (const QUOTES_SECRET of [undefined, 'PENDENTE', bad]) {
+          log.mockClear();
+          const { calls, deps } = fakeFetch(() => json(ok({ logos: LOGOS })));
+          await expect(readLogos({ ...deps, env: { ...env, QUOTES_SECRET } })).resolves.toEqual([]);
+          expect(calls).toEqual([]);
+          expect(log).toHaveBeenCalledTimes(1);
+          expect(String(log.mock.calls[0]![0])).toMatch(/QUOTES_SECRET/);
+          expect(String(log.mock.calls[0]![0])).not.toContain('y'.repeat(20));
+        }
+      } finally {
+        log.mockRestore();
+      }
+    });
+  });
+});
+
+describe('readLogoSvg', () => {
+  const SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56"><path d="M0 0h56v56H0z"/></svg>';
+  const svgResponse = (body: BodyInit, headers: Record<string, string> = {}) =>
+    new Response(body, { status: 200, headers: { 'content-type': 'image/svg+xml', ...headers } });
+  function quiet() {
+    return vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  }
+
+  it('pede o SVG do papel no endereço interno, com o segredo em Bearer, sem cache e sem seguir redirecionamento, e devolve o texto', async () => {
+    const { calls, deps } = fakeFetch(() => svgResponse(SVG));
+    await expect(readLogoSvg('PETR4', deps)).resolves.toBe(SVG);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe('http://127.0.0.1:4310/api/v1/interno/logos/PETR4');
+    expect(calls[0]!.headers.authorization).toBe(`Bearer ${SECRET}`);
+    expect(calls[0]!.headers['x-azure-fdid']).toBe(FDID);
+    expect(calls[0]!.headers.accept).toBe('image/svg+xml');
+    // o navegador guarda o SVG pela URL com a versão; o cache de dados guardaria o SVG velho sob a versão nova
+    expect(calls[0]!.init.cache).toBe('no-store');
+    expect(calls[0]!.init.next).toBeUndefined();
+    expect(calls[0]!.init.redirect).toBe('error');
+    expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('o image/svg+xml com charset também vale', async () => {
+    const { deps } = fakeFetch(() =>
+      svgResponse(SVG, { 'content-type': 'image/svg+xml; charset=utf-8' }),
+    );
+    await expect(readLogoSvg('PETR4', deps)).resolves.toBe(SVG);
+  });
+
+  it(`o papel sem logo (404 ${LOGO_NOT_FOUND}) é nulo, sem log`, async () => {
+    const log = quiet();
+    try {
+      const { deps } = fakeFetch(() => json(fail(LOGO_NOT_FOUND, 'Este papel não tem logo'), 404));
+      await expect(readLogoSvg('PETR4', deps)).resolves.toBeNull();
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it.each(['petr4', 'PETR', 'PETR4.svg', '../PETR4', 'PETR4/x', '%00', 'X'.repeat(13), ''])(
+    'o ticker fora da forma da B3 (%j) é nulo, sem chamar a api e sem log',
+    async (ticker) => {
+      const log = quiet();
+      try {
+        const { calls, deps } = fakeFetch(() => svgResponse(SVG));
+        await expect(readLogoSvg(ticker, deps)).resolves.toBeNull();
+        expect(calls).toEqual([]);
+        expect(log).not.toHaveBeenCalled();
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
+
+  describe('o que não se repassa: nulo, com uma linha de log do ticker e do motivo, nunca o segredo nem o corpo', () => {
+    it.each([
+      [
+        'o segredo recusado (404 sem o código)',
+        () => json(fail('NOT_FOUND', `Cannot GET /x?t=${SECRET}`), 404),
+      ],
+      ['o erro da api', () => json(fail('INTERNAL_ERROR', `falha com ${SECRET}`), 500)],
+      ['a api fora', () => new TypeError(`fetch failed ${SECRET}`)],
+      [
+        'outro tipo de conteúdo (HTML)',
+        () => svgResponse(`<html>${SECRET}</html>`, { 'content-type': 'text/html' }),
+      ],
+      ['outro tipo de conteúdo (JSON)', () => json(ok({ svg: SVG }))],
+      ['sem tipo de conteúdo', () => new Response(SVG, { status: 200, headers: {} })],
+      [
+        'acima do teto pelo Content-Length',
+        () => svgResponse(SVG, { 'content-length': String(LOGO_MAX_BYTES + 1) }),
+      ],
+      [
+        'acima do teto lido do corpo',
+        () => svgResponse(`<svg>${'x'.repeat(LOGO_MAX_BYTES)}</svg>`),
+      ],
+      [
+        'o corpo que não é UTF-8',
+        () => svgResponse(new Uint8Array([0x3c, 0x73, 0xff, 0xfe, 0x3e])),
+      ],
+    ])('%s', async (_name, respond) => {
+      const log = quiet();
+      try {
+        const { deps } = fakeFetch(respond);
+        await expect(readLogoSvg('PETR4', deps)).resolves.toBeNull();
+        expect(log).toHaveBeenCalledTimes(1);
+        const line = log.mock.calls[0]!.map((part) => inspect(part, { depth: null })).join(' ');
+        expect(line).toContain('PETR4');
+        expect(line).not.toContain(SECRET);
+        expect(line).not.toContain('<svg');
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    // A conexão que cai no meio do corpo (ou o prazo de 10 s, que vale para a leitura dele) não pode virar exceção: a rota daria 500.
+    it('o corpo que falha no meio da leitura: nulo, com uma linha de log, sem exceção', async () => {
+      const log = quiet();
+      try {
+        const broken = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('<svg'));
+            controller.error(new TypeError(`terminated ${SECRET}`));
+          },
+        });
+        const { deps } = fakeFetch(() => svgResponse(broken));
+        await expect(readLogoSvg('PETR4', deps)).resolves.toBeNull();
+        expect(log).toHaveBeenCalledTimes(1);
+        const line = log.mock.calls[0]!.map((part) => inspect(part, { depth: null })).join(' ');
+        expect(line).toContain('PETR4');
+        expect(line).not.toContain(SECRET);
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it('o teto é o da T1 (200 KB, o CHECK da tabela), e exatamente o teto passa', async () => {
+      expect(LOGO_MAX_BYTES).toBe(204_800);
+      const body = `<svg>${'x'.repeat(LOGO_MAX_BYTES - '<svg></svg>'.length)}</svg>`;
+      const { deps } = fakeFetch(() => svgResponse(body));
+      await expect(readLogoSvg('PETR4', deps)).resolves.toBe(body);
+    });
+
+    it('o segredo ausente: nulo, sem chamar a api, e só a linha da configuração', async () => {
+      const log = quiet();
+      try {
+        const { calls, deps } = fakeFetch(() => svgResponse(SVG));
+        await expect(
+          readLogoSvg('PETR4', { ...deps, env: { ...env, QUOTES_SECRET: undefined } }),
+        ).resolves.toBeNull();
+        expect(calls).toEqual([]);
+        expect(log).toHaveBeenCalledTimes(1);
+        expect(String(log.mock.calls[0]![0])).toMatch(/QUOTES_SECRET/);
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it('o endereço da api ausente: nulo, sem chamar nada', async () => {
+      const log = quiet();
+      try {
+        const { calls, deps } = fakeFetch(() => svgResponse(SVG));
+        await expect(
+          readLogoSvg('PETR4', { ...deps, env: { ...env, API_INTERNAL_URL: undefined } }),
+        ).resolves.toBeNull();
+        expect(calls).toEqual([]);
+        expect(log).toHaveBeenCalledTimes(1);
+        expect(String(log.mock.calls[0]![0])).toMatch(/API_INTERNAL_URL/);
+      } finally {
+        log.mockRestore();
+      }
+    });
   });
 });

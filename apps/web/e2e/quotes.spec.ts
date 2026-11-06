@@ -1,9 +1,9 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test, type APIRequestContext } from '@playwright/test';
-import { envelopeSchema, internalBarsSchema } from '@alvesting/contracts';
+import { envelopeSchema, internalBarsSchema, stockDetailSchema } from '@alvesting/contracts';
 import { ACCOUNT_API_URL, API_URL, QUOTES_SECRET } from './api-server';
-import { TICKER, fetchBars } from './data';
+import { TICKER, fetchApi, fetchBars } from './data';
 import { FRONT_DOOR_ID } from './locked-server';
 
 // A rota interna de cotações e o segredo do servidor (docs/API.md, seção 6; ADR 0033), no build de produção (apps/api/dist, NODE_ENV=production)
@@ -90,11 +90,13 @@ test.describe('a rota interna da api', () => {
   });
 });
 
+// O nome de um campo de cotação bruta (a barra e o BOVA11), pela palavra inteira: as rotas públicas e a página da ação não podem ter nenhum.
+const RAW_FIELD =
+  /^(open|high|low|close|previousClose|prevClose|volume|bid|ask)(Cents)?$|^(bars|bova11)$/i;
+
 // Nenhuma rota pública devolve cotação bruta, na api de produção sobre o banco do ensaio (que tem barras para toda ação): a mesma varredura do
 // teste de integração, agora no build que roda no e2e. O contrato (public-quotes.spec.ts) guarda os schemas.
 test.describe('a API pública não entrega cotação bruta', () => {
-  const RAW_FIELD =
-    /^(open|high|low|close|previousClose|prevClose|volume|bid|ask)(Cents)?$|^(bars|bova11)$/i;
   function rawFields(value: unknown, where = '$', found: string[] = []): string[] {
     if (Array.isArray(value)) {
       value.forEach((item, index) => rawFields(item, `${where}[${index}]`, found));
@@ -228,5 +230,77 @@ test.describe('o segredo das cotações não vaza do servidor do site', () => {
     const standalone = path.join(next, 'standalone', 'apps', 'web', '.next');
     expect(statSync(standalone).isDirectory()).toBe(true);
     expect(scan(standalone)).toEqual([]);
+  });
+});
+
+// A regra das cotações na página da ação (ADR 0033; docs/TELAS.md, seção 4): a série de preços nunca vai como dado para o navegador. As velas
+// são desenho do servidor (components/velas.tsx): o HTML e o payload do React (o fluxo do RSC, as cadeias de `self.__next_f.push` que o Next
+// escreve na página) não trazem campo de barra (a RAW_FIELD) nem os preços do ensaio: a abertura, a máxima, a mínima e o fechamento de cada
+// pregão, fora o último fechamento. Ficam de fora da conta só os valores que a página mostra por outro motivo: o primeiro fechamento, a mínima
+// e a máxima (o resumo em texto, a alternativa do desenho) e o preço médio de quem tem a ação (registro da arena, docs/API.md, seção 6); e o
+// valor redondo (R$ x,00), que pode ser um marco do eixo. Visto falhar com um componente de cliente de mentira que recebia as barras como prop
+// (docs/redesign-premium/relatorios/explorar.md). O fechamento procura também o real com ponto ("66.17", o `closeCents / 100` que um gráfico de
+// cliente receberia sob outra chave, como `y`), e não só os fechamentos: a abertura, a máxima e a mínima também (a revisão do fechamento, M10).
+test.describe('a página da ação não entrega a série de preços', () => {
+  test('o HTML e o payload do React não têm campo de barra nem os fechamentos do meio da série', async ({
+    request,
+  }) => {
+    const bars = await fetchBars(request, TICKER);
+    expect(bars.length).toBeGreaterThan(30);
+    const stock = await fetchApi(request, `/stocks/${TICKER}`, stockDetailSchema);
+    const response = await request.get(`/acoes/${TICKER}`);
+    expect(response.status()).toBe(200);
+    const html = await response.text();
+    // o payload do React: cada cadeia de `self.__next_f.push([1, "..."])`, decodificada como o navegador a lê
+    const flight = [...html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g)]
+      .map((match) => JSON.parse(match[1]!) as string)
+      .join('\n');
+    expect(flight.length, 'o payload do React na página').toBeGreaterThan(1_000);
+    const page = `${html}\n${flight}`;
+
+    // nenhum campo de barra: toda chave de objeto da página e do payload que traz um número, uma lista ou um objeto (o que um preço ou uma
+    // série traz), contra a RAW_FIELD das rotas públicas. O `open` do <details> da barra é um booleano e não conta
+    const keys = new Set(
+      [...page.matchAll(/"([A-Za-z_$][\w$]*)"\s*:\s*[-\d[{]/g)].map((match) => match[1]!),
+    );
+    expect(keys.size).toBeGreaterThan(10);
+    expect([...keys].filter((key) => RAW_FIELD.test(key))).toEqual([]);
+
+    // nenhum preço do meio da série (a abertura, a máxima, a mínima e o fechamento de cada pregão, menos o último fechamento), nem escrito
+    // ("66,17", com ou sem o R$), nem em reais com ponto ("66.17"), nem em centavos (6617)
+    const shown = new Set([
+      bars[0]!.closeCents,
+      bars.at(-1)!.closeCents,
+      Math.min(...bars.map((bar) => bar.lowCents)),
+      Math.max(...bars.map((bar) => bar.highCents)),
+      ...stock.holders.map((holder) => holder.avgPriceCents),
+    ]);
+    const hidden = [
+      ...new Set(
+        bars.flatMap((bar, i) => [
+          bar.openCents,
+          bar.highCents,
+          bar.lowCents,
+          ...(i === bars.length - 1 ? [] : [bar.closeCents]),
+        ]),
+      ),
+    ].filter((cents) => !shown.has(cents) && cents % 100 !== 0);
+    expect(hidden.length).toBeGreaterThan(80);
+    const written = (cents: number) =>
+      `${String(Math.floor(cents / 100)).replace(/\B(?=(\d{3})+$)/g, '.')},${String(cents % 100).padStart(2, '0')}`;
+    // o real com ponto, do jeito que o JavaScript escreve o número (66.17; o 66.1 do zero final fica de fora: ele bate com as coordenadas do
+    // SVG das velas, que têm uma casa decimal)
+    const dotted = (cents: number) =>
+      `${Math.floor(cents / 100)}\\.${String(cents % 100).padStart(2, '0')}`;
+    const leaked = hidden.filter(
+      (cents) =>
+        new RegExp(`(?<![\\d.,])${written(cents).replace('.', '\\.')}(?!\\d)`).test(page) ||
+        (cents % 10 !== 0 && new RegExp(`(?<![\\d.])${dotted(cents)}(?!\\d)`).test(page)) ||
+        // em centavos: o número solto, entre os separadores do JSON e do HTML (a lista `[6690,6617]`, a chave `:6617`, o texto `>6617<`)
+        new RegExp(`(?<=^|[\\[,:>\\s"])${cents}(?=$|[,\\]}<\\s"])`).test(page),
+    );
+    expect(leaked).toEqual([]);
+    // e o último aparece, na etiqueta da linha do último preço e no cabeçalho
+    expect(page).toContain(written(bars.at(-1)!.closeCents));
   });
 });

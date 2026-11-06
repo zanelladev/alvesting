@@ -165,6 +165,11 @@ test.describe('cadastro, verificação, entrar, conta, exportar, sair e excluir'
     await page.getByRole('link', { name: 'Baixar meus dados (JSON)' }).click();
     const download = await downloading;
     expect(download.suggestedFilename()).toBe('alvesting-meus-dados.json');
+    // o aviso da pilha da página (o toast da beUI, aria-live polite) diz que o arquivo foi pedido, sem prometer o resultado (o aviso sai no
+    // clique, antes da resposta da api; a revisão do fechamento, M16)
+    await expect(
+      page.getByRole('list', { name: 'Avisos', exact: true }).getByRole('listitem'),
+    ).toContainText('Pedimos o arquivo dos seus dados ao servidor');
     const raw = await readFile(await download.path(), 'utf8');
     const exported = envelopeSchema(userExportSchema).parse(JSON.parse(raw));
     if (!exported.success) throw new Error('a exportação veio com erro');

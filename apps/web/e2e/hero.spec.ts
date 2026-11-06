@@ -184,3 +184,25 @@ test('com movimento reduzido nada anda: a arte fica no quadro 0 sem pedir o arqu
     await page.locator('.tape-trilho').evaluate((element) => getComputedStyle(element).transform),
   ).toBe('none');
 });
+
+// O movimento da landing é CSS (globals.css, o bloco da landing): a seta do "Abrir a arena" anda 2 px para a frente no hover, em 150 ms, e
+// volta quando o ponteiro sai; com movimento reduzido ela fica parada. Só com o mouse: o toque não tem hover (pulado nos projetos de toque).
+test('no hover a seta do "Abrir a arena" anda 2 px e volta; com movimento reduzido, fica parada', async ({
+  page,
+}, testInfo) => {
+  test.skip(!testInfo.project.name.startsWith('desktop'), 'o hover é do mouse');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  const cta = page.getByRole('main').getByRole('link', { name: 'Abrir a arena', exact: true });
+  const arrow = cta.first().locator('.seta');
+  const shift = () => arrow.evaluate((element) => getComputedStyle(element).translate);
+  expect(await shift()).toBe('none');
+  await cta.first().hover();
+  await expect.poll(shift).toBe('2px');
+  await page.mouse.move(0, 0);
+  await expect.poll(shift).toBe('none');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await cta.first().hover();
+  await page.waitForTimeout(300);
+  expect(await shift()).toBe('none');
+});

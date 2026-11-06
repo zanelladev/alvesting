@@ -27,7 +27,7 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
             ? 'Escolha a senha nova. Ao salvar, as outras sessões abertas da conta são encerradas.'
             : 'Este link está incompleto. Abra o link do e-mail inteiro, ou peça um novo.'}
         </p>
-        {/* sem o token, a saída é a única ação da tela: a pílula preta */}
+        {/* sem o token, a saída é a única ação da tela: a pílula primária */}
         {token ? null : (
           <p className="pt-4">
             <NavLink href="/esqueci-senha" className={`${BUTTON} btn-primary`}>

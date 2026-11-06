@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseBrl } from '@alvesting/contracts/portfolio-rules';
 import type { Reply } from './account-client';
@@ -10,6 +11,7 @@ import {
   lotFailure,
   removedMessage,
   savedMessage,
+  alocacao,
   type LotDraft,
 } from './wallet-client';
 
@@ -288,5 +290,120 @@ describe('lotFailure', () => {
     const forbidden = lotFailure(failure({ status: 403, code: 'FORBIDDEN' }));
     expect(forbidden.link).toBeUndefined();
     expect(forbidden.message).toBe('Não foi possível concluir. Confira os dados e tente de novo.');
+  });
+});
+
+// A alocação da rosca (docs/TELAS.md, seção 9): o valor de cada posição com fechamento sobre o valor estimado, do maior para o menor, em
+// pontos-base inteiros pela regra do projeto (`ratioBps`, o meio para longe do zero). Até seis ações, uma fatia por ação; mais que isso, as cinco
+// maiores e "Outras", com a soma do resto. A posição sem cotação não tem valor e fica fora (o custo dela segue no custo total).
+describe('alocacao', () => {
+  const pos = (ticker: string, valueCents: number | null) => ({
+    ticker,
+    quantity: 10,
+    costCents: 1_000,
+    avgPriceCents: 100,
+    closeCents: valueCents === null ? null : 100,
+    closeDate: valueCents === null ? null : '2026-11-09',
+    valueCents,
+    pnlCents: valueCents === null ? null : valueCents - 1_000,
+    pnlBps: null,
+  });
+
+  it('uma fatia por ação, da maior para a menor, com a parte em pontos-base e a cor na ordem', () => {
+    expect(
+      alocacao([pos('MOVE3', 1_429_400), pos('PAUS3', 21_047_500), pos('SINA3', 84_110)]),
+    ).toEqual({
+      totalCents: 22_561_010,
+      fatias: [
+        {
+          id: 'PAUS3',
+          nome: 'PAUS3',
+          valueCents: 21_047_500,
+          shareBps: 9_329,
+          cor: 'var(--fatia-1)',
+          tickers: ['PAUS3'],
+        },
+        {
+          id: 'MOVE3',
+          nome: 'MOVE3',
+          valueCents: 1_429_400,
+          shareBps: 634,
+          cor: 'var(--fatia-2)',
+          tickers: ['MOVE3'],
+        },
+        {
+          id: 'SINA3',
+          nome: 'SINA3',
+          valueCents: 84_110,
+          shareBps: 37,
+          cor: 'var(--fatia-3)',
+          tickers: ['SINA3'],
+        },
+      ],
+    });
+  });
+
+  it('a posição sem cotação e a de valor zero ficam fora; sem nenhuma com valor, não há rosca', () => {
+    expect(
+      alocacao([pos('MOVE3', 500), pos('SEMN3', null), pos('ZERO3', 0)]).fatias.map((f) => f.id),
+    ).toEqual(['MOVE3']);
+    expect(alocacao([pos('SEMN3', null)])).toEqual({ totalCents: 0, fatias: [] });
+    expect(alocacao([])).toEqual({ totalCents: 0, fatias: [] });
+  });
+
+  it('seis ações cabem uma a uma; a sétima junta as menores em "Outras", com a soma e a quantidade', () => {
+    const seis = ['A', 'B', 'C', 'D', 'E', 'F'].map((t, i) => pos(`${t}AAA3`, (6 - i) * 100));
+    expect(alocacao(seis).fatias.map((f) => f.id)).toEqual([
+      'AAAA3',
+      'BAAA3',
+      'CAAA3',
+      'DAAA3',
+      'EAAA3',
+      'FAAA3',
+    ]);
+
+    const oito = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map((t, i) =>
+      pos(`${t}AAA3`, (8 - i) * 100),
+    );
+    const { totalCents, fatias } = alocacao(oito);
+    expect(totalCents).toBe(3_600);
+    expect(fatias.map((f) => f.id)).toEqual([
+      'AAAA3',
+      'BAAA3',
+      'CAAA3',
+      'DAAA3',
+      'EAAA3',
+      'outras',
+    ]);
+    expect(fatias.at(-1)).toEqual({
+      id: 'outras',
+      nome: 'Outras (3 ações)',
+      valueCents: 600,
+      shareBps: 1_667,
+      cor: 'var(--fatia-outras)',
+      tickers: ['FAAA3', 'GAAA3', 'HAAA3'],
+    });
+  });
+
+  // a cor de cada fatia é uma variável do `.rosca` do globals.css: a que não existe cai no `stroke` herdado (nenhum), e a fatia some do anel
+  it('toda cor que a alocação dá existe no globals.css, a sexta fatia inclusive', () => {
+    const css = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
+    const rosca = /\.rosca \{([\s\S]*?)\}/.exec(css)?.[1] ?? '';
+    const carteiras = [6, 7, 8].map((n) =>
+      Array.from({ length: n }, (_, i) => pos(`${String.fromCharCode(65 + i)}AAA3`, (n - i) * 100)),
+    );
+    const cores = new Set(carteiras.flatMap((c) => alocacao(c).fatias.map((f) => f.cor)));
+    expect([...cores]).toContain('var(--fatia-6)');
+    for (const cor of cores) {
+      const nome = /^var\((--[a-z0-9-]+)\)$/.exec(cor)?.[1];
+      expect(rosca, cor).toMatch(new RegExp(`${nome}:`));
+    }
+  });
+
+  it('o empate no valor sai na ordem do ticker (a mesma ordem em toda renderização)', () => {
+    expect(alocacao([pos('SINA3', 100), pos('MOVE3', 100)]).fatias.map((f) => f.id)).toEqual([
+      'MOVE3',
+      'SINA3',
+    ]);
   });
 });

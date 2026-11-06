@@ -2,21 +2,21 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import type { ArenaCurrent, InternalBar, PublicCompetitor } from '@alvesting/contracts';
 import { slugSchema } from '@alvesting/contracts';
+import { Tooltip } from '../../../../components/arc/tooltip/tooltip';
 import { BarraCarteiras, lerCarteiras } from '../../../../components/arena/carteiras';
 import {
   AREA_ARENA,
+  AvisoSimulado,
   ComBarra,
   NavegacaoDaArea,
   REGRAS,
   telasDaArena,
 } from '../../../../components/arena/pagina';
-import { EquityChart } from '../../../../components/charts';
+import { LineChart } from '../../../../components/beui/line-chart';
 import { Competidor, FaixaDeModelos } from '../../../../components/competidor';
 import { Countdown } from '../../../../components/countdown';
 import { DecisionCard } from '../../../../components/decisions';
 import {
-  Abas,
-  Aviso,
   Empty,
   Fact,
   Facts,
@@ -37,19 +37,22 @@ import {
   formatBps,
   formatDate,
   formatDecimalString,
+  formatPercentile,
   formatTime,
   formatWeekdayDate,
   variationBps,
 } from '../../../../lib/format';
+import { versoesDosLogos } from '../../../../lib/logos';
 import { actionOf, cursorOf, first, orNotFound, type SearchParams } from '../../../../lib/page';
 import { REFERENCE_TICKER, readBars } from '../../../../lib/quotes';
 import { withApiDown } from '../../../../lib/with-api-down';
 
 // A arena (docs/redesign-rallies/plano.md, seção e; o conteúdo é o da home de antes, que virou a landing): no desenho da Arena do Rallies,
-// a barra "Carteiras" à esquerda (components/arena/carteiras.tsx), e no principal a faixa dos modelos, o gráfico do patrimônio com o
-// rótulo no fim de cada linha, as cotações e o macro com a data de cada valor, os ciclos, o feed de decisões com o filtro por BUY, SELL e
-// HOLD e por modelo, e a temporada. O e2e acha as regiões pelo nome ("Ranking", "Patrimônio", "Cotações e macro", "Ciclos", "Decisões",
-// "Temporada" e "Carteiras"), não pela ordem.
+// a barra "Carteiras" à esquerda (components/arena/carteiras.tsx), e no principal a faixa dos modelos, o gráfico do patrimônio (o Line Chart
+// da beUI, com o rótulo no fim de cada linha), as cotações e o macro com a data de cada valor, os ciclos, o feed de decisões com o filtro por
+// BUY, SELL e HOLD e por modelo, e a temporada. O e2e acha as regiões pelo nome ("Ranking", "Patrimônio", "Cotações e macro", "Ciclos",
+// "Decisões", "Temporada" e "Carteiras"), não pela ordem. O "simulado" vai uma vez (docs/DESIGN.md): o aviso discreto no topo cobre a página
+// inteira, e as peças tiram a nota delas (`avisoNaPagina`).
 // A página lê a api pelo cache de dados do site (src/lib/api.ts) e é dinâmica: o `next build` da imagem não tem api para chamar. O BOVA11
 // da faixa de cotações não vem da API pública (ela não entrega cotação bruta): sai da rota interna, com o segredo do servidor
 // (src/lib/quotes.ts; docs/API.md, seção 6), lido em paralelo com as outras e pelo mesmo cache de dados.
@@ -81,6 +84,20 @@ function feedHref({ action, modelo, cursor }: Feed): string {
   return `/arena${text ? `?${text}` : ''}#feed`;
 }
 
+// A vista da arena abaixo de 1280 px (?vista=carteiras; o padrão, e o valor que não é um deles, é a das decisões): as abas "Decisões |
+// Carteiras", do servidor, como o filtro do feed (o QA do fechamento, achado 7). O link da vista leva o filtro do feed junto, sem o cursor.
+type Vista = 'decisoes' | 'carteiras';
+const vistaOf = (value: string | undefined): Vista =>
+  value === 'carteiras' ? 'carteiras' : 'decisoes';
+function vistaHref(vista: Vista, { action, modelo }: Feed): string {
+  const query = new URLSearchParams();
+  if (vista === 'carteiras') query.set('vista', vista);
+  if (action) query.set('filtro', action);
+  if (modelo) query.set('modelo', modelo);
+  const text = query.toString();
+  return `/arena${text ? `?${text}` : ''}`;
+}
+
 // O modelo do filtro (?modelo=slug): o que não tem a forma de um slug é ignorado, como o filtro que não é uma ação; o slug que não é de
 // nenhum modelo dá a lista vazia da api ("Nenhuma decisão com este filtro").
 const modeloOf = (value: string | undefined) => {
@@ -88,8 +105,8 @@ const modeloOf = (value: string | undefined) => {
   return parsed?.success ? parsed.data : undefined;
 };
 
-// Uma seção da arena com o rótulo pequeno do Rallies (o "FEED" deles, na mono do sistema; em caixa normal, porque é o nome da região que o
-// e2e lê) e, à direita, o que a seção tiver de controle (o filtro do feed).
+// Uma seção da arena com o rótulo pequeno do Rallies (o "FEED" deles; na sans 500, a Regra da Sans Única; em caixa normal, porque é o nome
+// da região que o e2e lê) e, à direita, o que a seção tiver de controle (o filtro do feed).
 function Bloco({
   id,
   title,
@@ -105,7 +122,7 @@ function Bloco({
     <section id={id} aria-labelledby={`${id}-titulo`} className="mt-10">
       {/* `relative`: a lista do filtro por modelo se posiciona nesta linha inteira (no celular, da largura dela) */}
       <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pb-4">
-        <h2 id={`${id}-titulo`} className="font-mono text-13 font-medium text-muted">
+        <h2 id={`${id}-titulo`} className="text-13 font-medium text-muted">
           {title}
         </h2>
         {extra}
@@ -231,7 +248,7 @@ function FiltroModelo({
                 className={`${item} aria-[current=true]:font-semibold`}
               >
                 <span className="min-w-0">
-                  <Competidor competitor={modelo} link={false} />
+                  <Competidor competitor={modelo} link={false} etiqueta={false} />
                 </span>
               </NavLink>
             </li>
@@ -251,13 +268,15 @@ export default withApiDown(async function ArenaPage({
   const action = actionOf(first(query.filtro));
   const modelo = modeloOf(first(query.modelo));
   const cursor = cursorOf(first(query.cursor));
+  const vista = vistaOf(first(query.vista));
 
-  // a temporada atual, o feed e o BOVA11 não dependem um do outro: as três leituras saem juntas
-  const [current, feed, bars] = await orNotFound(
+  // a temporada atual, o feed, o BOVA11 e os logos das ações não dependem um do outro: as leituras saem juntas
+  const [current, feed, bars, logos] = await orNotFound(
     Promise.all([
       api.arenaCurrent(),
       api.decisions({ action, competitor: modelo, cursor, limit: FEED_LIMIT }),
       readBars(REFERENCE_TICKER),
+      versoesDosLogos(),
     ]),
   );
   const { season, lastCycle, nextCycle, macro } = current;
@@ -276,9 +295,10 @@ export default withApiDown(async function ArenaPage({
   // A hora do pedido: a página é dinâmica (force-dynamic), então este "agora" é o de quem a abriu. O Countdown, no navegador, o refaz.
   const now = Date.now();
 
-  const drawn = equity?.series.filter(
-    (s) => s.competitor.type === 'MODEL' || s.competitor.type === 'RANDOM',
-  );
+  // as referências (o CDI, o igual-peso e o BOVA11) começam escondidas no gráfico: a legenda as mostra, e a linha se desenha
+  const referencias = equity?.series
+    .filter((s) => s.competitor.type !== 'MODEL' && s.competitor.type !== 'RANDOM')
+    .map((s) => s.competitor.slug);
   const ranked = ranking?.rows.filter(
     (row) => row.competitor.type === 'MODEL' || row.competitor.type === 'RANDOM',
   );
@@ -287,17 +307,25 @@ export default withApiDown(async function ArenaPage({
     .map((row) => row.competitor);
   // o retorno de cada modelo na temporada, no cabeçalho do item do feed
   const returnOf = new Map(ranking?.rows.map((row) => [row.competitor.slug, row.returnBps]));
-  // A arena simulada (ui.tsx, SimulatedTag): algum modelo da temporada exibida decide pelo provedor fake. O elenco vem do ranking (a
-  // temporada inteira, depois da primeira liquidação) e do feed (as decisões do primeiro pregão, antes dela).
-  const simulated = [...(ranking?.rows ?? []), ...feed.rows].some((row) =>
-    isSimulated(row.competitor),
-  );
+  // A arena simulada (ui.tsx, quemSimula): algum modelo da temporada exibida decide pelo provedor fake. O elenco vem do ranking (a
+  // temporada inteira, depois da primeira liquidação) ou do feed (as decisões do primeiro pregão, antes dela). O feed filtrado mostra só uma
+  // parte do elenco: o aviso nomeia os simulados que vê, sem concluir que são todos.
+  const elenco = ranking?.rows.length
+    ? ranking.rows.map((row) => row.competitor)
+    : feed.rows.map((row) => row.competitor);
+  const parcial = !ranking?.rows.length && Boolean(action || modelo || cursor);
 
   return (
     <ComBarra
       largura={400}
+      vista={vista}
       barra={
-        <BarraCarteiras carteiras={carteiras} capitalCents={season?.params.capitalCents ?? 0} />
+        <BarraCarteiras
+          carteiras={carteiras}
+          capitalCents={season?.params.capitalCents ?? 0}
+          logos={logos}
+          avisoNaPagina
+        />
       }
     >
       <NavegacaoDaArea
@@ -313,187 +341,215 @@ export default withApiDown(async function ArenaPage({
           Sorteio (o controle) e das referências: CDI, igual-peso e BOVA11. Dinheiro fictício.
         </p>
       </PageHead>
-      {simulated ? (
-        <Aviso>
-          <strong>Decisões simuladas: os modelos ainda não estão conectados.</strong> Os nomes são
-          os do elenco, mas quem decide por cada modelo marcado como simulado é uma estratégia fixa
-          e simples. O resultado não diz nada sobre os modelos de verdade.
-        </Aviso>
-      ) : null}
-      {/* no celular e no tablet as carteiras descem para depois do conteúdo: os títulos de aba grandes do Rallies levam a elas */}
+      <AvisoSimulado competitors={elenco} parcial={parcial} />
+      {/* No celular e no tablet, uma vista por vez: as decisões (o conteúdo da arena) ou as carteiras, como o "Feed | Portfolios" do Rallies.
+          São links do servidor (a URL guarda a escolha), no desenho do segmentado, com a escolhida marcada; a partir de 1280 px as duas
+          aparecem e as abas somem. */}
       <div className="mt-6 xl:hidden">
-        <Abas
-          grandes
+        <Segmentado
           label="Seções da arena"
           items={[
-            { label: 'Decisões', href: '#feed' },
-            { label: 'Carteiras', href: '#carteiras' },
+            {
+              label: 'Decisões',
+              href: vistaHref('decisoes', { action, modelo }),
+              atual: vista === 'decisoes' ? 'page' : undefined,
+            },
+            {
+              label: 'Carteiras',
+              href: vistaHref('carteiras', { action, modelo }),
+              atual: vista === 'carteiras' ? 'page' : undefined,
+            },
           ]}
         />
       </div>
 
-      <section id="ranking" aria-labelledby="ranking-titulo" className="mt-6">
-        <h2 id="ranking-titulo" className="sr-only">
-          Ranking
-        </h2>
-        {ranked && ranked.length > 0 ? (
-          <>
-            <FaixaDeModelos rows={ranked} label="Modelos e Sorteio, por retorno" />
-            <p className="flex justify-end">
-              <NavLink href="/ranking" className={`${LINK} text-sm`}>
-                Ranking completo
-              </NavLink>
-            </p>
-          </>
-        ) : (
-          <Empty>{NO_RESULT}</Empty>
-        )}
-      </section>
-
-      <Bloco id="patrimonio" title="Patrimônio">
-        {equity && drawn && equity.dates.length > 0 ? (
-          <EquityChart
-            id="arena-patrimonio"
-            dates={equity.dates}
-            series={drawn.map((s) => ({
-              slug: s.competitor.slug,
-              name: s.competitor.name,
-              cents: s.equityCents,
-              simulated: isSimulated(s.competitor),
-              competitor: s.competitor,
-            }))}
-            band={baseline ? alignBand(equity.dates, baseline.rows) : null}
-          />
-        ) : (
-          <Empty>{NO_RESULT}</Empty>
-        )}
-      </Bloco>
-
-      <Bloco id="cotacoes" title="Cotações e macro">
-        <Quotes macro={macro} bova11={bova11Of(bars)} />
-      </Bloco>
-
-      {season ? (
-        <Bloco id="ciclos" title="Ciclos">
-          <Facts>
-            <Fact term="Último ciclo">
-              {lastCycle ? (
-                <>
-                  <NavLink href={`/ciclos/${lastCycle.date}`} className={LINK}>
-                    {formatDate(lastCycle.date)}
-                  </NavLink>{' '}
-                  <span className="text-sm text-body">{CYCLE_STATUS[lastCycle.status]}</span>
-                </>
-              ) : (
-                'Ainda não houve ciclo nesta temporada.'
-              )}
-            </Fact>
-          </Facts>
-          {lastCycle ? (
+      <div className="vista-decisoes">
+        <section id="ranking" aria-labelledby="ranking-titulo" className="mt-6">
+          <h2 id="ranking-titulo" className="sr-only">
+            Ranking
+          </h2>
+          {ranked && ranked.length > 0 ? (
             <>
-              <div className="overflow-hidden rounded-lg border border-hairline">
-                <Strip columns={3}>
-                  {(['BUY', 'SELL', 'HOLD'] as const).map((name) => (
-                    <StripItem key={name} term={name}>
-                      {lastCycle.counts[name]}
-                    </StripItem>
-                  ))}
-                </Strip>
-              </div>
-              <p className="muted">
-                BUY, SELL e HOLD: itens válidos de todas as decisões do último ciclo.
+              {/* o tooltip da Arc em cada cartão (o nome inteiro, com o sufixo de versão, e o que é o percentil): de cliente, só na arena */}
+              <FaixaDeModelos
+                rows={ranked}
+                label="Modelos e Sorteio, por retorno"
+                avisoNaPagina
+                envolver={(cartao, row) => (
+                  <Tooltip
+                    side="bottom"
+                    content={
+                      <>
+                        <span className="block font-medium">{row.competitor.name}</span>
+                        {row.percentileBps === null ? null : (
+                          <span className="block">
+                            Percentil {formatPercentile(row.percentileBps)}: o retorno ficou acima
+                            de {formatPercentile(row.percentileBps)}% das carteiras sorteadas do
+                            Monte Carlo.
+                          </span>
+                        )}
+                      </>
+                    }
+                  >
+                    {cartao}
+                  </Tooltip>
+                )}
+              />
+              <p className="flex justify-end">
+                <NavLink href="/ranking" className={`${LINK} text-sm`}>
+                  Ranking completo
+                </NavLink>
               </p>
             </>
-          ) : null}
-          <Facts>
-            <Fact term="Próximo ciclo">
-              {nextCycle ? (
-                <>
-                  {formatWeekdayDate(nextCycle.date)}, às {formatTime(nextCycle.decisionAt)}{' '}
-                  (Brasília).{' '}
-                  <Countdown
-                    at={nextCycle.decisionAt}
-                    initial={countdownText(nextCycle.decisionAt, now)}
-                  />
-                </>
-              ) : season.status === 'FINISHED' ? (
-                'Nenhum: a temporada acabou.'
-              ) : (
-                'Nenhum: o último pregão da temporada já abriu.'
-              )}
-            </Fact>
-          </Facts>
-        </Bloco>
-      ) : null}
+          ) : (
+            <Empty>{NO_RESULT}</Empty>
+          )}
+        </section>
 
-      <Bloco
-        id="feed"
-        title="Decisões"
-        extra={
-          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
-            <Segmentado
-              preto
-              label="Filtrar decisões"
-              items={FILTERS.map(([label, value]) => ({
-                label,
-                href: feedHref({ action: value, modelo }),
-                atual: action === value ? 'true' : undefined,
+        <Bloco id="patrimonio" title="Patrimônio">
+          {equity && equity.dates.length > 0 ? (
+            <LineChart
+              id="arena-patrimonio"
+              label="Patrimônio por pregão"
+              dates={equity.dates}
+              series={equity.series.map((s) => ({
+                competitor: s.competitor,
+                cents: s.equityCents,
               }))}
+              band={baseline ? alignBand(equity.dates, baseline.rows) : null}
+              defaultHidden={referencias}
             />
-            {modelos.length > 0 ? (
-              <FiltroModelo modelos={modelos} atual={modelo} action={action} />
-            ) : null}
-          </div>
-        }
-      >
-        {feed.rows.length > 0 ? (
-          <div className="max-w-2xl">
-            {feed.rows.map((row) => (
-              <DecisionCard
-                key={`${row.date}/${row.competitor.slug}`}
-                decision={row}
-                date={row.date}
-                by="model"
-                simulated={isSimulated(row.competitor)}
-                returnBps={returnOf.get(row.competitor.slug) ?? null}
-              />
-            ))}
-          </div>
-        ) : (
-          <Empty>
-            {action || modelo || cursor
-              ? 'Nenhuma decisão com este filtro.'
-              : 'Nenhuma decisão ainda.'}
-          </Empty>
-        )}
-        {feed.nextCursor ? (
-          <NavLink
-            href={feedHref({ action, modelo, cursor: feed.nextCursor })}
-            className="btn btn-primary"
-          >
-            Mais antigas
-          </NavLink>
-        ) : null}
-      </Bloco>
+          ) : (
+            <Empty>{NO_RESULT}</Empty>
+          )}
+        </Bloco>
 
-      <Bloco id="temporada" title="Temporada">
+        <Bloco id="cotacoes" title="Cotações e macro">
+          <Quotes macro={macro} bova11={bova11Of(bars)} />
+        </Bloco>
+
         {season ? (
-          <Facts dense>
-            <Fact term="Nome" wide>
-              {season.name}
-            </Fact>
-            <Fact term="Situação">
-              {season.status === 'FINISHED' ? 'Encerrada' : 'Em andamento'}
-            </Fact>
-            <Fact term="Pregões">{season.params.sessions}</Fact>
-            <Fact term="Liquidado até" wide>
-              {season.settledThrough ? formatDate(season.settledThrough) : 'ainda não'}
-            </Fact>
-          </Facts>
-        ) : (
-          <Empty>Nenhuma temporada em andamento ou encerrada ainda.</Empty>
-        )}
-      </Bloco>
+          <Bloco id="ciclos" title="Ciclos">
+            <Facts>
+              <Fact term="Último ciclo">
+                {lastCycle ? (
+                  <>
+                    <NavLink href={`/ciclos/${lastCycle.date}`} className={LINK}>
+                      {formatDate(lastCycle.date)}
+                    </NavLink>{' '}
+                    <span className="text-sm text-body">{CYCLE_STATUS[lastCycle.status]}</span>
+                  </>
+                ) : (
+                  'Ainda não houve ciclo nesta temporada.'
+                )}
+              </Fact>
+            </Facts>
+            {lastCycle ? (
+              <>
+                <div className="overflow-hidden rounded-lg border border-hairline">
+                  <Strip columns={3}>
+                    {(['BUY', 'SELL', 'HOLD'] as const).map((name) => (
+                      <StripItem key={name} term={name}>
+                        {lastCycle.counts[name]}
+                      </StripItem>
+                    ))}
+                  </Strip>
+                </div>
+                <p className="muted">
+                  BUY, SELL e HOLD: itens válidos de todas as decisões do último ciclo.
+                </p>
+              </>
+            ) : null}
+            <Facts>
+              <Fact term="Próximo ciclo">
+                {nextCycle ? (
+                  <>
+                    {formatWeekdayDate(nextCycle.date)}, às {formatTime(nextCycle.decisionAt)}{' '}
+                    (Brasília).{' '}
+                    <Countdown
+                      at={nextCycle.decisionAt}
+                      initial={countdownText(nextCycle.decisionAt, now)}
+                    />
+                  </>
+                ) : season.status === 'FINISHED' ? (
+                  'Nenhum: a temporada acabou.'
+                ) : (
+                  'Nenhum: o último pregão da temporada já abriu.'
+                )}
+              </Fact>
+            </Facts>
+          </Bloco>
+        ) : null}
+
+        <Bloco
+          id="feed"
+          title="Decisões"
+          extra={
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+              <Segmentado
+                preto
+                label="Filtrar decisões"
+                items={FILTERS.map(([label, value]) => ({
+                  label,
+                  href: feedHref({ action: value, modelo }),
+                  atual: action === value ? 'true' : undefined,
+                }))}
+              />
+              {modelos.length > 0 ? (
+                <FiltroModelo modelos={modelos} atual={modelo} action={action} />
+              ) : null}
+            </div>
+          }
+        >
+          {feed.rows.length > 0 ? (
+            <div className="max-w-2xl">
+              {feed.rows.map((row) => (
+                <DecisionCard
+                  key={`${row.date}/${row.competitor.slug}`}
+                  decision={row}
+                  date={row.date}
+                  by="model"
+                  simulated={isSimulated(row.competitor)}
+                  avisoNaPagina
+                  returnBps={returnOf.get(row.competitor.slug) ?? null}
+                  logos={logos}
+                />
+              ))}
+            </div>
+          ) : (
+            <Empty>
+              {action || modelo || cursor
+                ? 'Nenhuma decisão com este filtro.'
+                : 'Nenhuma decisão ainda.'}
+            </Empty>
+          )}
+          {/* a paginação é ação de apoio: a pílula cinza (a primária fica na ação principal; a Regra da Voz Única) */}
+          {feed.nextCursor ? (
+            <NavLink href={feedHref({ action, modelo, cursor: feed.nextCursor })} className="btn">
+              Mais antigas
+            </NavLink>
+          ) : null}
+        </Bloco>
+
+        <Bloco id="temporada" title="Temporada">
+          {season ? (
+            <Facts dense>
+              <Fact term="Nome" wide>
+                {season.name}
+              </Fact>
+              <Fact term="Situação">
+                {season.status === 'FINISHED' ? 'Encerrada' : 'Em andamento'}
+              </Fact>
+              <Fact term="Pregões">{season.params.sessions}</Fact>
+              <Fact term="Liquidado até" wide>
+                {season.settledThrough ? formatDate(season.settledThrough) : 'ainda não'}
+              </Fact>
+            </Facts>
+          ) : (
+            <Empty>Nenhuma temporada em andamento ou encerrada ainda.</Empty>
+          )}
+        </Bloco>
+      </div>
     </ComBarra>
   );
 });

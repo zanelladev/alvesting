@@ -18,6 +18,8 @@ vi.mock('../../lib/api', async (importOriginal) => ({
   api,
 }));
 vi.mock('../../lib/quotes', () => ({ REFERENCE_TICKER: 'BOVA11', ...quotes }));
+// o índice dos logos das ações (lib/logos.ts, só do servidor): a justificativa mostra o logo ao lado do ticker; aqui, nenhum (os monogramas)
+vi.mock('../../lib/logos', () => ({ versoesDosLogos: () => Promise.resolve(new Map()) }));
 
 const { default: Landing } = await import('./page');
 
@@ -133,12 +135,15 @@ describe('a landing', () => {
     const out = await render();
     expect(api.leaderboard).toHaveBeenCalledWith('temporada-1');
     expect(out).toContain('Temporada em andamento · último pregão em 04/11');
-    // os dois modelos do elenco nos ladrilhos deles (o laboratório pelo slug), e os outros quatro só com o nome do laboratório
-    expect(out).toMatch(
-      /data-lab="anthropic"[^>]*><\/span><span>Claude Opus 5\.5 <span class="badge/,
-    );
-    expect(out).toMatch(/data-lab="openai"[^>]*><\/span><span>GPT-6\.1 Sol <span class="badge/);
+    // os dois modelos do elenco nos ladrilhos deles (o laboratório pelo slug), e os outros quatro só com o nome do laboratório; o
+    // "simulado" vai uma vez, no cabeçalho da faixa (docs/DESIGN.md: uma vez por contexto), e não em cada ladrilho
+    expect(out).toMatch(/data-lab="anthropic"[^>]*><\/span><span>Claude Opus 5\.5<\/span><\/li>/);
+    expect(out).toMatch(/data-lab="openai"[^>]*><\/span><span>GPT-6\.1 Sol<\/span><\/li>/);
     expect(out).toContain('<span>Google</span>');
+    const strip = out.slice(out.indexOf('id="laboratorios-titulo"'));
+    const header = strip.slice(0, strip.indexOf('<ul'));
+    expect(header.match(/>simulado</g)).toHaveLength(1);
+    expect(strip.slice(0, strip.indexOf('</ul>')).match(/>simulado</g)).toHaveLength(1);
     expect(out).toContain(SIMULATED_NOTICE);
     // o painel do ciclo: a contagem e o hash; o da justificativa: a decisão mais nova
     expect(out).toContain('Ciclo de 04/11/2026');

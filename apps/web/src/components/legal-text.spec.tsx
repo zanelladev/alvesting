@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { LegalText } from './legal-text';
+import { LegalText, Sumario, sumarioDoTexto } from './legal-text';
 
 // O texto legal chega da api em Markdown simples (título, subtítulos, parágrafos, listas, citação e negrito) e vira elementos do React:
 // nunca HTML cru. O título (h1), a versão e a vigência a página mostra à parte, acima do texto; o resto sai na ordem em que está.
@@ -105,5 +105,77 @@ describe('LegalText', () => {
   it('texto comprido de uma palavra só quebra em vez de alargar a página', () => {
     const out = html(`## ${'a'.repeat(300)}\n\n${'b'.repeat(300)}`);
     expect(out).toContain('break-words');
+  });
+});
+
+// O sumário "Nesta página" (docs/TELAS.md, a seção da conta): um item por subtítulo de seção (`## `), na ordem, com o mesmo id do h2 que ele
+// abre. O id vem do texto (sem acento, em minúsculas, com hífen), com o prefixo `secao-`, e o repetido ganha um número: o texto legal não muda
+// uma palavra, só ganha a âncora.
+describe('sumarioDoTexto', () => {
+  it('um item por subtítulo de seção, na ordem, com o id do h2 que ele abre', () => {
+    expect(sumarioDoTexto(SAMPLE)).toEqual([
+      { id: 'secao-1-o-que-e-a-alvesting', titulo: '1. O que é a Alvesting' },
+      { id: 'secao-2-que-dados-tratamos', titulo: '2. Que dados tratamos' },
+    ]);
+    const out = html(SAMPLE);
+    expect(out).toMatch(/<h2 id="secao-1-o-que-e-a-alvesting"[^>]*>1\. O que é a Alvesting<\/h2>/);
+    expect(out).toMatch(/<h2 id="secao-2-que-dados-tratamos"[^>]*>2\. Que dados tratamos<\/h2>/);
+  });
+
+  it('o subtítulo repetido ganha um número, o h3 não entra, e o negrito sai do nome do item', () => {
+    const text = [
+      '## Dados',
+      '',
+      '### Detalhe',
+      '',
+      '## Dados',
+      '',
+      '## **Seus** direitos (LGPD, art. 18)',
+    ].join('\n');
+    expect(sumarioDoTexto(text)).toEqual([
+      { id: 'secao-dados', titulo: 'Dados' },
+      { id: 'secao-dados-2', titulo: 'Dados' },
+      { id: 'secao-seus-direitos-lgpd-art-18', titulo: 'Seus direitos (LGPD, art. 18)' },
+    ]);
+    expect(html(text)).toContain('<h2 id="secao-dados-2"');
+  });
+
+  it('texto sem subtítulo não tem sumário', () => {
+    expect(sumarioDoTexto('Só um parágrafo.')).toEqual([]);
+  });
+});
+
+describe('Sumario', () => {
+  it('a navegação "Nesta página" com um link por seção, só a partir das telas largas', () => {
+    const out = renderToStaticMarkup(
+      <Sumario
+        itens={[
+          { id: 'secao-1-a', titulo: '1. A' },
+          { id: 'secao-2-b', titulo: '2. B' },
+        ]}
+      />,
+    );
+    expect(out).toMatch(/^<nav aria-label="Nesta página"/);
+    expect(out).toContain('hidden');
+    expect(
+      [...out.matchAll(/<a href="([^"]+)"[^>]*>([^<]+)<\/a>/g)].map((m) => [m[1], m[2]]),
+    ).toEqual([
+      ['#secao-1-a', '1. A'],
+      ['#secao-2-b', '2. B'],
+    ]);
+  });
+
+  it('sem itens, nada', () => {
+    expect(renderToStaticMarkup(<Sumario itens={[]} />)).toBe('');
+  });
+});
+
+// O aviso de rascunho do texto (a citação `> `) é o `[!]` sem caixa, como o aviso de página (docs/DESIGN.md): nem fundo, nem fio, e o `[!]` na sans.
+describe('a citação do rascunho', () => {
+  it('sem caixa e sem a mono', () => {
+    const quote = /<blockquote[^>]*>.*<\/blockquote>/s.exec(html(SAMPLE))![0];
+    expect(quote).not.toMatch(/rounded-lg|border|bg-surface/);
+    expect(quote).not.toContain('font-mono');
+    expect(quote).toContain('[!]');
   });
 });

@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { CAIXA } from './ui';
 
 // O texto dos termos de uso e da política de privacidade (etapa 11), como a api o serve: Markdown simples, de arquivos do repositório
 // (apps/api/src/modules/account/legal). Só o que os textos usam: `## ` e `### ` (subtítulos), `> ` (a citação do rascunho), `- ` (lista),
@@ -61,17 +60,79 @@ function blocks(text: string): Block[] {
   return out;
 }
 
+// A âncora de cada seção (o h2) e o sumário "Nesta página" que a usa: o id sai do texto do subtítulo (sem acento, em minúsculas, o que não é
+// letra nem número vira hífen), com o prefixo `secao-` (um id que começa por número não serve num seletor), e o repetido ganha um número. O texto
+// legal não muda: só o h2 ganha o id.
+const semNegrito = (line: string) => line.replace(/\*\*(.+?)\*\*/g, '$1');
+const slug = (line: string) =>
+  semNegrito(line)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+export interface ItemDoSumario {
+  id: string;
+  titulo: string;
+}
+
+function ancoras(parts: Block[]): ItemDoSumario[] {
+  const vistos = new Map<string, number>();
+  return parts.flatMap((block) => {
+    if (block.kind !== 'h2') return [];
+    const base = `secao-${slug(block.text)}`;
+    const vezes = (vistos.get(base) ?? 0) + 1;
+    vistos.set(base, vezes);
+    return [{ id: vezes === 1 ? base : `${base}-${vezes}`, titulo: semNegrito(block.text) }];
+  });
+}
+
+export const sumarioDoTexto = (text: string): ItemDoSumario[] => ancoras(blocks(text));
+
+// O sumário "Nesta página", preso à direita a partir de 1280 px, onde a coluna de leitura deixa o lado direito vazio (os textos legais e o Como
+// funciona): só HTML e CSS, um link por seção. Abaixo disso a página é uma coluna só, e ele some (o texto continua na ordem).
+// A `nav` ocupa a altura da coluna (o item da grade, ou a caixa que `className` posiciona) e o miolo fica preso abaixo do cabeçalho do site.
+export function Sumario({
+  itens,
+  className,
+}: {
+  itens: readonly ItemDoSumario[];
+  className?: string;
+}) {
+  if (itens.length === 0) return null;
+  return (
+    <nav
+      aria-label="Nesta página"
+      className={`sumario hidden xl:block${className ? ` ${className}` : ''}`}
+    >
+      <div className="sticky top-24">
+        <p className="pb-2 text-13 font-medium text-ink">Nesta página</p>
+        <ol>
+          {itens.map((item) => (
+            <li key={item.id}>
+              <a href={`#${item.id}`}>{item.titulo}</a>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </nav>
+  );
+}
+
 export function LegalText({ text }: { text: string }) {
   const parts = blocks(text);
   if (parts.length === 0) return null;
+  const ids = ancoras(parts).map((item) => item.id);
+  let secao = 0;
   return (
-    // a prosa até 65 caracteres por linha (max-w-prose), 16/1,6, com os subtítulos na Geist de 22 e 18 (docs/redesign-rallies/plano.md, f.5)
+    // a prosa até 65 caracteres por linha (max-w-prose), 16/1,6, com os subtítulos em 22 e 18 (docs/redesign-rallies/plano.md, f.5)
     <div className="max-w-prose space-y-4 text-base leading-[1.6] break-words">
       {parts.map((block, index) => {
         switch (block.kind) {
           case 'h2':
             return (
-              <h2 key={index} className="pt-6 font-display text-22">
+              <h2 key={index} id={ids[secao++]} className="scroll-mt-4 pt-6 font-display text-22">
                 {inline(block.text)}
               </h2>
             );
@@ -82,9 +143,10 @@ export function LegalText({ text }: { text: string }) {
               </h3>
             );
           case 'quote':
+            // o aviso do rascunho é o `[!]` sem caixa, como o aviso de página (ui.tsx, `Aviso`): a honestidade é obrigatória, o peso não
             return (
-              <blockquote key={index} className={`flex gap-3 ${CAIXA}`}>
-                <span aria-hidden="true" className="font-mono text-muted">
+              <blockquote key={index} className="flex gap-2.5 text-body">
+                <span aria-hidden="true" className="shrink-0 font-medium text-muted">
                   [!]
                 </span>
                 <span className="min-w-0">{inline(block.text)}</span>

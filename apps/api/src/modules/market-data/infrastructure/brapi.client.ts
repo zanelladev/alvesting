@@ -136,10 +136,21 @@ const listSchema = z.object({
       stock: z.string(),
       name: z.string().nullish(),
       subType: z.string().nullish(),
+      // qualquer coisa, ou nada (no Zod 4 o z.unknown() sozinho exige a chave): o valor torto ou ausente num papel é "sem logo"
+      // (logoUrl), e não a lista inteira fora do formato
+      logo: z.unknown().optional(),
     }),
   ),
   hasNextPage: z.boolean().optional(),
 });
+
+// O logo da lista (ADR 0036): o job baixa o SVG desse endereço (logo-refresh.ts), então só vale a forma exata, sem porta, usuário, query,
+// fragmento, ponto nem percent-encoding no nome: https://icons.brapi.dev/icons/<nome>.svg. O resto é "sem logo".
+// O ícone que a brapi põe para quem não tem logo também é "sem logo" (a prova de 05/11/2026: o mesmo endereço em 31 das 783 ações).
+const LOGO_URL = /^https:\/\/icons\.brapi\.dev\/icons\/[A-Za-z0-9_-]{1,32}\.svg$/;
+export const BRAPI_DEFAULT_LOGO = 'https://icons.brapi.dev/icons/BRAPI.svg';
+export const logoUrl = (value: unknown): string | null =>
+  typeof value === 'string' && LOGO_URL.test(value) && value !== BRAPI_DEFAULT_LOGO ? value : null;
 
 type Raw =
   | { kind: 'ok'; body: unknown }
@@ -169,7 +180,7 @@ const isTimeout = (error: unknown): boolean =>
   error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
 
 // Só o nome do erro e o código dele ou da causa (ECONNRESET, ENOTFOUND, 57014, P2028...): a mensagem pode trazer a URL.
-const describeError = (error: unknown): { error: string; code?: string } => {
+export const describeError = (error: unknown): { error: string; code?: string } => {
   const codes = [error, error instanceof Error ? error.cause : undefined].map(
     (source) => (source as { code?: unknown } | null | undefined)?.code,
   );
@@ -285,6 +296,7 @@ export class BrapiClient {
           ticker: item.stock,
           name: item.name,
           subType: item.subType,
+          logo: logoUrl(item.logo),
         })),
       );
       if (parsed.data.hasNextPage !== true) return { listings, ...this.finish(run, null) };

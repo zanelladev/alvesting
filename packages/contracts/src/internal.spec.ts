@@ -4,7 +4,11 @@ import {
   INTERNAL_TAPE_LIMIT,
   QUOTES_SECRET_MIN_LENGTH,
   QUOTES_SECRET_SHAPE,
+  LOGO_HEADERS,
+  LOGO_NOT_FOUND,
+  LOGO_VERSION_LENGTH,
   internalBarsSchema,
+  internalLogosSchema,
   internalTapeSchema,
 } from './internal.js';
 
@@ -144,5 +148,51 @@ describe('internalTapeSchema', () => {
     expect(INTERNAL_TAPE_LIMIT).toBe(500);
     expect(internalTapeSchema.safeParse(tape(rows(500))).success).toBe(true);
     expect(internalTapeSchema.safeParse(tape(rows(501))).success).toBe(false);
+  });
+});
+
+// Os logos das ações (ADR 0036): a lista de quem tem logo guardado, com a versão do SVG, e os cabeçalhos com que ele sai.
+describe('internalLogosSchema', () => {
+  const logo = (ticker: string, version = '0123456789abcdef') => ({ ticker, version });
+
+  it('o ticker e a versão (os 16 primeiros hex do SHA-256), em ordem de ticker; a lista vazia vale', () => {
+    expect(LOGO_VERSION_LENGTH).toBe(16);
+    const list = { logos: [logo('BBAS3'), logo('PETR4', 'f'.repeat(16))] };
+    expect(internalLogosSchema.parse(list)).toEqual(list);
+    expect(internalLogosSchema.parse({ logos: [] })).toEqual({ logos: [] });
+  });
+
+  it('estrito: nada além do ticker e da versão (nem o SVG, nem o endereço, nem o SHA-256 inteiro)', () => {
+    for (const bad of [
+      { logos: [{ ...logo('PETR4'), svg: '<svg/>' }] },
+      { logos: [logo('PETR4')], extra: 1 },
+      { logos: [logo('PETR4', 'a'.repeat(64))] },
+      { logos: [logo('PETR4', 'ABCDEF0123456789')] },
+      { logos: [logo('PETR4', 'g'.repeat(16))] },
+      { logos: [logo('petr4')] },
+      { logos: [{ ticker: 'PETR4' }] },
+      {},
+    ]) {
+      expect(internalLogosSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it('em ordem de ticker e sem repetir', () => {
+    expect(internalLogosSchema.safeParse({ logos: [logo('PETR4'), logo('BBAS3')] }).success).toBe(
+      false,
+    );
+    expect(internalLogosSchema.safeParse({ logos: [logo('PETR4'), logo('PETR4')] }).success).toBe(
+      false,
+    );
+  });
+
+  it('os cabeçalhos do SVG: imagem, nosniff e a CSP que o deixa inerte; o código do 404 de quem não tem logo', () => {
+    expect(LOGO_HEADERS).toEqual({
+      'Content-Type': 'image/svg+xml',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy':
+        "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+    });
+    expect(LOGO_NOT_FOUND).toBe('LOGO_NOT_FOUND');
   });
 });

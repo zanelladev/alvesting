@@ -540,7 +540,7 @@ O orçamento de US$ 100 (`budgetAmount = 100`, o crédito do Azure for Students)
 
 ---
 
-## 12. Cotações (brapi): barras ausentes, cota baixa, barras divergentes, brapi fora do ar e a carga inicial
+## 12. Cotações (brapi): barras ausentes, cota baixa, barras divergentes, brapi fora do ar, a carga inicial e os logos
 
 **Não ensaiado.** Cobre `eod-barras-ausentes`, `brapi-cota-baixa` e `barras-divergentes`, mais a brapi fora do ar, a carga inicial e o calendário de feriados do ano. Só a carga inicial (seção 12.5, no banco descartável) e a leitura dos cabeçalhos de cota foram exercitadas contra a brapi de verdade, na prova controlada de 04/11/2026 (10 requisições; `docs/DADOS.md`, seção 9). Os alertas, o 429, o 5xx e a brapi fora do ar nunca foram vistos de verdade: os testes usam um `fetch` falso. A fonte é a brapi (ADR 0032); nada se baixa da B3.
 
@@ -621,6 +621,40 @@ O arquivo `apps/api/src/modules/market-data/domain/b3-holidays.json` é **escrit
 3. Um dia útil que a B3 abre e a lista marca como feriado passa em silêncio: o `eod` não roda e o erro só aparece 60 pregões depois, no `universe`.
 
 **Risco:** lista errada para o ano seguinte esconde um pregão (ou inventa um) até o `universe` acusar.
+
+### 12.7 Os logos das ações (`market:logos`)
+
+**Não ensaiado** pelo Artur: só a prova de 05/11/2026 (banco descartável) e a carga do dev, no mesmo dia (`docs/DADOS.md`, seção 3a). O
+logo de cada ação é uma cópia do SVG da brapi (`icons.brapi.dev`) no nosso banco (`instrument_logo`, ADR 0036). A atualização semanal o
+mantém sozinha (domingo, no `universe`); este comando é para a carga de um banco novo, para repetir o que falhou e, **sempre, depois de
+mudar o validador** (`apps/api/src/modules/market-data/domain/svg-check.ts`).
+
+1. **Primeiro sem rede.** Mostra o banco de destino (servidor e nome, sem credencial), quantas ações ele tem, quantas já têm logo (e
+   quantas com mais de 30 dias) e os pedidos que faria, e **não busca nada**:
+
+```bash
+pnpm --filter @alvesting/api market:logos
+```
+
+2. **Confira o banco mostrado** e repita com o nome dele:
+
+```bash
+pnpm --filter @alvesting/api market:logos --confirmo-banco <nome do banco>
+```
+
+   Faz 1 pedido à lista da brapi (não gasta cota) e baixa do icons.brapi.dev só o que falta, mudou de endereço ou tem mais de 30 dias
+   (a carga do dev: 357 SVG em 44 s). **Antes de baixar, reconfere todo SVG guardado com o validador de hoje e apaga o que ele recusa**:
+   é por isso que o comando vem depois de toda mudança no validador (sem ele, a regra nova só vale no domingo seguinte). No fim mostra os
+   pedidos (a lista e os SVG; nenhum ao histórico), os gravados, os apagados, os recusados por motivo, os sem resposta, os bytes e o tempo.
+3. **Recusado** (`logo recusado; o papel fica sem logo` no log, com o ticker e o motivo, nunca o conteúdo): o papel fica com o monograma.
+   Se o motivo parecer um falso positivo (um logo de verdade que o validador não lê), a correção é no validador, com o caso no
+   `svg-check.spec.ts`, e depois este comando. **Nunca** se grava SVG à mão na tabela: as rotas internas leem o banco como está.
+4. **Sem resposta** (`logo sem resposta do icons.brapi.dev`) ou a passada parada por 5 falhas seguidas: o host fora do ar. Rode de novo
+   mais tarde (pede só a falta).
+5. **Na Azure** o comando roda de onde o banco é alcançável, como o `market:backfill` (seção 12.5).
+
+**Risco:** apontar para o banco errado grava logo onde não devia (por isso o nome do banco tem de ser repetido). Só apaga o logo que o
+validador de hoje recusa.
 
 ## Lacunas conhecidas
 

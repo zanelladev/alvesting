@@ -2,7 +2,7 @@ import type { LegalDocumentId } from '@alvesting/contracts';
 import { readLegal } from '../lib/account';
 import { formatDate } from '../lib/format';
 import { documentOf } from '../lib/legal';
-import { LegalText } from './legal-text';
+import { LegalText, Sumario, sumarioDoTexto } from './legal-text';
 import { Fact, Facts, LINK, NavLink, PageHead } from './ui';
 
 // Uma das duas páginas de texto legal (etapa 11, parte 2): o título, a versão, a vigência e o SHA-256 acima do texto, que é o que a api
@@ -27,7 +27,7 @@ export async function LegalDocumentPage({ id }: { id: LegalDocumentId }) {
             <Fact term="Versão">{doc.version}</Fact>
             <Fact term="Vigência">{formatDate(doc.effectiveDate)}</Fact>
             <Fact term="SHA-256" prose>
-              <span className="font-mono text-sm break-all">{doc.sha256}</span>
+              <span className="hash text-13">{doc.sha256}</span>
             </Fact>
             {id === 'PRIVACY' ? (
               <>
@@ -55,10 +55,13 @@ export async function LegalDocumentPage({ id }: { id: LegalDocumentId }) {
         </p>
       </PageHead>
 
-      {/* o texto em prosa, até 65 caracteres por linha */}
-      <article aria-label={doc.title} className="mt-10">
-        <LegalText text={doc.text} />
-      </article>
+      {/* o texto em prosa, até 65 caracteres por linha, e, a partir de 1280 px, o sumário "Nesta página" preso à direita (só HTML e CSS) */}
+      <div className="mt-10 xl:grid xl:grid-cols-[minmax(0,1fr)_15rem] xl:gap-16">
+        <article aria-label={doc.title}>
+          <LegalText text={doc.text} />
+        </article>
+        <Sumario itens={sumarioDoTexto(doc.text)} />
+      </div>
 
       <ul className="flex flex-wrap gap-x-6">
         <li>

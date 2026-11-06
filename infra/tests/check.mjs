@@ -2245,10 +2245,13 @@ const NEVER_CACHED = [
   '/api/v1/admin/corporate-events',
   '/api/v1/admin/costs',
   '/api/v1/admin/jobs',
-  // as rotas internas de cotações (docs/API.md, seção 6; ADR 0033): as barras de um papel e a fita da home. O site as lê com o segredo, e nada
-  // delas vai para o cache de ninguém. O teste logo abaixo do de admin confere que esta lista tem EXATAMENTE as rotas do controlador
+  // as rotas internas de cotações (docs/API.md, seção 6; ADR 0033): as barras de um papel, a fita da home e os logos (a lista e o de um papel,
+  // ADR 0036). O site as lê com o segredo, e nada delas vai para o cache de ninguém. O teste logo abaixo do de admin confere que esta lista tem
+  // EXATAMENTE as rotas do controlador
   '/api/v1/interno/barras/x',
   '/api/v1/interno/fita',
+  '/api/v1/interno/logos',
+  '/api/v1/interno/logos/x',
   '/api/v1/health',
   '/api/v1/health/stream',
   '/api/docs',

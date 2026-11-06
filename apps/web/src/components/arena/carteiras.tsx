@@ -1,11 +1,16 @@
 import type { CompetitorDetail, LeaderboardRow, PublicCompetitor } from '@alvesting/contracts';
 import { api } from '../../lib/api';
+import { ratioBps } from '../../lib/chart';
 import { formatBRL, formatBRLSigned, formatBps, formatDate } from '../../lib/format';
-import { Competidor } from '../competidor';
-import { Empty, LINK, NavLink, direction } from '../ui';
+import { Tooltip } from '../arc/tooltip/tooltip';
+import { Logo, NomeCurto, partesDoNome } from '../competidor';
+import { LogoDoPapel } from '../logo-do-papel';
+import { Empty, LINK, NavLink, NotaSimulada, direction } from '../ui';
 
 // A barra "Carteiras" da arena e do ranking (plano do redesenho, e.2; o Portfolios do Rallies): a carteira de cada modelo no último pregão
-// liquidado, numa tabela curta (a ação, a alocação com o anel, o resultado e o resultado %), e no pé o resultado da temporada e o caixa. Só
+// liquidado, numa tabela curta (a ação com o logo da empresa, a alocação com o anel, o resultado e o resultado %), e no pé o resultado da
+// temporada e o caixa. O nome do modelo é o curto (o sufixo de versão vai para o leitor de tela e para o tooltip da Arc), e o "simulado" vai
+// uma vez, na nota do título da barra (docs/DESIGN.md), que a página que já avisa tira (`avisoNaPagina`, a arena). Só
 // os modelos: o Sorteio e as referências não têm composição pública (a lista de papéis do igual-peso seria o fechamento de todo papel, todo
 // pregão; ADR 0033). Os números são registros da arena, nunca cotação: o valor e o resultado de cada posição e o patrimônio.
 
@@ -31,15 +36,6 @@ export function lerCarteiras(
   );
 }
 
-// A parte sobre o todo, em pontos-base inteiros, com o meio para longe do zero (docs/METODOLOGIA.md). Em BigInt: o produto por 10.000 passaria
-// do inteiro seguro com valores grandes. O todo que não é positivo não tem razão (nulo: a tela mostra o traço).
-export function ratioBps(part: number, whole: number): number | null {
-  if (whole <= 0) return null;
-  const abs = BigInt(Math.abs(part)) * 10_000n;
-  const rounded = (2n * abs + BigInt(whole)) / (2n * BigInt(whole));
-  return Number(part < 0 ? -rounded : rounded);
-}
-
 // O anel da alocação (o do Rallies): decorativo, o número vai ao lado em texto. O arco é a fração do círculo (`pathLength` de 100), a partir
 // do topo; as cores por classe, que seguem o tema.
 function Anel({ bps }: { bps: number }) {
@@ -51,7 +47,7 @@ function Anel({ bps }: { bps: number }) {
       viewBox="0 0 14 14"
       aria-hidden="true"
       focusable="false"
-      className="shrink-0"
+      className="shrink-0 @max-[21rem]:hidden"
     >
       <circle
         cx="7"
@@ -76,22 +72,48 @@ function Anel({ bps }: { bps: number }) {
   );
 }
 
-// O cabeçalho de coluna em versalete, como o do Rallies: o e2e lê o texto do DOM (em caixa normal), nunca o innerText. Ele pode quebrar
-// ("Resultado %" em duas linhas): em 360 px as quatro colunas só cabem assim. As colunas têm a mesma largura em toda carteira (o `colgroup`;
-// a largura que o conteúdo pedir a mais ainda alarga a coluna, sem encavalar), e os números vão alinhados à esquerda, como o P&L do Rallies:
-// o glifo ▲ ▼ ■ fica no mesmo lugar de uma linha para a outra e de uma carteira para a outra.
+// O cabeçalho de coluna em versalete, como o do Rallies: o e2e lê o texto do DOM (em caixa normal), nunca o innerText. Ele fica numa linha: o
+// "Resultado %" mostra só o "%" ao lado do "Resultado" (o resto do nome vai para o leitor de tela, que ouve "Resultado %"), como o "P&L" e o
+// "P&L %" do Rallies (o QA do fechamento, achado 16: ele quebrava em dois andares). As colunas têm a mesma largura em toda carteira (o
+// `colgroup`; a largura que o conteúdo pedir a mais ainda alarga a coluna, sem encavalar), e os números vão alinhados à esquerda, como o P&L
+// do Rallies: o glifo ▲ ▼ ■ fica no mesmo lugar de uma linha para a outra e de uma carteira para a outra. A Regra do Glifo (docs/DESIGN.md):
+// ele vai só no resultado em reais, o número principal da linha; o resultado % leva o sinal, na cor do texto. A tabela cabe nos 320 px da
+// coluna do celular em 360 px, com o resultado do tamanho de "-R$ 1.330,30" (o QA do fechamento, achado 1): o respiro entre as colunas é de
+// 2 px de cada lado até 640 px, e na carteira mais estreita que 336 px o anel da alocação (decorativo: o número está ao lado) sai.
 const TH =
-  'px-1 pb-2 text-left align-bottom text-11 font-medium tracking-[0.04em] text-muted uppercase sm:px-1.5';
-const TD = 'px-1 whitespace-nowrap tabular-nums sm:px-1.5';
+  'px-0.5 pb-2 text-left align-bottom text-11 font-medium tracking-[0.04em] whitespace-nowrap text-muted uppercase sm:px-1.5';
+const TD = 'px-0.5 whitespace-nowrap tabular-nums sm:px-1.5';
 
-function Carteira({ detail, capitalCents }: { detail: CarteiraLida; capitalCents: number }) {
+function Carteira({
+  detail,
+  capitalCents,
+  logos,
+}: {
+  detail: CarteiraLida;
+  capitalCents: number;
+  logos: ReadonlyMap<string, string> | undefined;
+}) {
   const { competitor } = detail;
   const portfolio = 'indisponivel' in detail ? null : detail.portfolio;
   const holdings = portfolio?.holdings;
+  const link = (
+    <NavLink href={`/modelos/${competitor.slug}`} className={LINK}>
+      <NomeCurto name={competitor.name} type={competitor.type} />
+    </NavLink>
+  );
   return (
-    <div data-carteira={competitor.slug} className="border-b border-hairline py-5 last:border-b-0">
+    <div
+      data-carteira={competitor.slug}
+      className="@container border-b border-hairline py-5 last:border-b-0 xl:-mx-5 xl:px-6"
+    >
+      {/* o nome curto; com o sufixo de versão, o tooltip da Arc mostra o nome inteiro no hover e no foco do teclado */}
       <h3 className="text-15 font-semibold text-ink">
-        <Competidor competitor={competitor} />
+        <Logo competitor={competitor} className="mr-2" />
+        {partesDoNome(competitor.name, competitor.type).resto ? (
+          <Tooltip content={competitor.name}>{link}</Tooltip>
+        ) : (
+          link
+        )}
       </h3>
       {'indisponivel' in detail ? (
         <p className="mt-2 muted">Carteira indisponível agora.</p>
@@ -122,7 +144,7 @@ function Carteira({ detail, capitalCents }: { detail: CarteiraLida; capitalCents
                     Resultado
                   </th>
                   <th scope="col" className={TH}>
-                    Resultado %
+                    <span className="sr-only">Resultado </span>%
                   </th>
                 </tr>
               </thead>
@@ -131,12 +153,17 @@ function Carteira({ detail, capitalCents }: { detail: CarteiraLida; capitalCents
                   const allocation = ratioBps(position.valueCents, portfolio.equityCents);
                   const result = ratioBps(position.pnlCents, position.costCents);
                   return (
-                    <tr key={position.ticker}>
+                    <tr key={position.ticker} className="linha-carteira">
                       <th scope="row" className={`${TD} text-left font-normal`}>
                         <NavLink
                           href={`/acoes/${position.ticker}`}
-                          className={`${LINK} font-mono text-sm font-semibold no-underline hover:underline`}
+                          className={`${LINK} text-sm font-medium no-underline hover:underline`}
                         >
+                          <LogoDoPapel
+                            ticker={position.ticker}
+                            versao={logos?.get(position.ticker)}
+                            className="mr-2.5"
+                          />
                           {position.ticker}
                         </NavLink>
                       </th>
@@ -153,13 +180,7 @@ function Carteira({ detail, capitalCents }: { detail: CarteiraLida; capitalCents
                       <td data-dir={direction(position.pnlCents)} className={TD}>
                         {formatBRLSigned(position.pnlCents)}
                       </td>
-                      {result === null ? (
-                        <td className={TD}>—</td>
-                      ) : (
-                        <td data-dir={direction(result)} className={TD}>
-                          {formatBps(result)}
-                        </td>
-                      )}
+                      <td className={TD}>{result === null ? '—' : formatBps(result)}</td>
                     </tr>
                   );
                 })}
@@ -187,24 +208,42 @@ function Carteira({ detail, capitalCents }: { detail: CarteiraLida; capitalCents
   );
 }
 
+// As linhas do Rallies a partir de 1280 px, com a barra ao lado do conteúdo: o título é a linha de 45 px do topo (o fio embaixo na altura do
+// da linha de abas do principal), e os fios entre as carteiras vão de uma borda da barra à outra (eles comem o respiro dela, -mx-5; o
+// conteúdo de cada carteira fica a 24 px da borda, como o do Rallies). Abaixo disso a barra desce para depois do conteúdo, no respiro dele.
 export function BarraCarteiras({
   carteiras,
   capitalCents,
+  logos,
+  avisoNaPagina = false,
 }: {
   carteiras: readonly CarteiraLida[];
   capitalCents: number;
+  // a versão do logo de cada ticker (lib/logos.ts, versoesDosLogos); sem ela, o monograma
+  logos?: ReadonlyMap<string, string>;
+  // a página já avisa que as decisões são simuladas (a arena): a nota do título sai
+  avisoNaPagina?: boolean;
 }) {
   return (
     <section id="carteiras" aria-labelledby="carteiras-titulo">
+      {/* o título é a linha de 45 px do topo a partir de 1280 px; a nota "simulado" (uma vez por contexto) vem logo embaixo, numa linha */}
       <h2
         id="carteiras-titulo"
-        className="border-b border-hairline pb-3 text-15 font-medium text-ink"
+        className="border-b border-hairline pb-3 text-15 font-medium text-ink xl:-mx-5 xl:flex xl:h-[45px] xl:items-center xl:px-5 xl:pb-0"
       >
         Carteiras
       </h2>
+      {avisoNaPagina ? null : (
+        <NotaSimulada competitors={carteiras.map((detail) => detail.competitor)} className="pt-4" />
+      )}
       {carteiras.length > 0 ? (
         carteiras.map((detail) => (
-          <Carteira key={detail.competitor.slug} detail={detail} capitalCents={capitalCents} />
+          <Carteira
+            key={detail.competitor.slug}
+            detail={detail}
+            capitalCents={capitalCents}
+            logos={logos}
+          />
         ))
       ) : (
         <div className="pt-5">

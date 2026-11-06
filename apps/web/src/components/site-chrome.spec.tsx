@@ -59,6 +59,16 @@ describe('SiteHeader', () => {
   it('não lê a sessão nem o cookie: nada de nome de usuário nem de "Sair" no cabeçalho', () => {
     expect(out).not.toMatch(/cookie|sessão|session|Sair/i);
   });
+
+  // O seletor de tema (ADR 0037) fica antes de "Entrar": na linha, a partir de 1024 px; na folha do "Menu", como a linha "Tema". É HTML do
+  // servidor (o script do <head> faz o resto): a landing não carrega JavaScript de cliente por causa dele.
+  it('o seletor de tema vem antes de "Entrar", dentro do menu', () => {
+    const menu = /<nav id="menu"[^>]*>(.*)<\/nav>/.exec(out)![1]!;
+    expect(menu).toMatch(
+      /<div class="menu-acoes"><div class="tema-linha">.*<fieldset class="tema"><legend class="sr-only">Tema<\/legend>.*<\/fieldset><\/div><a href="\/entrar" class="pill">Entrar<\/a><\/div>/,
+    );
+    expect(menu.match(/<input type="radio" name="tema-site"/g)).toHaveLength(3);
+  });
 });
 
 // A casca do app (ADR 0035): o trilho no desktop e a barra de abas no celular são a mesma `nav "Principal"`, dentro do `banner`; o item da
@@ -125,6 +135,19 @@ describe('AppShell', () => {
       );
     }
     expect(sheet.match(/<a href="[^"]+">/g)).toHaveLength(5);
+  });
+
+  // O seletor de tema (ADR 0037): no pé do trilho, em pé, entre o "Buscar" e a "Conta" (abaixo de 1024 px ele some da barra de abas); e na
+  // folha "Mais", depois das telas de apoio, para o celular. Cada um com o seu nome de grupo.
+  it('o seletor de tema fica no pé do trilho, perto de "Conta", e na folha "Mais"', () => {
+    expect(items).toMatch(
+      /Buscar<\/a><\/li><li class="app-tema"><div class="tema-linha">.*<fieldset class="tema tema-vertical">.*<\/fieldset><\/div><\/li><li><a href="\/conta"/s,
+    );
+    expect(items.match(/<input type="radio" name="tema-trilho"/g)).toHaveLength(3);
+    expect(sheet).toMatch(
+      /<\/ul><div class="mais-tema"><div class="tema-linha">.*<fieldset class="tema">/s,
+    );
+    expect(sheet.match(/<input type="radio" name="tema-mais"/g)).toHaveLength(3);
   });
 
   it('o conteúdo vai no main e o aviso fixo no rodapé, fora dele; nada lê a sessão', () => {

@@ -459,4 +459,117 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
       return season;
     }
   });
+
+  // Os logos das ações (ADR 0036): quem pede o SVG, a gravação e a rede de segurança do banco. Os SVG são escritos aqui.
+  describe('os logos: logoTargets, saveLogo e touchLogo', () => {
+    const SVG = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>';
+    const URL_PETR = 'https://icons.brapi.dev/icons/PETR4.svg';
+    const sha = (char: string) => char.repeat(64);
+    const logo = (instrumentId: string, overrides: Record<string, unknown> = {}) => ({
+      instrumentId,
+      sourceUrl: URL_PETR,
+      svg: SVG,
+      sha256: sha('a'),
+      bytes: Buffer.byteLength(SVG),
+      fetchedAt: new Date('2026-11-01T12:00:00Z'),
+      ...overrides,
+    });
+    const idOf = async (ticker: string) =>
+      (await prisma.instrument.findUniqueOrThrow({ where: { ticker } })).id;
+
+    beforeEach(async () => {
+      await repo.insertInstruments([seed('PETR4'), seed('VALE3'), seed('ITUB4')], '2026-10-30');
+    });
+
+    it('logoTargets: os papéis do banco entre os pedidos, com o logo guardado ou nulo; o papel que o banco não tem fica de fora', async () => {
+      await repo.saveLogo(logo(await idOf('PETR4')));
+      const targets = await repo.logoTargets(['VALE3', 'PETR4', 'ZZZZ3']);
+      expect(targets).toEqual([
+        {
+          instrumentId: await idOf('PETR4'),
+          ticker: 'PETR4',
+          stored: {
+            sourceUrl: URL_PETR,
+            sha256: sha('a'),
+            fetchedAt: new Date('2026-11-01T12:00:00Z'),
+          },
+        },
+        { instrumentId: await idOf('VALE3'), ticker: 'VALE3', stored: null },
+      ]);
+      expect(await repo.logoTargets([])).toEqual([]);
+    });
+
+    it('saveLogo cria e, com outro SHA-256, troca o SVG inteiro; touchLogo só anda o endereço e a data, sem regravar o SVG', async () => {
+      const id = await idOf('PETR4');
+      await repo.saveLogo(logo(id));
+      const other = SVG.replace('width="1"', 'width="2"');
+      const later = new Date('2026-11-08T12:00:00Z');
+      await repo.saveLogo(
+        logo(id, {
+          svg: other,
+          sha256: sha('b'),
+          bytes: Buffer.byteLength(other),
+          fetchedAt: later,
+        }),
+      );
+      expect(
+        await prisma.instrumentLogo.findUniqueOrThrow({ where: { instrumentId: id } }),
+      ).toEqual({
+        instrumentId: id,
+        sourceUrl: URL_PETR,
+        svg: other,
+        sha256: sha('b'),
+        bytes: Buffer.byteLength(other),
+        fetchedAt: later,
+      });
+      const moved = 'https://icons.brapi.dev/icons/PETR3.svg';
+      const latest = new Date('2026-12-09T12:00:00Z');
+      await repo.touchLogo(id, moved, latest);
+      expect(
+        await prisma.instrumentLogo.findUniqueOrThrow({ where: { instrumentId: id } }),
+      ).toMatchObject({
+        sourceUrl: moved,
+        svg: other,
+        sha256: sha('b'),
+        fetchedAt: latest,
+      });
+    });
+
+    it('o banco recusa o tamanho que não é o do SVG, o que passa do teto, o vazio e o SHA-256 fora do formato', async () => {
+      const id = await idOf('PETR4');
+      const big = `<svg>${'a'.repeat(204_800)}</svg>`;
+      for (const bad of [
+        { bytes: 3 },
+        { svg: big, bytes: Buffer.byteLength(big) },
+        { svg: '', bytes: 0 },
+        { sha256: sha('A') },
+        { sha256: 'a'.repeat(63) + 'g' },
+      ]) {
+        await expect(
+          repo.saveLogo(logo(id, bad)),
+          JSON.stringify(Object.keys(bad)),
+        ).rejects.toThrow();
+      }
+      expect(await prisma.instrumentLogo.count()).toBe(0);
+    });
+
+    it('storedLogos devolve todo logo guardado com o SVG, em ordem de ticker; deleteLogo apaga só o do papel', async () => {
+      const [petr, vale] = [await idOf('PETR4'), await idOf('VALE3')];
+      await repo.saveLogo(logo(vale));
+      await repo.saveLogo(logo(petr));
+      expect(await repo.storedLogos()).toEqual([
+        { instrumentId: petr, ticker: 'PETR4', svg: SVG },
+        { instrumentId: vale, ticker: 'VALE3', svg: SVG },
+      ]);
+      await repo.deleteLogo(petr);
+      await repo.deleteLogo(petr); // de novo: nada a apagar, sem erro
+      expect((await repo.storedLogos()).map((row) => row.ticker)).toEqual(['VALE3']);
+    });
+
+    it('o logo some com o papel (cascata): a limpeza de instrument não trava', async () => {
+      await repo.saveLogo(logo(await idOf('PETR4')));
+      await prisma.instrument.deleteMany();
+      expect(await prisma.instrumentLogo.count()).toBe(0);
+    });
+  });
 });

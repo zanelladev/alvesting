@@ -1,16 +1,19 @@
 import 'server-only';
 import type { z } from 'zod';
 import {
+  LOGO_NOT_FOUND,
   PUBLIC_CACHE_TTL_SECONDS,
   QUOTES_SECRET_MIN_LENGTH,
   QUOTES_SECRET_SHAPE,
   internalBarsSchema,
+  internalLogosSchema,
   internalTapeSchema,
   tickerParamSchema,
   type InternalBars,
+  type InternalLogos,
   type InternalTape,
 } from '@alvesting/contracts';
-import { ApiError, call, segment, type ApiDeps } from './api';
+import { API_TIMEOUT_MS, ApiError, call, segment, type ApiDeps } from './api';
 import type { CacheTag } from './cache';
 
 // A leitura das cotações pelas rotas INTERNAS da api (docs/API.md, seção 6; ADR 0033): as barras de um papel e a fita da home. Nenhuma rota
@@ -69,14 +72,8 @@ export function readTape(deps: QuotesDeps = {}): Promise<InternalTape> {
   return readInternal('/interno/fita', internalTapeSchema, deps);
 }
 
-// O que as duas leituras têm em comum: o segredo e o endereço conferidos antes do `fetch`, o cache de dados com a tag `arena`, e o 404 da
-// rota (o segredo que a api não reconhece) como defeito de configuração.
-async function readInternal<S extends z.ZodType>(
-  path: string,
-  schema: S,
-  deps: QuotesDeps,
-): Promise<z.output<S>> {
-  const env = deps.env ?? process.env;
+// O segredo e o endereço da api conferidos antes de qualquer `fetch` das rotas internas: o segredo aparado, ou o defeito de configuração.
+function checkedSecret(env: NonNullable<QuotesDeps['env']>): string {
   // Aparado nas pontas, como a api apara o dela (segredo colado à mão no Key Vault costuma levar a quebra de linha do `echo`), senão os dois
   // valores nunca bateriam. O PENDENTE do Key Vault tem menos de 32 caracteres e cai aqui também.
   const secret = env.QUOTES_SECRET?.trim() ?? '';
@@ -94,13 +91,25 @@ async function readInternal<S extends z.ZodType>(
       unconfigured('API_INTERNAL_URL sem https em produção: o segredo das cotações iria em claro');
     }
   }
+  return secret;
+}
+
+// O que as leituras em JSON têm em comum: o segredo e o endereço conferidos antes do `fetch`, o cache de dados (por padrão, o da tag `arena`
+// e o tempo de vida da API pública), e o 404 da rota (o segredo que a api não reconhece) como defeito de configuração.
+async function readInternal<S extends z.ZodType>(
+  path: string,
+  schema: S,
+  deps: QuotesDeps,
+  next: RequestInit['next'] = { revalidate: PUBLIC_CACHE_TTL_SECONDS, tags: [...TAGS] },
+): Promise<z.output<S>> {
+  const secret = checkedSecret(deps.env ?? process.env);
   try {
     return await call(
       path,
       schema,
       {
         query: undefined,
-        init: { next: { revalidate: PUBLIC_CACHE_TTL_SECONDS, tags: [...TAGS] } },
+        init: { next },
         headers: { authorization: `Bearer ${secret}` },
       },
       deps,
@@ -114,4 +123,128 @@ async function readInternal<S extends z.ZodType>(
     }
     throw error;
   }
+}
+
+// --- os logos das ações (ADR 0036, "Como o site mostra"; docs/API.md, seção 6) -----------------------------------------------------------
+// O logo é enfeite ao lado do ticker: nenhuma falha daqui derruba uma tela. Quem não tem logo (ou quando a leitura falha) fica com o
+// monograma do components/logo-do-papel.tsx.
+
+// O tempo de vida do índice no cache de dados do Next. ponytail: o logo novo ou trocado (a atualização semanal, no domingo) aparece em até
+// uma hora (e mais uma requisição: o Next serve a entrada vencida e a renova por trás). Se pesar, a saída é uma tag `logos` em lib/cache.ts,
+// vencida pelo worker no fim da atualização semanal (o POST /interno/revalidar que ele já faz depois da liquidação).
+export const LOGOS_TTL_SECONDS = 3600;
+
+// O teto do SVG que a rota do site repassa: o da T1 (LOGO_MAX_BYTES do svg-check.ts da api e o CHECK de instrument_logo, 200 KB).
+export const LOGO_MAX_BYTES = 200 * 1024;
+
+// A falha que não é "sem logo": uma linha de log com o papel e o motivo, nunca o segredo nem o corpo.
+function logoFailure(subject: string, reason: string): void {
+  console.error(`[web] logos: ${subject}: ${reason}; a tela mostra o monograma`);
+}
+
+// O índice dos logos (GET /api/v1/interno/logos): os papéis com logo guardado e a versão de cada SVG, em ordem de ticker. A falha (a api fora,
+// o segredo ausente ou recusado, a resposta fora do contrato) vira a lista vazia, com uma linha de log: nenhum logo, só monogramas.
+export async function readLogos(deps: QuotesDeps = {}): Promise<InternalLogos['logos']> {
+  try {
+    return (
+      await readInternal('/interno/logos', internalLogosSchema, deps, {
+        revalidate: LOGOS_TTL_SECONDS,
+      })
+    ).logos;
+  } catch (error) {
+    // o segredo ausente já tem a linha dele (unconfigured)
+    if (!(error instanceof ApiError && error.code === 'QUOTES_UNCONFIGURED')) {
+      logoFailure(
+        'o índice não veio',
+        error instanceof ApiError ? `${error.status} ${error.code}` : 'erro inesperado',
+      );
+    }
+    return [];
+  }
+}
+
+// O SVG guardado de um papel (GET /api/v1/interno/logos/:ticker, fora do envelope), para a rota do site que o serve (app/logos). Nulo quando não
+// há o que servir: o ticker fora da forma da B3 e o papel sem logo (404 LOGO_NOT_FOUND), sem log; e a falha, com uma linha de log: a api
+// fora, o segredo ausente ou recusado, outro tipo de conteúdo que não image/svg+xml, o corpo acima de LOGO_MAX_BYTES ou fora do UTF-8.
+// Sem o cache de dados do Next: o navegador guarda o SVG pela URL com a versão, e o cache de dados guardaria o SVG velho sob a versão nova.
+export async function readLogoSvg(ticker: string, deps: QuotesDeps = {}): Promise<string | null> {
+  const parsed = tickerParamSchema.safeParse(ticker);
+  if (!parsed.success || parsed.data !== ticker) return null;
+  const env = deps.env ?? process.env;
+  let response: Response;
+  try {
+    const secret = checkedSecret(env);
+    const base = env.API_INTERNAL_URL;
+    if (!base || !URL.canParse(base) || !/^https?:$/.test(new URL(base).protocol)) {
+      logoFailure(ticker, 'API_INTERNAL_URL ausente ou inválida');
+      return null;
+    }
+    response = await (deps.fetch ?? fetch)(new URL(`/api/v1/interno/logos/${ticker}`, base), {
+      cache: 'no-store',
+      headers: {
+        accept: 'image/svg+xml',
+        ...(env.FRONT_DOOR_ID ? { 'x-azure-fdid': env.FRONT_DOOR_ID } : {}),
+        authorization: `Bearer ${secret}`,
+      },
+      // o segredo e o X-Azure-FDID vão só para o endereço da api
+      redirect: 'error',
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError && error.code === 'QUOTES_UNCONFIGURED')) {
+      logoFailure(ticker, 'a api não respondeu');
+    }
+    return null;
+  }
+  try {
+    return await svgOf(ticker, response);
+  } catch {
+    // a conexão que cai no meio do corpo, o prazo de 10 s (que vale também para a leitura dele) ou o corpo fora do UTF-8
+    logoFailure(ticker, 'o corpo do SVG não veio inteiro, ou não é UTF-8');
+    return null;
+  }
+}
+
+// A resposta da rota interna do SVG, conferida (readLogoSvg): o texto do SVG, ou nulo.
+async function svgOf(ticker: string, response: Response): Promise<string | null> {
+  if (response.status === 404) {
+    const body = (await response.json().catch(() => null)) as { error?: { code?: unknown } } | null;
+    if (body?.error?.code === LOGO_NOT_FOUND) return null;
+    logoFailure(ticker, 'a api recusou o segredo (o 404 da rota)');
+    return null;
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    logoFailure(ticker, `a api respondeu ${response.status}`);
+    return null;
+  }
+  const type = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
+  if (type !== 'image/svg+xml') {
+    await response.body?.cancel();
+    logoFailure(ticker, 'a api não respondeu image/svg+xml');
+    return null;
+  }
+  const bytes = await readAtMost(response, LOGO_MAX_BYTES);
+  if (bytes === null) {
+    logoFailure(ticker, `o SVG passa de ${LOGO_MAX_BYTES} bytes`);
+    return null;
+  }
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+}
+
+// O corpo inteiro, ou nulo se passa de `max` bytes: o Content-Length acima do teto é recusado sem ler, e sem ele a leitura para no teto.
+async function readAtMost(response: Response, max: number): Promise<Uint8Array | null> {
+  if (Number(response.headers.get('content-length')) > max) {
+    await response.body?.cancel();
+    return null;
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  // sair do `for await` no meio cancela o corpo (o `return` do iterador do ReadableStream)
+  for await (const chunk of response.body ?? []) {
+    size += chunk.byteLength;
+    if (size > max) return null;
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }

@@ -2,12 +2,14 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { Portfolio } from '@alvesting/contracts';
+import { Avisos } from '../../../../components/avisos';
 import { PainelPerguntar } from '../../../../components/chat/chat-desligado';
 import { WalletLots, type LotView } from '../../../../components/wallet-lots';
 import { WalletEmpty, WalletPositions, WalletSummary } from '../../../../components/wallet-panels';
-import { Abas, Aviso, CAIXA, PageHead, Section } from '../../../../components/ui';
+import { Abas, Aviso, PageHead, Section } from '../../../../components/ui';
 import { authCookieHeader } from '../../../../lib/account';
 import { ApiError } from '../../../../lib/api';
+import { versoesDosLogos } from '../../../../lib/logos';
 import { readPortfolio } from '../../../../lib/wallet';
 import { withApiDown } from '../../../../lib/with-api-down';
 
@@ -46,6 +48,8 @@ export default withApiDown(async function WalletPage() {
   const cookie = authCookieHeader((await headers()).get('cookie'));
   if (!cookie) redirect(SIGN_IN);
 
+  // o índice dos logos das ações (lib/logos.ts) sai junto com a carteira; a leitura que falha é o mapa vazio (só monogramas), nunca um erro
+  const allLogos = versoesDosLogos();
   let wallet: Portfolio;
   try {
     wallet = await readPortfolio(cookie);
@@ -63,9 +67,20 @@ export default withApiDown(async function WalletPage() {
     new Date(),
   );
 
+  // ao navegador vai só a versão do logo dos tickers desta carteira (o componente de cliente dos lançamentos e a legenda da rosca a recebem)
+  const versions = await allLogos;
+  const logos = Object.fromEntries(
+    [...new Set([...wallet.positions, ...wallet.lots].map((item) => item.ticker))].flatMap(
+      (ticker) => {
+        const version = versions.get(ticker);
+        return version ? [[ticker, version] as const] : [];
+      },
+    ),
+  );
+
   const hasLots = wallet.lots.length > 0;
   return (
-    <>
+    <Avisos foco="#lancamentos-titulo">
       <PageHead title="Minha carteira">
         <p className="max-w-prose text-15 text-pretty">
           As ações que você comprou, anotadas por você. A Alvesting calcula o preço médio, o valor
@@ -73,7 +88,7 @@ export default withApiDown(async function WalletPage() {
           e não confere os lançamentos: valem os números que você digita.
         </p>
         <noscript>
-          <p className={`max-w-prose ${CAIXA}`}>
+          <p className="max-w-prose text-body">
             Lançar, editar e apagar compras precisam de JavaScript. Ative o JavaScript no navegador
             e recarregue a página.
           </p>
@@ -84,17 +99,18 @@ export default withApiDown(async function WalletPage() {
           o painel "Perguntar" (o chat desligado), que a partir de 1280 px é a terceira coluna e abaixo disso um cartão no fim da tela. A partir
           de 1024 px as colunas são painéis de 360 px separados por fio, como as barras do Rallies: a grade come o respiro do `main` da casca
           (-mx-6) e cada painel tem o seu. Em 1440 px o meio tem 592 px de conteúdo, e a tabela de posições cabe inteira. No celular, uma
-          coluna só, nesta ordem. */}
-      <div className="grid gap-y-10 lg:-mx-6 lg:grid-cols-[22.5rem_minmax(0,1fr)] xl:grid-cols-[22.5rem_minmax(0,1fr)_22.5rem]">
-        <div className="min-w-0 lg:border-r lg:border-hairline lg:px-6">
+          coluna só, nesta ordem. A partir de 1024 px o fio embaixo do cabeçalho vai de uma borda à outra do principal, e os fios entre os
+          painéis descem dele (o Today do Rallies, no recorte da landing deles). */}
+      <div className="grid gap-y-10 lg:-mx-6 lg:grid-cols-[22.5rem_minmax(0,1fr)] lg:border-t lg:border-hairline xl:grid-cols-[22.5rem_minmax(0,1fr)_22.5rem]">
+        <div className="min-w-0 lg:border-r lg:border-hairline lg:px-6 lg:pt-6">
           {hasLots ? (
-            <WalletSummary totals={wallet.totals} positions={wallet.positions} />
+            <WalletSummary totals={wallet.totals} positions={wallet.positions} logos={logos} />
           ) : (
             <WalletEmpty />
           )}
         </div>
 
-        <div className="min-w-0 lg:px-6">
+        <div className="min-w-0 lg:px-6 lg:pt-6">
           {hasLots ? (
             <Abas
               label="Seções da carteira"
@@ -115,16 +131,16 @@ export default withApiDown(async function WalletPage() {
                 resultado são estimados e podem estar atrasados. Não consideram proventos,
                 desdobramentos, corretagem, taxas nem impostos. Cotações: brapi.dev.
               </p>
-              <WalletPositions positions={wallet.positions} />
+              <WalletPositions positions={wallet.positions} logos={logos} />
             </Section>
           ) : null}
-          <WalletLots lots={wallet.lots.map(lotView)} today={today} />
+          <WalletLots lots={wallet.lots.map(lotView)} today={today} logos={logos} />
         </div>
 
-        <div className="min-w-0 lg:col-start-2 lg:px-6 xl:col-start-3 xl:row-start-1 xl:border-l xl:border-hairline">
+        <div className="min-w-0 lg:col-start-2 lg:px-6 xl:col-start-3 xl:row-start-1 xl:border-l xl:border-hairline xl:pt-6">
           <PainelPerguntar />
         </div>
       </div>
-    </>
+    </Avisos>
   );
 });

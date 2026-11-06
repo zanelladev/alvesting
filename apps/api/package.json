@@ -16,6 +16,7 @@
     "db:roles": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/db-roles-cli.js",
     "market:backfill": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/market-cli.js backfill",
     "market:universe": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/market-cli.js universe",
+    "market:logos": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/market-cli.js logos",
     "news:fetch": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/news-cli.js fetch",
     "news:import": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/news-cli.js import",
     "briefing:freeze": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/briefing-cli.js freeze",
@@ -26,7 +27,7 @@
     "account:demote": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/account-cli.js demote",
     "settle:event": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/settlement-cli.js event",
     "arena:ensaio": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example dist/ensaio-cli.js",
-    "e2e:seed": "nest build && ENSAIO_DATABASE_URL=\"${E2E_DATABASE_URL:-postgresql://alvesting:alvesting@localhost:25432/alvesting_e2e_test}\" node --enable-source-maps --env-file-if-exists=../../.env.example dist/ensaio-cli.js",
+    "e2e:seed": "nest build && ENSAIO_DATABASE_URL=\"${E2E_DATABASE_URL:-postgresql://alvesting:alvesting@localhost:25432/alvesting_e2e_test}\" node --enable-source-maps --env-file-if-exists=../../.env.example dist/ensaio-cli.js --logos-sinteticos",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

@@ -19,16 +19,21 @@ import {
   savedMessage,
   type LotFailure,
 } from '../lib/wallet-client';
+import { Tooltip } from './arc/tooltip/tooltip';
+import { PilhaDeAvisos, useAvisar } from './avisos';
 import { AccountForm, RadioField, TextField, useHydrated, type Outcome } from './form-kit';
-import { BUTTON, CAIXA, CAIXA_ERRO, Empty, Fact, Facts, LINK, NavLink, Section } from './ui';
+import { LogoDoPapel } from './logo-do-papel';
+import { BUTTON, CAIXA_ERRO, Empty, Fact, Facts, LINK, NavLink, Section } from './ui';
 
 // Os lançamentos da carteira e o formulário que os cria e edita (etapa 12, parte 2; docs/TELAS.md, seção 9). É o único pedaço da tela que roda no
 // navegador: o resumo e as posições são Server Components. Lançar, editar e apagar falam com `/api/v1/me/portfolio/lots` na mesma origem (o cookie e
 // o Origin chegam sozinhos) e, no sucesso, pedem ao servidor que renderize a página de novo (`router.refresh()`): o resumo, as posições e esta
 // lista mostram o que a api guardou. A pessoa escolhe de novo o que está em tela, e o foco vai para onde ela estava (ver `Focus`).
 //
-// Editar usa o MESMO formulário de lançar, aberto no próprio cartão do lançamento (a pessoa não perde o lugar numa lista de até 200). Apagar pede
-// a confirmação no próprio cartão, sem `window.confirm`: a pergunta recebe o foco, e "Sim, apagar" só aparece depois dela.
+// Editar usa o MESMO formulário de lançar, aberto no próprio item do lançamento (a pessoa não perde o lugar numa lista de até 200). Apagar pede
+// a confirmação no próprio item, sem `window.confirm`: a pergunta recebe o foco, e "Sim, apagar" só aparece depois dela. O que acabou de
+// acontecer (lançado, salvo, apagado) é um aviso da pilha da página (components/avisos.tsx, o toast da beUI): anunciado pela região viva dela,
+// com o fechar pelo teclado, e com o foco nele quando o botão que enviou sumiu (lançar e apagar).
 
 const MODES = [
   ['unit', 'Preço por ação'],
@@ -45,6 +50,10 @@ const VALUE_HINT: Record<PriceMode, string> = {
 // Na edição o campo já vem com o custo guardado, que é o total de TODAS as ações: quem muda só a quantidade e não o total muda o preço médio.
 const EDIT_TOTAL_HINT = `${VALUE_HINT.total} Mudou a quantidade? Confira este total.`;
 const MODE_HINT = 'Ao trocar a opção, o valor digitado é apagado.';
+// a explicação do "valor total pago" (o tooltip da Arc no rótulo do radio; o leitor de tela a ouve como a descrição do radio, e quem usa o toque
+// a lê na dica do campo de valor, que muda com o modo)
+const TOTAL_EXPLICADO =
+  'O total da nota desta compra, com todas as ações: é o custo do lançamento. Use quando o preço por ação tem mais de 2 casas, como uma média da corretora.';
 const LINKS = {
   entrar: { href: '/entrar?proximo=%2Fcarteira', text: 'Entrar de novo' },
   conta: { href: '/conta', text: 'Abrir a minha conta' },
@@ -197,6 +206,10 @@ function LotForm({
         options={MODES}
         onChange={(value) => setMode(value === 'total' ? 'total' : 'unit')}
         clears="value"
+        describe={{ total: TOTAL_EXPLICADO }}
+        wrap={(value, option) =>
+          value === 'total' ? <Tooltip content={TOTAL_EXPLICADO}>{option}</Tooltip> : option
+        }
       />
       {/* a chave é o modo: ao trocá-lo o campo nasce de novo, vazio (ou com o custo guardado, se a edição voltar ao "valor total pago") */}
       <TextField
@@ -226,8 +239,10 @@ function LotForm({
 interface Focus {
   selector: string;
 }
+// o aviso que acabou de chegar na pilha (o id é o que `avisar` devolve)
+const NOTICE = 'aviso';
 const sel = {
-  notice: '[data-notice]',
+  notice: (id: string) => `[data-aviso="${id}"]`,
   field: (id: string) => `[data-lot="${id}"] input[name="ticker"]`,
   edit: (id: string) => `[data-lot="${id}"] [data-action="edit"]`,
   remove: (id: string) => `[data-lot="${id}"] [data-action="remove"]`,
@@ -241,16 +256,25 @@ interface Removal {
 }
 const IDLE: Removal = { busy: false, failure: null };
 
-export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: string }) {
+export function WalletLots({
+  lots,
+  today,
+  logos = {},
+}: {
+  lots: readonly LotView[];
+  today: string;
+  // a versão do logo de cada ticker (lib/logos.ts, no servidor); sem ela, o monograma
+  logos?: Readonly<Record<string, string>>;
+}) {
   const router = useRouter();
   const hydrated = useHydrated();
+  const avisar = useAvisar();
   const [refreshing, startTransition] = useTransition();
   const root = useRef<HTMLDivElement>(null);
   const sending = useRef(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [removal, setRemoval] = useState<Removal>(IDLE);
-  const [notice, setNotice] = useState('');
   // sobe a cada lançamento criado: o formulário de lançar nasce de novo, limpo, pronto para o próximo
   const [createKey, setCreateKey] = useState(0);
   const [focus, setFocus] = useState<Focus | null>(null);
@@ -273,16 +297,16 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
     }
   }
 
-  // O resultado de uma ação que deu certo: o servidor renderiza a página de novo e, na MESMA transição, esta tela troca o estado (o aviso, o
-  // foco e o que `after` fecha ou limpa: só o que a ação mexeu, para lançar não fechar uma edição aberta noutro cartão). Se o React juntar as
-  // duas, a lista nova e o aviso chegam juntos; se não juntar, o aviso chega antes e a lista logo depois. Nos dois casos o aviso diz o que
-  // aconteceu por inteiro, e a lista termina igual à que a api guardou.
+  // O resultado de uma ação que deu certo: o servidor renderiza a página de novo e, na MESMA transição, esta tela troca o estado (o aviso na
+  // pilha, o foco e o que `after` fecha ou limpa: só o que a ação mexeu, para lançar não fechar uma edição aberta noutro item). Se o React
+  // juntar as duas, a lista nova, o número que rola no resumo e o aviso chegam juntos; se não juntar, o aviso chega antes e a lista logo depois.
+  // Nos dois casos o aviso diz o que aconteceu por inteiro, e a lista termina igual à que a api guardou. `to` é um seletor, ou o aviso novo.
   function done(message: string, to: string, after: () => void) {
     startTransition(() => {
       router.refresh();
-      setNotice(message);
+      const id = avisar(message);
       after();
-      setFocus({ selector: to });
+      setFocus({ selector: to === NOTICE ? sel.notice(id) : to });
     });
   }
   const closeRemoval = () => {
@@ -315,11 +339,11 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
     setRemoval({ busy: true, failure: null });
     const out = await track(send(`${LOTS_PATH}/${lot.id}`, { method: 'DELETE' }));
     sending.current = false;
-    if (out.ok) return done(removedMessage(lot), sel.notice, closeRemoval);
+    if (out.ok) return done(removedMessage(lot), NOTICE, closeRemoval);
     const failure = lotFailure(out);
     // apagar o que já não existe é o que a pessoa queria: a lista só precisa de atualização
     if (failure.gone) {
-      return done('Este lançamento já tinha sido apagado.', sel.notice, closeRemoval);
+      return done('Este lançamento já tinha sido apagado.', NOTICE, closeRemoval);
     }
     setRemoval({ busy: false, failure });
     setFocus({ selector: sel.problem(lot.id) });
@@ -330,7 +354,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
     if (editing === lot.id) {
       return (
         <>
-          <h3 id={`editar-${lot.id}`} className="font-display text-base">
+          <h3 id={`editar-${lot.id}`} className="text-15 font-medium">
             {`Editar lançamento de ${describeLot(lot)}`}
           </h3>
           <LotForm
@@ -339,7 +363,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
             labelledBy={`editar-${lot.id}`}
             track={track}
             onSaved={(message) => done(message, sel.edit(lot.id), () => setEditing(null))}
-            onGone={(message) => done(message, sel.notice, () => setEditing(null))}
+            onGone={(message) => done(message, NOTICE, () => setEditing(null))}
             onCancel={() => cancelEdit(lot.id)}
           />
         </>
@@ -347,7 +371,13 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
     }
     return (
       <>
-        <p className="font-mono text-base font-semibold text-ink">{lot.ticker}</p>
+        {/* o ticker na sans 500, com o logo à esquerda, ligado à página da ação (o mesmo das posições) */}
+        <p className="text-15 font-medium text-ink">
+          <NavLink href={`/acoes/${lot.ticker}`} className={`${LINK} no-underline hover:underline`}>
+            <LogoDoPapel ticker={lot.ticker} versao={logos[lot.ticker]} className="mr-3" />
+            {lot.ticker}
+          </NavLink>
+        </p>
         <Facts dense>
           <Fact term="Quantidade">{formatQuantity(lot.quantity)}</Fact>
           <Fact term="Custo total">{formatBRL(lot.costCents)}</Fact>
@@ -359,7 +389,7 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
           <div
             role="group"
             aria-labelledby={`apagar-${lot.id}`}
-            className="space-y-3 rounded-lg border border-dashed border-hairline-strong p-4"
+            className="space-y-3 rounded-lg bg-surface-card p-4"
           >
             <p
               id={`apagar-${lot.id}`}
@@ -423,17 +453,11 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
 
   return (
     <div ref={root} className="space-y-8">
+      {/* a pilha de avisos (o toast): no documento, aqui, antes da lista (o Tab do aviso segue para os lançamentos), e na tela, fixa no pé; a
+          região viva existe desde o começo, para o leitor de tela anunciar o aviso que chega depois */}
+      <PilhaDeAvisos />
       <Section id="lancamentos" title="Lançamentos">
-        {/* a região existe desde o começo, para o leitor de tela anunciar o aviso que chega depois; com texto, o foco vai a ela */}
-        <p
-          role="status"
-          tabIndex={notice ? -1 : undefined}
-          data-notice=""
-          className={notice ? `max-w-prose ${CAIXA}` : 'sr-only'}
-        >
-          {notice}
-        </p>
-        {/* o formulário de lançar fica depois da lista inteira (são até 200 cartões): no celular, o atalho poupa a rolagem */}
+        {/* o formulário de lançar fica depois da lista inteira (são até 200 lançamentos): no celular, o atalho poupa a rolagem */}
         {lots.length > 0 ? (
           <p>
             <a href="#lancar" className={LINK}>
@@ -448,9 +472,9 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
             Depois dá para editar ou apagar cada lançamento.
           </Empty>
         ) : (
-          <ul className="max-w-2xl space-y-3">
+          <ul className="max-w-2xl divide-y divide-hairline border-y border-hairline">
             {lots.map((lot) => (
-              <li key={lot.id} data-lot={lot.id} className="card space-y-4 p-4 sm:p-5">
+              <li key={lot.id} data-lot={lot.id} className="min-w-0 space-y-3 py-4">
                 {card(lot)}
               </li>
             ))}
@@ -469,15 +493,13 @@ export function WalletLots({ lots, today }: { lots: readonly LotView[]; today: s
             <span className="sr-only"> (abre em outra aba)</span>
           </a>
         </p>
-        <div className="card max-w-md p-4 sm:p-6">
-          <LotForm
-            key={createKey}
-            today={today}
-            labelledBy="lancar-titulo"
-            track={track}
-            onSaved={(message) => done(message, sel.notice, () => setCreateKey((key) => key + 1))}
-          />
-        </div>
+        <LotForm
+          key={createKey}
+          today={today}
+          labelledBy="lancar-titulo"
+          track={track}
+          onSaved={(message) => done(message, NOTICE, () => setCreateKey((key) => key + 1))}
+        />
       </Section>
     </div>
   );

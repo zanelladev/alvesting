@@ -43,6 +43,8 @@ export interface Listing {
   name?: string | null;
   // `subType` da lista da brapi: stock, unit, fii, etf, bdr...
   subType?: string | null;
+  // o SVG do logo em icons.brapi.dev, já conferido (`logoUrl`, brapi.client.ts); nulo é "sem logo" (ADR 0036)
+  logo?: string | null;
 }
 
 // Uma linha da lista de ações da brapi vira o papel a semear, ou nada se não for ação à vista do lote padrão. O tipo da brapi e o sufixo têm

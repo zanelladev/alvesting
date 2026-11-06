@@ -119,6 +119,15 @@ describe('a matriz de tabelas contra o schema.prisma de verdade', () => {
     }
   });
 
+  // Os logos das ações (ADR 0036): a rota interna dos logos lê o SVG guardado. Só leitura, por tabela inteira e sem gatilho: quem grava é a
+  // atualização semanal e o market:logos, com o login administrador. Não é dado pessoal (o logo é da empresa), então entra no dump do backup.
+  it('os logos: a api só lê (a rota interna dos logos), não é dado pessoal, e quem grava é o worker', () => {
+    expect(TABLE_POLICY.instrument_logo).toMatchObject({ personal: false, api: ['SELECT'] });
+    expect(TABLE_POLICY.instrument_logo!.apiColumns).toBeUndefined();
+    expect(TABLE_POLICY.instrument_logo!.guard).toBeUndefined();
+    expect(TABLE_POLICY.instrument_logo!.why).toMatch(/logos/);
+  });
+
   it('a tabela do histórico de migrations não é da api (não está no schema do Prisma e ninguém a lê)', () => {
     expect(TABLE_POLICY).not.toHaveProperty('_prisma_migrations');
   });

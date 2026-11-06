@@ -4,29 +4,52 @@
 @source not '../**/*.spec.tsx';
 @source not '../../e2e';
 
-/* O sistema visual do Rallies AI, nos dois temas (ADR 0035; docs/redesign-rallies/plano.md, seções a e b). Os tokens moram aqui e só aqui;
-   o nome vira utilitário do Tailwind (bg-canvas, text-ink, border-hairline). O claro é a base; o escuro troca os valores no
-   `prefers-color-scheme` (abaixo, na camada base), sem botão de tema: segue o sistema. O `@theme` comum (e não o `inline` nem o `static`)
-   só emite a variável que algum utilitário ou regra usa, e o utilitário lê a variável: por isso a troca do escuro vale para todos eles.
-   Espaço é a escala numérica do Tailwind (base de 4 px); raio também (rounded-md 6, rounded-lg 8, rounded-xl 12, rounded-2xl 16,
-   rounded-3xl 24, rounded-full a pílula: os valores medidos no Rallies). Os valores são os da tabela a.1 do plano, com o contraste da a.2. */
+/* O sistema visual (ADR 0035 e ADR 0037; docs/DESIGN.md): a linguagem do Rallies AI, a primária do logo (#14144C) e os dois temas, com o
+   seletor (claro, escuro e sistema). Os tokens moram aqui e só aqui; o nome vira utilitário do Tailwind (bg-canvas, text-ink,
+   border-hairline). Cada cor leva os dois temas no mesmo lugar, `light-dark(claro, escuro)`: o navegador escolhe pelo `color-scheme` do
+   <html>, que segue o sistema (`light dark`) ou a escolha guardada (`data-tema`, na camada base). O `@theme` comum (e não o `inline` nem o
+   `static`) só emite a variável que algum utilitário ou regra usa, e o utilitário lê a variável. O contraste de cada par nos dois temas é
+   conferido pelo tokens.spec.ts (a razão da WCAG, lida deste arquivo). Espaço é a escala numérica do Tailwind (base de 4 px); raio também
+   (rounded-md 6, rounded-lg 8, rounded-xl 12, rounded-2xl 16, rounded-3xl 24, rounded-full a pílula: os valores medidos no Rallies). */
 @theme {
   /* superfícies: o fundo, o cinza dos painéis, campos e ladrilhos, e o cinza do trilho do segmentado e da pílula cinza */
-  --color-canvas: #ffffff;
-  --color-surface-card: #f5f5f5;
-  --color-surface-strong: #efefef;
-  /* linhas: toda borda tem 1 px */
-  --color-hairline: #e5e5e5;
-  --color-hairline-strong: #d4d4d4;
-  /* texto sobre o canvas: 19,8:1, 17,8:1 e 5,29:1 (o muted passa também nas superfícies cinza: 4,85 e 4,60) */
-  --color-ink: #0a0a0a;
-  --color-body: #17171f;
-  --color-muted: #6b6b72;
-  /* o âmbar da marca: só no ladrilho do logotipo e na brasa da arte (1,83:1 no branco: nunca texto, foco nem estado) */
-  --color-primary: #ffb000;
+  --color-canvas: light-dark(#ffffff, #171717);
+  --color-surface-card: light-dark(#f5f5f5, #1f1f1f);
+  --color-surface-strong: light-dark(#efefef, #242424);
+  /* linhas: toda borda tem 1 px. O `hairline` separa; o `control` identifica um controle (o fio do campo), com 3:1 no canvas e no cinza do
+     painel (WCAG 1.4.11) */
+  --color-hairline: light-dark(#e5e5e5, #262626);
+  --color-hairline-strong: light-dark(#d4d4d4, #333333);
+  --color-control: light-dark(#8a8a90, #707077);
+  /* texto sobre o canvas: a tinta, o corpo e o secundário (o muted passa o AA também nas superfícies cinza) */
+  --color-ink: light-dark(#0a0a0a, #fafafa);
+  --color-body: light-dark(#17171f, #f5f5f7);
+  --color-muted: light-dark(#6b6b72, #a3a3a9);
+  /* A primária: o azul do logo, #14144C (o 950), numa escala do mesmo tom em OKLCH (a matiz 275,49 e o croma que cabe no sRGB). No claro
+     é o 950; no escuro, onde o azul quase preto some, o 300. Ela vai na ação principal (o botão primário), na escolha atual (o chip, o
+     filtro, o seletor de tema), no anel de foco e na marca, e nunca em enfeite (o link fica na tinta, abaixo). Os tons claros (50 a 300)
+     também são os que aparecem na moldura escura. */
+  --color-primary-50: oklch(0.97 0.013 275.49);
+  --color-primary-100: oklch(0.93 0.031 275.49);
+  --color-primary-200: oklch(0.87 0.058 275.49);
+  --color-primary-300: oklch(0.8 0.093 275.49);
+  --color-primary-400: oklch(0.71 0.125 275.49);
+  --color-primary-500: oklch(0.61 0.15 275.49);
+  --color-primary-600: oklch(0.51 0.16 275.49);
+  --color-primary-700: oklch(0.42 0.15 275.49);
+  --color-primary-800: oklch(0.34 0.13 275.49);
+  --color-primary-900: oklch(0.28 0.115 275.49);
+  --color-primary-950: oklch(0.2357 0.1003 275.49);
+  --color-primary: light-dark(var(--color-primary-950), var(--color-primary-300));
+  --color-primary-hover: light-dark(var(--color-primary-800), var(--color-primary-200));
+  --color-primary-foreground: light-dark(#ffffff, var(--color-primary-950));
+  /* o anel de foco é a primária (17:1 no branco, 9,5:1 no escuro), um só em todo o site. O link fica na tinta, como no Rallies: na
+     primária, todo ticker e todo nome das tabelas viraria azul no escuro, e o acento passaria dos 10% da tela */
+  --color-link: var(--color-ink);
+  --color-ring: var(--color-primary);
   /* dado: sempre com glifo (▲ ▼ ■) e sinal, nunca só a cor */
-  --color-data-up: #007a32;
-  --color-data-down: #d6003a;
+  --color-data-up: light-dark(#007a32, #9ae600);
+  --color-data-down: light-dark(#d6003a, #ff637e);
   --color-data-flat: var(--color-muted);
   /* sistema: erro e sucesso de formulário, as cores do dado. Não há cor de aviso: aviso é [!] em cinza */
   --color-semantic-success: var(--color-data-up);
@@ -35,28 +58,40 @@
   --color-moldura: #000000;
   --color-moldura-tinta: #f5f5f5;
   --color-moldura-cinza: #8a8a8a;
+  /* o logo de cada ação (components/logo-do-papel.tsx): o círculo branco nos dois temas (o desenho da brapi conta com o branco atrás) e o
+     contorno de 1 px da better-ui, o preto a 10% no claro e o branco a 10% no escuro (em `rgb()`: o `oklch(1 0 0 / 0.1)` sai [245, 255, 255]
+     no Chromium escuro) */
+  --color-logo-fundo: #ffffff;
+  --color-logo-contorno: light-dark(rgb(0 0 0 / 0.1), rgb(255 255 255 / 0.1));
   /* a matriz do DotSpinner, decorativa */
   --color-dot-on: var(--color-ink);
   --color-dot-off-card: var(--color-surface-strong);
   /* as séries do gráfico, uma por laboratório (a cor do logo, ajustada para passar os 3:1 da linha e os 4,5:1 do texto na pílula do valor);
      a identidade da linha vem do logo e da legenda, nunca só da cor */
-  --color-serie-openai: #0b7a5c;
-  --color-serie-anthropic: #c4512c;
-  --color-serie-google: #1a62d6;
-  --color-serie-xai: #0a0a0a;
-  --color-serie-deepseek: #3b54e0;
-  --color-serie-qwen: #6b46d9;
-  --color-serie-neutra: #6b6b72;
+  --color-serie-openai: light-dark(#0b7a5c, #22c08f);
+  --color-serie-anthropic: light-dark(#c4512c, #f08a63);
+  --color-serie-google: light-dark(#1a62d6, #6ea2ff);
+  --color-serie-xai: light-dark(#0a0a0a, #fafafa);
+  --color-serie-deepseek: light-dark(#3b54e0, #8b9cff);
+  --color-serie-qwen: light-dark(#6b46d9, #a98cff);
+  --color-serie-neutra: light-dark(#6b6b72, #a3a3a9);
 
-  /* a Geist só no peso 600 (layout.tsx): títulos, nomes, números grandes e o nome gigante do rodapé, com font-display. O resto é a fonte do
-     sistema, com os pesos de verdade dela (400, 500 e 600), e a mono também é a do sistema */
-  --font-display: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  /* Uma sans só, a do sistema (SF, Roboto, Segoe), com os pesos de verdade dela (400, 500 e 600) e os algarismos tabulares em todo número
+     (body, abaixo): é a fonte que o Rallies usa no lugar dele, e nenhuma fonte baixada entra no caminho do LCP da landing. O `display` é a
+     mesma sans (o nome fica para os títulos que já o usam). A mono é só para hash e código (`.hash`). */
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: var(--font-sans);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
+  /* as curvas do movimento: saída forte, sem quique (o MOTION de lib/motion.ts tem as mesmas; motion.spec.ts) */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
   /* A escala do Rallies (plano, seção b): o tamanho, a entrelinha e o espaçamento juntos. Os da escala padrão do Tailwind (12, 14, 16, 18,
-     20...) usam o nome dela (text-xs, text-sm, text-base); aqui entram os que ela não tem, pelo número em px. Os títulos levam font-display. */
+     20...) usam o nome dela (text-xs, text-sm, text-base); aqui entram os que ela não tem, pelo número em px. O espaçamento dos títulos
+     grandes para em -0,04 em (abaixo disso as letras se tocam). */
   --text-11: 11px;
   --text-11--line-height: 1.45;
   --text-13: 13px;
@@ -86,41 +121,69 @@
   --text-40--letter-spacing: -0.03em;
   --text-42: 42px;
   --text-42--line-height: 1.08;
-  --text-42--letter-spacing: -0.048em;
+  --text-42--letter-spacing: -0.04em;
   /* o nome gigante do rodapé do site: cabe em 360 px e para nos 280 px do Rallies */
   --text-gigante: clamp(72px, 19vw, 280px);
   --text-gigante--line-height: 1;
-  --text-gigante--letter-spacing: -0.06em;
+  --text-gigante--letter-spacing: -0.04em;
 }
 
 @layer base {
-  /* O escuro: só os valores que mudam (os que apontam para outro token, como o data-flat, seguem sozinhos). */
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --color-canvas: #171717;
-      --color-surface-card: #1f1f1f;
-      --color-surface-strong: #242424;
-      --color-hairline: #262626;
-      --color-hairline-strong: #333333;
-      --color-ink: #fafafa;
-      --color-body: #f5f5f7;
-      --color-muted: #a3a3a9;
-      --color-data-up: #9ae600;
-      --color-data-down: #ff637e;
-      --color-serie-openai: #22c08f;
-      --color-serie-anthropic: #f08a63;
-      --color-serie-google: #6ea2ff;
-      --color-serie-xai: #fafafa;
-      --color-serie-deepseek: #8b9cff;
-      --color-serie-qwen: #a98cff;
-      --color-serie-neutra: #a3a3a9;
-    }
-  }
-  /* a calha das colunas do site (o cabeçalho, o hero e o rodapé usam a mesma) */
+  /* os nomes das bibliotecas (ADR 0037): as peças copiadas da Arc, da beUI e da ReUI leem as cores, as medidas e o movimento por nomes delas, e
+     cada nome aponta para um token nosso, para a peça herdar a paleta nos dois temas sem cor crua. Só entra o nome que alguém lê (o
+     tokens.spec.ts confere): o `--background` e o `--foreground` (o balão do tooltip da Arc), os `--chart-1` a `--chart-7` do shadcn (a cor de
+     cada laboratório nas séries dos gráficos, lib/chart.ts), a sombra, o espaço, o raio, a entrelinha e o movimento do tooltip. A peça nova
+     que pedir outro nome o acrescenta aqui. */
   :root {
+    --background: var(--color-canvas);
+    --foreground: var(--color-ink);
+    --chart-1: var(--color-serie-openai);
+    --chart-2: var(--color-serie-anthropic);
+    --chart-3: var(--color-serie-google);
+    --chart-4: var(--color-serie-xai);
+    --chart-5: var(--color-serie-deepseek);
+    --chart-6: var(--color-serie-qwen);
+    --chart-7: var(--color-serie-neutra);
+    --shadow-raised: 0 6px 18px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.04);
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --radius-panel: 0.5rem;
+    --leading-body: 1.45;
+    /* o movimento (o MOTION de lib/motion.ts tem os mesmos): 150 ms no que se repete (o toque, o hover), 200 no que muda de lugar, 250 no
+       que muda a tela inteira (a troca de tema) */
+    --duration-fast: 150ms;
+    --duration-base: 200ms;
+    --duration-slow: 250ms;
+    --duration-instant: var(--duration-fast);
+    --ease-enter: var(--ease-out-expo);
+    --ease-standard: var(--ease-out-quart);
+    /* a calha das colunas do site (o cabeçalho, o hero e o rodapé usam a mesma) */
     --calha: clamp(16px, 4vw, 32px);
   }
-  /* `light dark`: o navegador pinta o fundo, a barra de rolagem e os controles nativos no tema do sistema antes do CSS. Palavra mais larga
+  /* A sombra é a elevação, a borda é a estrutura: no escuro a sombra some no fundo, e a elevação vira um anel claro (better-ui). */
+  :root:where(.dark) {
+    --shadow-raised: 0 0 0 1px rgb(255 255 255 / 0.08), 0 8px 22px rgb(0 0 0 / 0.4);
+  }
+  /* O tema: sem JavaScript o <html> segue o sistema (`light dark`); com ele, o script do <head> (components/beui/theme-selector.tsx) põe a
+     escolha guardada em `data-tema` antes da pintura, e "claro" e "escuro" fixam o `color-scheme`, que escolhe o lado de cada
+     `light-dark()`. O "sistema" continua `light dark`. O tema em uso também vai na classe `dark`, que a sombra do escuro (acima) lê. */
+  :root[data-tema='claro'] {
+    color-scheme: light;
+  }
+  :root[data-tema='escuro'] {
+    color-scheme: dark;
+  }
+  /* Nenhuma barra de rolagem à vista, em lugar nenhum, como no Rallies (o pedido do Artur, 05/11/2026; o macOS com as barras clássicas as
+     mostrava no painel das carteiras e na borda da página): a página, a barra secundária, a faixa, as tabelas e as folhas continuam rolando
+     pela roda, pelo trackpad, pelo toque e pelo teclado, e a barra também não come a largura da página. O `scrollbar-width` é o padrão (o
+     Chromium desde o 121, o Firefox, o Safari desde o 18.2); o `::-webkit-scrollbar` cobre o Safari de antes. Sem JavaScript. */
+  * {
+    scrollbar-width: none;
+  }
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  /* `light dark`: o navegador pinta o fundo e os controles nativos no tema do sistema antes do CSS. Palavra mais larga
      que a caixa (SHA-256, URL) quebra em vez de empurrar a página para o lado: `break-word`, e não `anywhere` (este deixaria a palavra
      encolher a coluna da tabela). O cabeçalho do site é fixo no topo: a âncora (#feed) e o foco do teclado param abaixo dele. */
   html {
@@ -136,15 +199,24 @@
       scroll-padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
     }
   }
+  /* todo número é tabular (o dado alinhado na coluna, como no Rallies) */
   body {
     background: var(--color-canvas);
     color: var(--color-body);
     font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
   }
   h1,
   h2,
   h3 {
     color: var(--color-ink);
+    text-wrap: balance;
+  }
+  /* Os títulos no 600 (docs/DESIGN.md, a tipografia): a Geist que saiu só tinha a face 600, e o navegador a usava em qualquer peso; a
+     fonte do sistema respeita o peso pedido, então o `font-display` traz o 600 com ele. Um peso explícito (`font-medium`) ainda ganha: a
+     camada utilities vem depois desta. */
+  .font-display {
+    font-weight: 600;
   }
   /* o negrito do texto corrido é o 600 da fonte do sistema (um peso de verdade dela) */
   strong,
@@ -152,14 +224,15 @@
     color: var(--color-ink);
     font-weight: 600;
   }
-  /* O foco do teclado é sempre visível, em toda tela: o contorno sólido de 2 px na tinta, nos dois temas (19,8:1 e 17,2:1). O do Rallies
-     (`auto 1px`, cinza a 50%) não passa os 3:1 da WCAG 1.4.11. */
+  /* O anel de foco, um só em todo o site: o contorno sólido de 2 px na primária, com 2 px de recuo, nos dois temas (17:1 e 9,5:1 no
+     canvas; tokens.spec.ts). Só no foco do teclado (`:focus-visible`): o clique não acende anel. O do Rallies (`auto 1px`, cinza a 50%) não
+     passa os 3:1 da WCAG 1.4.11. */
   :focus-visible {
-    outline: 2px solid var(--color-ink);
+    outline: 2px solid var(--color-ring);
     outline-offset: 2px;
   }
   /* Movimento reduzido: tudo parado no quadro de partida (a fita no começo; a arte nem busca o laço, arte-viva.tsx), e nada escala (o botão
-     pressionado não encolhe). */
+     pressionado não encolhe). A troca de tema é instantânea (o script nem chama a View Transition). */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -177,54 +250,58 @@
    toque de pelo menos 44 px, em toda largura (plano §13): onde o desenho do Rallies pede uma pílula menor (28 a 36 px), a caixa do link tem
    44 px e a pílula visível é o ::before, por dentro. As medidas vêm do Rallies (referência de desenho, nenhum código copiado). */
 @layer components {
+  /* o link: a tinta, com o sublinhado discreto que acende na cor do texto */
   .link {
-    @apply inline-flex min-h-11 min-w-11 items-center justify-start text-ink underline decoration-hairline-strong underline-offset-4 transition-colors duration-150 hover:decoration-ink;
+    @apply inline-flex min-h-11 min-w-11 items-center justify-start text-link underline decoration-hairline-strong underline-offset-4 transition-[text-decoration-color] duration-150 ease-out-quart hover:decoration-current;
   }
-  /* a pílula cinza (a ação de apoio) e a preta (a principal, uma por superfície): 44 px, o texto 14/500 da fonte do sistema */
+  /* O botão, o mesmo em toda tela (ADR 0037: a classe, e não um componente, porque ele vive em tela de servidor, em `<a>` e em `<button>`):
+     a pílula cinza (a ação de apoio) e a primária (a principal, uma por superfície), 44 px, o texto 14/500. No toque ele encolhe a 0,96 em
+     150 ms, e a transição nomeia o que muda (nunca `all`). */
   .btn {
-    @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full bg-surface-strong px-5 text-sm font-medium text-ink transition duration-150 hover:bg-hairline active:scale-97 disabled:cursor-not-allowed disabled:bg-surface-card disabled:text-muted disabled:active:scale-100;
+    @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full bg-surface-strong px-5 text-sm font-medium text-ink transition-[scale,background-color,color,opacity] duration-150 ease-out-quart hover:bg-hairline active:scale-96 disabled:cursor-not-allowed disabled:bg-surface-card disabled:text-muted disabled:active:scale-100;
   }
   .btn-primary {
-    @apply bg-ink text-canvas hover:bg-ink hover:opacity-85;
+    @apply bg-primary text-primary-foreground hover:bg-primary-hover;
   }
-  /* o campo do cadastro do Rallies (44 px, raio 8, o cinza do painel), com o fio que marca o lugar dele. 16 px: abaixo disso o Safari do
-     iPhone dá zoom na página ao focar o campo (carteira-layout.spec.ts) */
+  /* o campo do cadastro do Rallies (44 px, raio 8, o cinza do painel), com o fio que identifica o controle (o `control`, 3:1 no canvas e no
+     cinza do painel: WCAG 1.4.11). 16 px: abaixo disso o Safari do iPhone dá zoom na página ao focar o campo (carteira-layout.spec.ts) */
   .field {
-    @apply min-h-11 min-w-0 rounded-lg border border-hairline bg-surface-card px-3 text-base text-ink placeholder:text-muted disabled:text-muted;
+    @apply min-h-11 min-w-0 rounded-lg border border-control bg-surface-card px-3 text-base text-ink placeholder:text-muted disabled:text-muted;
   }
   /* O campo de data tem quatro paradas de Tab (o dia, o mês, o ano e o ícone do calendário): na do ícone o campo deixa de ser `:focus` (só
-     `:focus-within`) e o navegador punha o anel azul dele no ícone. O contorno do projeto vale no campo inteiro, em toda parada. */
+     `:focus-within`) e o navegador punha o anel azul dele no ícone. O anel do projeto vale no campo inteiro, em toda parada. */
   input[type='date']:focus-within {
-    outline: 2px solid var(--color-ink);
+    outline: 2px solid var(--color-ring);
     outline-offset: 2px;
   }
   input[type='date']::-webkit-calendar-picker-indicator {
     outline: none;
   }
-  /* A caixa de marcar e o radio: 44 por 44 px, o alvo de toque do projeto. Desmarcados, o contorno é o `muted` (5,29:1 e 7,14:1: a WCAG
-     1.4.11 pede 3:1 para o que identifica o controle); inválidos, o vermelho do erro, como o campo de texto. Marcados, o fundo é a tinta e o
-     glifo (✕ e ●) é texto: não dependem da cor, e o glifo sobrevive ao alto contraste do sistema. O radio é redondo. */
-  .check,
-  .radio {
+  /* A caixa de marcar: 44 por 44 px, o alvo de toque do projeto. Desmarcada, o contorno é o `muted` (5,29:1 e 7,14:1: a WCAG 1.4.11 pede 3:1
+     para o que identifica o controle); inválida, o vermelho do erro, como o campo de texto. Marcada, o fundo é a tinta e o glifo ✕ é texto: não
+     depende da cor, e o glifo sobrevive ao alto contraste do sistema. */
+  .check {
     @apply size-11 shrink-0 cursor-pointer appearance-none rounded-md border border-muted bg-canvas checked:border-ink checked:bg-ink disabled:cursor-not-allowed disabled:border-hairline;
+  }
+  .check:checked::before {
+    @apply flex size-full items-center justify-center font-mono text-xl text-canvas;
+    content: '✕';
+  }
+  /* O radio: o desenho do radio nativo, de 20 px (a decisão que a T2b deixou, tomada no fechamento da onda), dentro do alvo de 44 px, que é o
+     <label> inteiro da opção (o radio e o texto: o toque no texto o marca; form-kit.tsx). O estado é a espessura da borda, sem `::before` nem
+     fundo: desmarcado, 2 px no fio de controle (3:1); marcado, 6 px na tinta, com o miolo no canvas. A borda sobrevive às cores forçadas do
+     sistema em todo navegador, o Firefox inclusive (a cor vira a do sistema, a espessura fica); o glifo num `::before` de <input>, que havia, o
+     Firefox não desenha. O anel de foco fica no radio. */
+  .radio {
+    @apply size-5 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-control bg-canvas outline-offset-2 checked:border-[6px] checked:border-ink disabled:cursor-not-allowed disabled:border-hairline;
   }
   /* o campo, a caixa de marcar e o radio inválidos: a borda do erro (uma regra só para os três) */
   [aria-invalid='true'] {
     border-color: var(--color-semantic-error);
   }
-  .radio {
-    @apply rounded-full;
-  }
-  .check:checked::before,
-  .radio:checked::before {
-    @apply flex size-full items-center justify-center font-mono text-xl text-canvas;
-    content: '✕';
-  }
-  .radio:checked::before {
-    content: '●';
-  }
   /* A tabela do Rallies, densa: a célula 13/400, o cabeçalho 11/500 em muted (em caixa normal: o e2e lê o texto), 8 px de cada lado (a
-     tabela de posições da carteira, de seis colunas, cabe inteira no painel do meio em 1440 px). */
+     tabela de posições da carteira, de seis colunas, cabe inteira no painel do meio em 1440 px). Tudo na sans, com os algarismos tabulares
+     (a mono é só para hash e código). A linha acende no hover em 150 ms (o cinza do painel), e a célula presa à esquerda junto. */
   .tbl {
     @apply w-full border-collapse text-left text-13 tabular-nums;
   }
@@ -235,7 +312,14 @@
     @apply px-2 py-2 whitespace-nowrap text-ink;
   }
   .row {
-    @apply border-t border-hairline;
+    @apply border-t border-hairline transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card;
+  }
+  /* a célula presa à esquerda quando a tabela rola dentro da caixa (tables.tsx, STICKY): o fundo é o da caixa, e acende com a linha */
+  .celula-presa {
+    @apply sticky left-0 bg-canvas transition-[background-color] duration-150 ease-out-quart;
+  }
+  .row:hover > .celula-presa {
+    @apply bg-surface-card;
   }
   /* A célula presa do competidor (tables.tsx): o logo fora do fluxo do texto, à esquerda e no meio da altura, para ele nunca ficar sozinho
      numa linha acima do nome no celular. O respiro do lado dele é da célula; o texto que o e2e lê não muda. */
@@ -268,14 +352,16 @@
   }
 
   /* A pílula de contorno (o anúncio do hero, "Entrar", "Regras da arena") e o chip cinza (o ticker, o filtro em link): a caixa de 44 px, a
-     pílula de 32 px desenhada por dentro. O chip escolhido é a pílula preta, como o filtro do Rallies. */
+     pílula de 32 px desenhada por dentro. O chip escolhido é a primária, como o filtro do Rallies. Como o botão, o fundo anda em 150 ms e o
+     toque encolhe a 0,96 (o QA do fechamento, achado 13: no cabeçalho do site eles trocavam na hora); a regra global do movimento reduzido para
+     os dois. */
   .pill,
   .chip {
-    @apply relative isolate inline-flex min-h-11 min-w-11 max-w-full items-center justify-center gap-1.5 px-3 text-sm text-ink;
+    @apply relative isolate inline-flex min-h-11 min-w-11 max-w-full items-center justify-center gap-1.5 px-3 text-sm text-ink transition-[scale] duration-150 ease-out-quart active:scale-96;
   }
   .pill::before,
   .chip::before {
-    @apply absolute inset-x-0 inset-y-1.5 -z-10 rounded-full content-[''];
+    @apply absolute inset-x-0 inset-y-1.5 -z-10 rounded-full transition-[background-color] duration-150 ease-out-quart content-[''];
   }
   .pill::before {
     @apply border border-hairline bg-canvas;
@@ -289,11 +375,12 @@
   .chip:hover::before {
     @apply bg-hairline;
   }
+  /* a escolha atual é a primária (o chip escolhido, o filtro do feed, o seletor de tema) */
   .chip[aria-current='true'] {
-    @apply text-canvas;
+    @apply text-primary-foreground;
   }
   .chip[aria-current='true']::before {
-    @apply bg-ink;
+    @apply bg-primary;
   }
   /* a etiqueta: 24 px, neutra, com o texto em muted */
   .badge {
@@ -309,16 +396,16 @@
   }
 
   /* O segmentado (as sub-telas de uma área no celular, "Arena | Ranking | Último ciclo"): o trilho cinza de 40 px com 4 px de respiro e a
-     pílula do canvas escolhida, de 32 px; cada item é um link com a caixa de 44 px. O `-preto` é o filtro do feed: mono 12/500 e a pílula
-     preta escolhida. */
+     pílula do canvas escolhida, de 32 px; cada item é um link com a caixa de 44 px. O `-preto` é o filtro do feed: a sans 12/500 e a pílula
+     da primária escolhida. A cor do texto e o fundo da pílula trocam em 150 ms (a navegação é um link do servidor: a pílula não anda). */
   .segmentado {
     @apply flex h-10 w-max max-w-full items-center rounded-full bg-surface-strong px-1;
   }
   .segmentado a {
-    @apply relative isolate inline-flex min-h-11 min-w-11 items-center justify-center px-3 text-sm font-medium whitespace-nowrap text-muted hover:text-ink;
+    @apply relative isolate inline-flex min-h-11 min-w-11 items-center justify-center px-3 text-sm font-medium whitespace-nowrap text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
   }
   .segmentado a::before {
-    @apply absolute inset-x-0 inset-y-1.5 -z-10 rounded-full content-[''];
+    @apply absolute inset-x-0 inset-y-1.5 -z-10 rounded-full transition-[background-color] duration-150 ease-out-quart content-[''];
   }
   .segmentado a[aria-current] {
     @apply text-ink;
@@ -327,24 +414,20 @@
     @apply bg-canvas;
   }
   .segmentado-preto a {
-    @apply font-mono text-xs;
+    @apply text-xs;
   }
   .segmentado-preto a[aria-current] {
-    @apply text-canvas;
+    @apply text-primary-foreground;
   }
   .segmentado-preto a[aria-current]::before {
-    @apply bg-ink;
+    @apply bg-primary;
   }
-  /* As abas do topo do principal ("Arena / Ranking / Último ciclo", 15/500) e os títulos de aba grandes do celular ("Decisões | Carteiras",
-     a Geist de 20): a escolhida na tinta, as outras em muted. */
+  /* As abas do topo do principal ("Arena / Ranking / Último ciclo", 15/500): a escolhida na tinta, as outras em muted. */
   .abas {
     @apply flex flex-wrap items-center gap-x-5;
   }
   .abas a {
-    @apply inline-flex min-h-11 min-w-11 items-center text-15 font-medium text-muted hover:text-ink;
-  }
-  .abas-grandes a {
-    @apply font-display text-20 font-semibold;
+    @apply inline-flex min-h-11 min-w-11 items-center text-15 font-medium text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
   }
   .abas a[aria-current] {
     @apply text-ink;
@@ -354,7 +437,7 @@
     @apply flex flex-wrap items-center gap-x-1.5 text-sm text-muted;
   }
   .trilha a {
-    @apply inline-flex min-h-11 min-w-11 items-center hover:text-ink;
+    @apply inline-flex min-h-11 min-w-11 items-center transition-[color] duration-150 ease-out-quart hover:text-ink;
   }
 
   /* O logo do laboratório (components/competidor.tsx; os arquivos em public/laboratorios, com a procedência em docs/DEPENDENCIAS.md): o
@@ -397,10 +480,103 @@
     --logo: url(/laboratorios/qwen.svg);
   }
 
-  /* A moldura da arte: escura nos dois temas (a arte é âmbar sobre preto, e invertida perderia a brasa). Dentro dela só moram a arte, a
-     legenda (`text-moldura-cinza`), a fita (`text-moldura-tinta`) e texto para o leitor de tela: o que segue o tema da página (o cartão
-     "Arena agora", as pílulas) fica fora dela, por cima. Um número com `[data-dir]` não entra aqui: o verde e o vermelho do claro não passam
-     o AA sobre o preto. */
+  /* A faixa dos modelos (components/competidor.tsx, FaixaDeModelos). Na casca do app ela vai de uma borda à outra do principal, como a do
+     Rallies (os fios de cima e de baixo e os divisores entre os cartões): come o respiro do `main`, e o texto de cada cartão começa no respiro
+     dele, alinhado com o h1 (o da direita fica menor). Na landing ela fica dentro do cartão "Arena agora", como estava. O cartão acende no
+     hover (o cinza do painel) e no toque (o do trilho), em 150 ms. */
+  .faixa-cartao {
+    @apply px-4 transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card active:bg-surface-strong;
+  }
+  .app-coluna .faixa {
+    @apply -mx-5 lg:-mx-6;
+  }
+  .app-coluna .faixa-cartao {
+    @apply pr-2 pl-5 lg:pl-6;
+  }
+  /* O botão redondo do Rallies no lugar da barra de rolagem: o "›" na ponta direita, no meio da altura da faixa, e o "‹" na esquerda depois
+     de rolar. São os `::scroll-button()` do Chromium, só CSS: o navegador rola a faixa, e o botão some no fim da rolagem (`:disabled`). Onde
+     o navegador não os tem (o Safari, o Firefox) não há botão: o trackpad, o toque, o Shift com a roda e as setas (a faixa recebe o foco)
+     rolam. Só com o mouse (`pointer: fine`): no celular o dedo rola, e o botão cobriria o cartão. O botão nasce fora da caixa que rola, como
+     irmão dela, e se põe sobre ela pela âncora (uma faixa por página: a da arena ou a da landing). A caixa tem os 44 px do alvo de toque, e
+     o círculo visível, os 36 px do Rallies (a borda transparente de 4 px). */
+  @media (pointer: fine) {
+    /* o foco do Tab para antes do botão: a rolagem que leva o cartão focado à vista deixa livre a largura do "›" (e do "‹") na ponta (o QA do
+       fechamento, achado 15: o anel do cartão da ponta ficava embaixo do botão) */
+    .faixa {
+      anchor-name: --faixa;
+      scroll-padding-inline: 3.5rem;
+    }
+    .faixa::scroll-button(*) {
+      position-anchor: --faixa;
+      top: calc(anchor(center) - 22px);
+    }
+    /* A tabela que rola (ui.tsx, TableScroll) tem o mesmo botão, posto pela casca de fora dela (`.tabela`), no meio da altura (o QA do
+       fechamento, achado 4). */
+    .tabela-rola::scroll-button(*) {
+      top: calc(50% - 22px);
+    }
+    :is(.faixa, .tabela-rola)::scroll-button(*) {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      padding-bottom: 2px;
+      border: 4px solid transparent;
+      border-radius: 50%;
+      background: var(--color-surface-card) padding-box;
+      box-shadow: inset 0 0 0 1px var(--color-hairline);
+      color: var(--color-ink);
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    :is(.faixa, .tabela-rola)::scroll-button(*):hover {
+      background-color: var(--color-surface-strong);
+    }
+    :is(.faixa, .tabela-rola)::scroll-button(*):focus-visible {
+      outline: 2px solid var(--color-ring);
+      outline-offset: -2px;
+    }
+    /* `visibility`, e não `display: none`: no Chromium 156 o `display: none` no botão que tem o foco (o clique o foca, e ele fica
+       desabilitado no fim da rolagem) derruba a aba quando o foco sai dele (layout.spec.ts, a faixa que rola pelo "›") */
+    :is(.faixa, .tabela-rola)::scroll-button(*):disabled {
+      visibility: hidden;
+    }
+    .faixa::scroll-button(right) {
+      content: '›' / 'Rolar a faixa para a direita';
+      right: calc(anchor(right) + 0.5rem);
+    }
+    .faixa::scroll-button(left) {
+      content: '‹' / 'Rolar a faixa para a esquerda';
+      left: calc(anchor(left) + 0.5rem);
+    }
+    .tabela-rola::scroll-button(right) {
+      content: '›' / 'Rolar a tabela para a direita';
+      right: 0.5rem;
+    }
+    .tabela-rola::scroll-button(left) {
+      content: '‹' / 'Rolar a tabela para a esquerda';
+      left: 0.5rem;
+    }
+  }
+  /* A pista de que a tabela continua (o QA do fechamento, achado 4): sem a barra de rolagem à vista, a borda da direita esmaece enquanto há
+     mais colunas para lá, e para de esmaecer no fim da rolagem. A largura do esmaecer segue a rolagem da própria caixa (uma animação ligada
+     a ela, `animation-timeline: scroll()`), só CSS: a tabela que cabe não tem rolagem e não esmaece, e o navegador sem a linha do tempo da
+     rolagem fica sem o esmaecer. A célula presa à esquerda fica fora dele. */
+  .tabela {
+    @apply relative;
+  }
+  .tabela-rola {
+    mask-image: linear-gradient(to left, transparent, #000 var(--mais-a-direita));
+    animation: tabela-mais linear both;
+    animation-timeline: scroll(self inline);
+  }
+
+  /* A moldura da arte: escura nos dois temas (a arte é o azul claro da marca sobre o preto, a brasa refeita pelo scripts/arte-azul.mjs, e
+     invertida perderia o desenho). Dentro dela só moram a arte, a legenda (`text-moldura-cinza`), a fita (`text-moldura-tinta`) e texto
+     para o leitor de tela: o que segue o tema da página (o cartão "Arena agora", as pílulas) fica fora dela, por cima. Um número com
+     `[data-dir]` não entra aqui: o verde e o vermelho do claro não passam o AA sobre o preto. */
   .moldura {
     background: var(--color-moldura);
     color: var(--color-moldura-tinta);
@@ -417,10 +593,11 @@
       @apply flex items-center gap-1;
     }
     .menu-links a {
-      @apply inline-flex min-h-11 items-center px-3 text-sm text-muted hover:text-ink;
+      @apply inline-flex min-h-11 items-center px-3 text-sm text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
     }
+    /* o seletor de tema e a pílula "Entrar", lado a lado */
     .menu-acoes {
-      @apply justify-self-end;
+      @apply flex items-center gap-3 justify-self-end;
     }
   }
   @media (width < 64rem) {
@@ -435,11 +612,12 @@
     .menu-links a {
       @apply flex min-h-13 items-center border-b border-hairline text-base font-medium text-ink;
     }
+    /* na folha: a linha do tema (como a de um link) e a pílula "Entrar" embaixo */
     .menu-acoes {
-      @apply mt-5 flex;
+      @apply flex flex-col;
     }
     .menu-acoes .pill {
-      @apply w-full;
+      @apply mt-5 w-full;
     }
   }
 
@@ -448,10 +626,11 @@
      tinta. Abaixo: a marca numa linha no topo e a barra de abas fixa no pé, de 56 px mais a área segura do iPhone, com os seis itens. É a
      mesma `nav`, desenhada de dois jeitos. */
   .app-item {
-    @apply flex min-h-11 min-w-11 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl text-xs text-muted hover:text-ink;
+    @apply flex min-h-11 min-w-11 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl text-xs text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
   }
+  /* o círculo atrás do ícone acende no hover e marca a área atual, em 150 ms */
   .app-icone {
-    @apply grid size-8 place-items-center rounded-full;
+    @apply grid size-8 place-items-center rounded-full transition-[background-color] duration-150 ease-out-quart;
   }
   .app-item:hover .app-icone {
     @apply bg-surface-card;
@@ -542,6 +721,25 @@
       @apply min-h-11 rounded-md px-3 text-sm hover:bg-surface-card;
     }
   }
+  /* A moldura do app (medida na Arena do Rallies numa janela de 1.917 px, .data/rallies-referencia/arena-1917-logado.png): a coluna do
+     trilho, da barra secundária e do principal tem até 1.550 px, centrada, com o fio de cada lado quando a janela é mais larga que ela (o
+     fundo fica fora); até 1.550 px ela enche a tela, sem fio, como antes. Como no Rallies, o fio da esquerda é o do trilho e o da direita é o
+     da coluna. O trilho e o menu "Mais" são fixos, e o `50%` deles é o da janela: eles acompanham a coluna (775 px é a metade dela). */
+  .app {
+    @apply mx-auto w-full max-w-[1550px];
+  }
+  @media (width > 1550px) {
+    .app {
+      @apply border-r border-hairline;
+    }
+    .app-topo {
+      @apply border-l;
+      left: calc(50% - 775px);
+    }
+    .mais:popover-open {
+      left: calc(50% - 775px + 5.5rem);
+    }
+  }
   /* Com uma folha aberta, o que ela cobre sai de vista e da ordem do Tab (o foco não some atrás dela): a página do site; no celular, a
      coluna do app e a marca do topo. O botão "Menu" troca os traços pelo ✕. */
   body:has(.menu:popover-open) .site-coluna {
@@ -584,15 +782,17 @@
     }
   }
 
-  /* A fita do pé do hero: a mesma linha duas vezes num trilho, rolando um caractere por passo (8 por segundo), com as pontas dissolvidas.
-     Sob movimento reduzido a regra global a para no começo. */
+  /* A fita do pé do hero: a mesma linha duas vezes num trilho, rolando sem parar em linha reta (a volta leva um oitavo de segundo por
+     caractere: uns 8 por segundo), com as pontas dissolvidas. Na sans com os algarismos tabulares do `body`, como o resto da landing (a mono,
+     com a célula fixa, andava um caractere por passo). Só o `transform` anima (a composição do navegador, nada no fio principal). Sob
+     movimento reduzido a regra global a para no começo. */
   .tape {
-    @apply w-full overflow-hidden font-mono text-13 leading-none whitespace-pre text-muted;
+    @apply w-full overflow-hidden text-13 leading-normal whitespace-pre text-muted;
     mask-image: linear-gradient(to right, transparent, #000 15%, #000 85%, transparent);
   }
   .tape-trilho {
     @apply flex w-max;
-    animation: tape var(--tape-duracao) steps(var(--tape-passos)) infinite;
+    animation: tape var(--tape-duracao) linear infinite;
   }
 
   /* A arte (components/arte.tsx): a grade de glifos do quadro 0, já com a brasa (o sprite do quadro, um pixel por célula), do tamanho da
@@ -638,9 +838,34 @@
   }
 }
 
+/* a largura do esmaecer da borda da tabela que rola (`.tabela-rola`): a de 40 px enquanto há mais à direita, e nenhuma no fim */
+@property --mais-a-direita {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes tabela-mais {
+  0%,
+  90% {
+    --mais-a-direita: 2.5rem;
+  }
+  100% {
+    --mais-a-direita: 0px;
+  }
+}
+
 @keyframes tape {
   to {
     transform: translateX(-50%);
+  }
+}
+
+@keyframes linha-desenha {
+  from {
+    clip-path: inset(-50% 100% -50% -1%);
+  }
+  to {
+    clip-path: inset(-50% -1% -50% -1%);
   }
 }
 
@@ -656,23 +881,147 @@
   }
 }
 
+/* A fundação do design premium (ADR 0037; docs/DESIGN.md): a marca, a mono do hash e o seletor de tema, com a revelação da troca. */
+@layer components {
+  /* A marca: o desenho do logo é o arquivo public/marca.svg, usado como máscara (o que é opaco nele vira a primária, o vazado mostra o
+     fundo), e o tema pinta: o azul do logo no claro, o tom claro dele no escuro. Trocar o logo é trocar o arquivo (e o app/icon.svg, o do
+     navegador). */
+  .marca {
+    @apply inline-block shrink-0 bg-primary;
+    mask: url(/marca.svg) center / contain no-repeat;
+  }
+  /* a mono é só para hash e código; o SHA-256 quebra em qualquer ponto em vez de alargar a página */
+  .hash {
+    @apply font-mono break-all;
+  }
+
+  /* O seletor de tema (components/beui/theme-selector.tsx): três radios num trilho cinza de 40 px, cada um na caixa de 44 px, e a pílula da
+     escolha, um círculo de 32 px na primária, que anda 44 px por opção em 200 ms. A posição sai do `data-tema` do <html>, que o script do
+     <head> põe antes da pintura, e não do `:checked`: o primeiro quadro já mostra a escolha guardada. Sem JavaScript o seletor não faria
+     nada, e some (o tema segue o sistema). No trilho do app ele fica em pé (`tema-vertical`). */
+  .tema {
+    --i: 2;
+    @apply relative isolate m-0 inline-flex h-10 min-w-0 shrink-0 items-center rounded-full border-0 bg-surface-strong px-0.5 py-0;
+  }
+  html[data-tema='claro'] .tema {
+    --i: 0;
+  }
+  html[data-tema='escuro'] .tema {
+    --i: 1;
+  }
+  .tema::before {
+    @apply absolute top-1 left-2 -z-10 size-8 rounded-full bg-primary content-[''];
+    translate: calc(var(--i) * 2.75rem) 0;
+    transition: translate var(--duration-base) var(--ease-out-quint);
+  }
+  .tema label {
+    @apply relative grid size-11 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
+  }
+  /* o radio cobre a caixa inteira (o alvo de 44 px), invisível: o desenho é o ícone e a pílula */
+  .tema input {
+    @apply absolute inset-0 m-0 cursor-pointer appearance-none opacity-0;
+  }
+  .tema label:has(:focus-visible) {
+    outline: 2px solid var(--color-ring);
+    outline-offset: -2px;
+  }
+  html[data-tema='claro'] .tema label[data-opcao='claro'],
+  html[data-tema='escuro'] .tema label[data-opcao='escuro'],
+  html[data-tema='sistema'] .tema label[data-opcao='sistema'] {
+    @apply text-primary-foreground;
+  }
+  .tema-vertical {
+    @apply h-auto w-10 flex-col px-0 py-0.5;
+  }
+  .tema-vertical::before {
+    @apply top-2 left-1;
+    translate: 0 calc(var(--i) * 2.75rem);
+  }
+  /* o rótulo visível "Tema" ao lado (as folhas) ou embaixo (o trilho); o nome do grupo para o leitor de tela é a legenda */
+  .tema-linha {
+    @apply flex items-center justify-between gap-3;
+  }
+  .tema-rotulo {
+    @apply text-sm text-muted;
+  }
+  /* sem JavaScript o seletor não faria nada: some, com a linha da folha "Mais" e o item do trilho que o guardam */
+  html:not([data-tema]) :is(.tema, .tema-linha, .mais-tema, .app-tema) {
+    display: none;
+  }
+  /* onde ele entra: no pé do trilho, perto de "Conta" (desktop); na folha "Mais" (celular); no cabeçalho do site, antes de "Entrar" (na
+     folha do "Menu" abaixo de 1024 px) */
+  /* no trilho, como os outros itens: o controle em cima e o rótulo embaixo */
+  .app-tema .tema-linha {
+    @apply flex-col-reverse gap-1;
+  }
+  .app-tema .tema-rotulo {
+    @apply text-xs font-medium;
+  }
+  @media (width < 64rem) {
+    .app-tema {
+      @apply hidden;
+    }
+    .mais-tema {
+      @apply flex min-h-13 items-center border-b border-hairline;
+    }
+    .mais-tema .tema-linha,
+    .menu-acoes .tema-linha {
+      @apply w-full;
+    }
+    .menu-acoes .tema-linha {
+      @apply min-h-13 border-b border-hairline;
+    }
+  }
+  @media (width >= 64rem) {
+    .app-tema {
+      @apply mt-1.5;
+    }
+    .mais-tema {
+      @apply hidden;
+    }
+    .menu-acoes .tema-rotulo {
+      @apply sr-only;
+    }
+  }
+}
+
+/* A revelação da troca de tema, adaptada do Theme Toggle da beUI (MIT; components/beui/theme-selector.tsx): a página é fotografada antes
+   e depois pela View Transition API, e o tema novo aparece num círculo que cresce do controle tocado até cobrir a janela, em 250 ms. Só no
+   toque ou no clique que muda o tema em uso: o teclado e o movimento reduzido trocam na hora, e o navegador sem a API também. */
+html[data-tema-revelar]::view-transition-old(root),
+html[data-tema-revelar]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html[data-tema-revelar]::view-transition-new(root) {
+  animation: tema-revelar var(--duration-slow) var(--ease-out-quart);
+}
+@keyframes tema-revelar {
+  from {
+    clip-path: circle(0 at var(--tema-x) var(--tema-y));
+  }
+  to {
+    clip-path: circle(var(--tema-r) at var(--tema-x) var(--tema-y));
+  }
+}
+
 /* landing (T2a): as classes que se repetem na landing e no rodapé do site (docs/redesign-rallies/plano.md, seção d). Moram aqui, e não em cada
    elemento, pelo peso do documento: o mesmo texto iria duas vezes por página, no HTML e no payload do React. */
 @layer components {
-  /* o ladrilho da faixa dos laboratórios (d.4): o cinza do painel, raio 6, o logo de 32 px, o nome e a etiqueta "simulado" embaixo dele */
+  /* o ladrilho da faixa dos laboratórios (d.4): o cinza do painel, raio 6, o logo de 32 px e o nome embaixo dele (o "simulado" vai uma vez,
+     no cabeçalho da faixa) */
   .ladrilho {
-    @apply flex min-w-0 flex-col items-center gap-3 rounded-md bg-surface-card px-2 py-5 text-center text-13 font-semibold text-ink;
+    @apply flex min-w-0 flex-col items-center gap-3 rounded-md bg-surface-card px-2 py-5 text-center text-13 font-semibold text-balance text-ink;
   }
-  /* o nome em cima e a etiqueta no pé: com o nome em duas linhas, a etiqueta não desce sozinha, e a linha de ladrilhos fica alinhada */
-  .ladrilho > span:last-child {
-    @apply flex flex-1 flex-col items-center gap-2 text-balance;
-  }
-  .ladrilho .badge {
-    @apply mt-auto;
-  }
-  /* o recorte de UI (d.3 e d.5): o canvas com o fio, raio 8, e a sombra do recorte do Rallies */
+  /* O recorte de UI (d.3 e d.5): o canvas que flutua sobre a moldura e sobre o cinza do painel, raio 8. A Regra Plana (docs/DESIGN.md): a
+     sombra é a elevação, sem o fio de 1 px por cima dela; a borda vira o anel de 1 px da própria sombra, transparente (preto a 6% no claro,
+     branco a 8% no escuro), que serve no preto e no cinza (better-ui, "shadow as border"), mais a sombra do recorte do Rallies. */
   .recorte {
-    @apply min-w-0 rounded-lg border border-hairline bg-canvas p-4 shadow-[0_24px_64px_-24px_rgb(0_0_0/0.45)] sm:p-5;
+    @apply min-w-0 rounded-lg bg-canvas p-3 sm:p-5;
+    box-shadow:
+      0 0 0 1px light-dark(rgb(0 0 0 / 0.06), rgb(255 255 255 / 0.08)),
+      0 1px 2px -1px rgb(0 0 0 / 0.06),
+      0 24px 64px -24px rgb(0 0 0 / 0.45);
   }
   /* o painel de recurso (d.5): o cinza do painel, raio 6; as duas colunas (a partir de 1024 px) quando há recorte */
   .painel {
@@ -695,7 +1044,7 @@
   .mapa-marca {
     @apply max-md:hidden;
   }
-  /* o nome gigante, cortado no pé: a Geist 600 na tinta a 6%, decorativo. O texto mora aqui, fora do que o leitor de tela e o axe leem (o
+  /* o nome gigante, cortado no pé: a sans 600 na tinta a 6%, decorativo. O texto mora aqui, fora do que o leitor de tela e o axe leem (o
      contraste dele é o de enfeite: a WCAG 1.4.3 o deixa de fora, e o nome está no cabeçalho). Em 360 px ele cabe na largura. */
   .nome-gigante {
     @apply pointer-events-none mt-12 block h-[0.72em] overflow-hidden text-center font-display text-gigante font-semibold select-none;
@@ -705,3 +1054,271 @@
     color: color-mix(in oklab, var(--color-ink) 6%, transparent);
   }
 }
+
+/* landing (T1b, design premium): o movimento da landing, só CSS. Acima da dobra nada carrega JavaScript nem biblioteca (o LCP do celular,
+   docs/TELAS.md, seção 5): o que se mexe é o toque nos botões, a seta que anda no hover, a revelação da troca de tema (a fundação), a fita e
+   o laço da arte (a partir de 1024 px, depois do load). */
+@layer components {
+  /* A seta dos CTAs, da pílula da temporada e do "Saiba mais ›" (hero.tsx e landing/paineis.tsx): anda 2 px para a frente no hover, em
+     150 ms com a saída forte, e volta quando o ponteiro sai (uma transição, que se interrompe). Só o `translate` muda. Sem hover (o toque no
+     celular) e com movimento reduzido ela fica parada. */
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .seta {
+      transition: translate var(--duration-fast) var(--ease-out-quart);
+    }
+    :is(a, button):hover > .seta {
+      translate: 0.125rem 0;
+    }
+  }
+}
+/* fim do bloco landing (T1b) */
+
+/* arena (T1a, design premium): as peças das telas da arena (a /arena, o /ranking, a página do modelo e a do ciclo; docs/TELAS.md, seções 1 e
+   10; ADR 0037): a nota "simulado" uma vez por contexto, a linha da carteira, a legenda e os detalhes dos gráficos da beUI. Cores só dos
+   tokens; o movimento é de 150 ms, nomeia o que muda e a regra global do movimento reduzido o zera. */
+@layer components {
+  /* a nota "simulado" (ui.tsx, NotaSimulada): a etiqueta cinza sem borda e uma frase curta, numa linha discreta (a honestidade é obrigatória,
+     o peso não; docs/DESIGN.md) */
+  .nota-simulada {
+    @apply flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-pretty text-muted;
+  }
+  /* As vistas da arena abaixo de 1280 px (o QA do fechamento, achado 7: as abas "Decisões | Carteiras" eram âncoras que pareciam abas): a
+     URL escolhe (`?vista=`, arena/page.tsx), e o CSS mostra só a vista escolhida, do servidor, sem JavaScript; a partir de 1280 px a barra
+     das carteiras fica ao lado e as duas aparecem. */
+  @media (width < 80rem) {
+    [data-vista='decisoes'] .vista-carteiras,
+    [data-vista='carteiras'] .vista-decisoes {
+      display: none;
+    }
+  }
+  /* a linha de cada carteira da barra (components/arena/carteiras.tsx) acende no hover, como a das tabelas */
+  .linha-carteira {
+    @apply transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card;
+  }
+  /* a legenda dos gráficos (components/beui/line-chart.tsx e bump-chart.tsx): cada série num item de 44 px, o texto 12 em muted; o botão
+     que mostra a série fica na tinta, e o que a esconde, em muted com o traço vazado; o fundo acende no hover */
+  .legenda-serie {
+    @apply inline-flex min-h-11 min-w-11 items-center gap-2 rounded-md px-2 text-left text-xs text-muted transition-[color,background-color] duration-150 ease-out-quart;
+  }
+  button.legenda-serie {
+    @apply cursor-pointer hover:bg-surface-card hover:text-ink;
+  }
+  button.legenda-serie[aria-pressed='true'] {
+    @apply text-ink;
+  }
+  /* a faixa p5 a p95 do Monte Carlo, num tom que não compete com as linhas (a tinta a 3%, nos dois temas: o `surface-strong` de antes era um
+     bloco cinza), e a amostra dela na legenda, com o fio para aparecer no tamanho pequeno */
+  .mc-faixa {
+    fill: color-mix(in oklab, var(--color-ink) 3%, transparent);
+  }
+  .mc-amostra {
+    @apply inline-block h-2.5 w-5 shrink-0 rounded-sm border border-hairline-strong;
+    background: color-mix(in oklab, var(--color-ink) 3%, transparent);
+  }
+  /* os nomes e os tickers nas tabelas e nas carteiras sem o sublinhado em repouso, como os do Rallies (o sublinhado acende no hover); fora delas
+     o link segue com o sublinhado discreto */
+  .celula-presa .link,
+  [data-carteira] h3 .link {
+    @apply no-underline hover:underline;
+  }
+  /* a série que a legenda mostra de novo se desenha da esquerda para a direita, num recorte que cresce em 250 ms com a saída quart (o "dado
+     que muda" do docs/DESIGN.md; components/beui/line-chart.tsx põe a classe num caminho novo a cada volta). As sobras de cima, de baixo e das
+     pontas deixam o traço redondo inteiro. Com movimento reduzido, a regra global troca na hora. */
+  .linha-desenha {
+    animation: linha-desenha var(--duration-slow) var(--ease-out-quart);
+  }
+  /* o cursor do gráfico: a linha vertical na tinta a 35% que some nas pontas (a da beUI) */
+  .cursor-grafico {
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      color-mix(in oklab, var(--color-ink) 35%, transparent) 25% 75%,
+      transparent
+    );
+  }
+  /* o ponto de cada posição no gráfico de posições: o número no canvas, com o anel da cor da série (o `border-color` vem dela, por `var()`) */
+  .bump-ponto {
+    @apply absolute grid size-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-[1.5px] bg-canvas text-[10px] leading-none font-semibold text-ink tabular-nums;
+  }
+}
+/* fim do bloco arena (T1a) */
+
+/* explorar (T2a, design premium): as peças do Explorar, da busca de ações, da página de cada ação (o terminal) e das notícias (docs/TELAS.md,
+   seções 1, 4 e 10; ADR 0037): o cartão do Discover que levanta, as linhas que acendem, o termo explicado pelo tooltip da Arc, os painéis do
+   terminal e o realce das velas. Cores só dos tokens; o movimento é de 150 ms com a saída forte e nomeia o que muda; a regra global do
+   movimento reduzido o zera, e o levantar do cartão nem existe sem `no-preference`. Nada anima na abertura da página. */
+@layer components {
+  /* as linhas da barra "Explorar" (os populares e os grupos): o fundo acende no hover (o cinza do painel) e no toque (o do trilho) */
+  .linha-explorar {
+    @apply transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card active:bg-surface-strong;
+  }
+  /* O cartão do Discover (components/arena/explorar.tsx, CartaoCompetidor): em repouso, o canvas sem fio nem sombra (o fio de baixo é o do
+     item da grade); no hover ele acende no cinza do painel e o conteúdo sobe 2 px (o levantar discreto do Discover: sobe o conteúdo, e não o
+     cartão, para o ponteiro não sair dele no meio do movimento); no toque, o cinza do trilho. O contorno do foco vai por dentro. */
+  .cartao-explorar {
+    @apply transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card focus-visible:-outline-offset-2 active:bg-surface-strong;
+  }
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .cartao-explorar-corpo {
+      transition: translate var(--duration-fast) var(--ease-out-quart);
+    }
+    .cartao-explorar:hover > .cartao-explorar-corpo {
+      translate: 0 -0.125rem;
+    }
+  }
+  /* cada papel do universo da semana (UniversoDaSemana): o logo e o ticker, o fechamento e a variação com o glifo, numa linha com fio que
+     acende no hover. As classes moram aqui e não em cada linha: o universo tem centenas de papéis, e o texto se repetiria no HTML e no payload */
+  .linha-papel {
+    @apply flex min-w-0 items-center gap-x-4 border-b border-hairline px-2 text-13 text-ink tabular-nums transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card;
+  }
+  .linha-papel > .link {
+    @apply min-w-0 flex-1 font-medium no-underline hover:underline;
+  }
+  .linha-papel > :last-child {
+    @apply min-w-20 text-right whitespace-nowrap;
+  }
+  /* os painéis do terminal da ação (acoes/[ticker]/page.tsx): o título de 15/600, como o das barras do app */
+  .painel-titulo {
+    @apply pb-3 text-15 font-semibold text-ink;
+  }
+  /* cada modelo que tem a ação: o nome e os quatro números (o rótulo de 11 em muted, o valor de 13 na tinta) em duas colunas, numa linha que
+     acende no hover */
+  .linha-dono {
+    @apply -mx-3 rounded-lg px-3 py-3 transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card;
+  }
+  .linha-dono dl {
+    @apply mt-1 grid grid-cols-2 gap-x-4 gap-y-2;
+  }
+  .linha-dono dt {
+    @apply text-11 text-muted;
+  }
+  .linha-dono dd {
+    @apply text-13 text-ink tabular-nums;
+  }
+  /* O realce de um pregão nas velas (components/velas.tsx): uma coluna por vela, por cima do desenho. Com o ponteiro sobre o gráfico, as
+     outras colunas recebem um véu do canvas (as velas delas recuam, como as da beUI) e a do ponteiro fica limpa, com a linha do cursor e a
+     data numa etiqueta no eixo de baixo. Só a data, nenhum preço, e nenhuma parada de Tab. Só com o mouse (`hover: hover`): no toque nada
+     acende. O véu troca em 150 ms; com movimento reduzido, na hora (a regra global). */
+  .velas-colunas > span {
+    @apply relative;
+  }
+  @media (hover: hover) {
+    .velas-colunas > span {
+      transition: background-color var(--duration-fast) var(--ease-out-quart);
+    }
+    .velas-colunas:hover > span:not(:hover) {
+      background-color: color-mix(in oklab, var(--color-canvas) 55%, transparent);
+    }
+    .velas-colunas > span:hover::before {
+      @apply absolute inset-y-0 left-1/2 w-px -translate-x-1/2 content-[''];
+      background-color: color-mix(in oklab, var(--color-ink) 30%, transparent);
+    }
+    .velas-colunas > span:hover::after {
+      @apply absolute top-full left-1/2 z-10 mt-1.5 -translate-x-1/2 rounded-md bg-ink px-1.5 py-0.5 text-11 font-medium whitespace-nowrap text-canvas tabular-nums;
+      content: attr(data-data);
+    }
+    .velas-colunas > span[data-ponta='inicio']:hover::after {
+      @apply left-0 translate-x-0;
+    }
+    .velas-colunas > span[data-ponta='fim']:hover::after {
+      @apply right-0 left-auto translate-x-0;
+    }
+  }
+}
+/* fim do bloco explorar (T2a) */
+
+/* conta (T2b, design premium): as peças das telas da conta (a carteira, a conta, o painel, o chat desligado, as telas de entrar e os textos
+   legais; docs/TELAS.md, seções 8, 9 e 10; ADR 0037): o aviso de página (o toast da beUI), a rosca da carteira (a beUI), o termo que tem
+   tooltip, o sumário "Nesta página" e os chips do chat. Cores só dos tokens; o movimento é de 150 ms, nomeia o que muda, e a regra global do
+   movimento reduzido o zera. */
+@layer components {
+  /* A pilha de avisos (components/beui/animated-toast-stack.tsx, components/avisos.tsx): fixa no pé da tela, sobre o conteúdo e abaixo do tooltip
+     (a casca é z 30, o tooltip 90). No celular, acima da barra de abas e da área segura, na largura da tela menos 16 px de cada lado; a partir
+     de 640 px, 384 px no canto direito; a partir de 1024 px, no canto da coluna do app (que acima de 1.550 px fica no centro). A lista não
+     recebe o toque, só os avisos. O mais novo fica embaixo, perto da borda. */
+  .aviso-pilha {
+    @apply pointer-events-none fixed inset-x-4 z-40 flex flex-col gap-2;
+    bottom: calc(3.5rem + env(safe-area-inset-bottom) + 0.75rem);
+  }
+  @media (width >= 40rem) {
+    .aviso-pilha {
+      left: auto;
+      width: 24rem;
+    }
+  }
+  @media (width >= 64rem) {
+    .aviso-pilha {
+      bottom: 1.5rem;
+      right: max(1.5rem, calc(50% - 775px + 1.5rem));
+    }
+  }
+  /* o aviso: o canvas que flutua (a sombra de elevação, sem o fio junto: a Regra Plana), raio 12, o ícone, o texto inteiro e o fechar de 44 px */
+  .aviso {
+    @apply pointer-events-auto flex items-start gap-3 rounded-xl bg-canvas pl-3 shadow-[var(--shadow-raised)];
+  }
+  .aviso-icone {
+    @apply mt-2.5 grid size-6 shrink-0 place-items-center rounded-full bg-surface-card;
+  }
+  .aviso-fechar {
+    @apply grid size-11 shrink-0 cursor-pointer place-items-center rounded-xl text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
+  }
+  .aviso-fechar > span {
+    @apply grid size-7 place-items-center rounded-full transition-[background-color] duration-150 ease-out-quart;
+  }
+  .aviso-fechar:hover > span {
+    @apply bg-surface-strong;
+  }
+
+  /* A rosca da carteira (components/beui/donut-chart.tsx; a alocação, components/wallet-charts.tsx): até seis fatias nos tons da escala da
+     primária (o gráfico de uma série só, docs/DESIGN.md; a primária de cada tema, o 950 no claro e o 300 no escuro, fica de fora das cinco
+     primeiras: pesaria como a ação principal), a maior na mais forte (a mais escura no claro, a mais clara no escuro), a sexta no tom seguinte
+     da escala (o 200 no claro, o 800 no escuro), e "Outras" no cinza do controle. A legenda: linhas de 44 px que acendem no hover, no foco e com a fatia em
+     foco, em 150 ms; a fixada fica no cinza do trilho. */
+  .rosca {
+    --fatia-1: light-dark(var(--color-primary-700), var(--color-primary-300));
+    --fatia-2: light-dark(var(--color-primary-600), var(--color-primary-400));
+    --fatia-3: light-dark(var(--color-primary-500), var(--color-primary-500));
+    --fatia-4: light-dark(var(--color-primary-400), var(--color-primary-600));
+    --fatia-5: light-dark(var(--color-primary-300), var(--color-primary-700));
+    --fatia-6: light-dark(var(--color-primary-200), var(--color-primary-800));
+    --fatia-outras: var(--color-control);
+  }
+  .rosca-linha {
+    @apply block min-h-11 w-full cursor-pointer rounded-lg px-2 py-2 text-left text-13 text-ink transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card disabled:cursor-default disabled:hover:bg-transparent;
+  }
+  .rosca-linha[data-ativa] {
+    @apply bg-surface-card;
+  }
+  .rosca-linha[aria-pressed='true'] {
+    @apply bg-surface-strong;
+  }
+  .rosca-barra {
+    @apply mt-1.5 block h-1 overflow-hidden rounded-full bg-surface-strong;
+  }
+
+  /* O termo que tem explicação (o tooltip da Arc: o preço médio, o resultado, o valor total pago), um desenho só em todo o site (a revisão do
+     fechamento, M8): o sublinhado pontilhado no fio de controle (3:1) diz que há mais ali (better-typography), e acende na tinta no hover, em
+     150 ms. O botão do termo (wallet-charts.tsx, `Termo`) tem a caixa de 44 px; o texto do radio com explicação usa só o sublinhado. */
+  .termo {
+    @apply cursor-help underline decoration-control decoration-dotted underline-offset-4 transition-[text-decoration-color] duration-150 ease-out-quart hover:decoration-current;
+  }
+
+  /* O sumário "Nesta página" (components/legal-text.tsx; os textos legais e o Como funciona): os links no secundário, que acendem na tinta no
+     hover, em 150 ms. */
+  .sumario a {
+    @apply flex min-h-11 items-center py-1 text-13 text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
+  }
+
+  /* O chat desligado (components/chat/chat-desligado.tsx): o fundo das abas e das sugestões anda em 150 ms como o de toda pílula, e enquanto
+     estão desativadas elas não acendem no hover nem encolhem (o controle que não responde não finge que responde). */
+  .chat-desligado :is(.pill, .chip):disabled {
+    @apply active:scale-100;
+  }
+  .chat-desligado .pill:disabled:hover::before {
+    @apply bg-canvas;
+  }
+  .chat-desligado .chip:disabled:hover::before {
+    @apply bg-surface-strong;
+  }
+}
+/* fim do bloco conta (T2b) */

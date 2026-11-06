@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { SignInForm } from '../../../components/account-forms';
-import { CAIXA, CAIXA_ERRO, LINK, NavLink, PageHead } from '../../../components/ui';
+import { Icone } from '../../../components/icones';
+import { CAIXA_ERRO, LINK, NavLink, PageHead } from '../../../components/ui';
 import { readProviders } from '../../../lib/account';
 import { first, type SearchParams } from '../../../lib/page';
 import { safeInternalPath } from '../../../lib/safe-path';
@@ -53,7 +54,17 @@ export default withApiDown(async function SignInPage({
         {/* O aviso sai do servidor, logo abaixo do título e na ordem de leitura: a confirmação de uma ação sem volta (a exclusão da conta)
             não pode ficar abaixo do botão, fora da tela no celular, nem numa região viva que já nasce com texto (o leitor de tela não a
             anuncia ao carregar a página). */}
-        {notice ? <p className={`max-w-md ${CAIXA}`}>{notice}</p> : null}
+        {/* a confirmação, sem caixa: o ícone do que deu certo e a frase na tinta (a cor nunca anda sozinha) */}
+        {notice ? (
+          <p className="flex max-w-md gap-2.5 pt-2 text-15 text-ink">
+            <span aria-hidden="true" className="mt-0.5 shrink-0 text-semantic-success">
+              <Icone size={16}>
+                <path d="M5.5 10.5l3 3 6-7" />
+              </Icone>
+            </span>
+            <span className="min-w-0">{notice}</span>
+          </p>
+        ) : null}
         {googleError ? (
           <p role="alert" className={`max-w-md ${CAIXA_ERRO}`}>
             {lookup(GOOGLE_ERRORS, googleError) ?? GOOGLE_FALLBACK}
@@ -61,7 +72,7 @@ export default withApiDown(async function SignInPage({
         ) : null}
       </PageHead>
 
-      {/* o formulário na coluna da tela dividida (components/tela-dividida.tsx): o campo de 44 px, a pílula preta larga no envio, o
+      {/* o formulário na coluna da tela dividida (components/tela-dividida.tsx): o campo de 44 px, a pílula primária larga no envio, o
           DotSpinner enquanto envia */}
       <SignInForm next={next} google={providers.google} />
 

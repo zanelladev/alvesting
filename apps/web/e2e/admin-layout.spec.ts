@@ -89,7 +89,34 @@ async function open(
     await screen.prepare(page);
     await expect(page.locator('[aria-invalid="true"]').first()).toBeVisible();
   }
+  // a cor do botão anda por 150 ms depois que ele fica habilitado (a hidratação, o envio): o axe mede o estado final, e não o meio da
+  // transição (conta-layout.spec.ts)
+  await page.waitForFunction(
+    () => !document.getAnimations().some((animation) => animation instanceof CSSTransition),
+  );
 }
+
+// Nenhuma rolagem horizontal da página de 360 a 1920 px no painel (com a DLQ de 60 caracteres e o rascunho de slug de 64), e nenhuma barra de
+// rolagem à vista.
+test(
+  'o painel de 360 a 1920 px: nenhuma largura rola na horizontal',
+  { tag: '@tema' },
+  async ({ page, request, ip, deadLetter, longDeadLetter }) => {
+    await open(page, { name: 'larguras' }, { request, ip, deadLetter, longDeadLetter });
+    for (const width of [360, 390, 412, 768, 1024, 1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+      const sizes = await page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        client: document.documentElement.clientWidth,
+        body: document.body.scrollWidth,
+        bar: window.innerWidth - document.documentElement.clientWidth,
+      }));
+      expect(sizes.scroll, `${width} px`).toBeLessThanOrEqual(sizes.client);
+      expect(sizes.body, `${width} px`).toBeLessThanOrEqual(sizes.client);
+      expect(sizes.bar, `${width} px`).toBe(0);
+    }
+  },
+);
 
 for (const screen of SCREENS) {
   test.describe(`tela ${screen.name} (/admin)`, () => {

@@ -120,3 +120,11 @@ O que as tarefas da fase 2 e o fechamento decidiram, e que muda ou completa as d
   posições cabe inteira no meio em 1440 px, com as células das tabelas a 8 px de cada lado); a folha "Mais" da decisão 3, que no desenho da
   fundação apagava a coluna do app inteira; o nome do competidor nas tabelas em 14/600, com o logo fora do fluxo do texto; a `.moldura` só com
   o preto e a tinta (decisão 6); e os nomes do Arc fora do `@theme`.
+- **As linhas e as barras** (o pedido do Artur com a captura da Arena do Rallies logado numa janela de 1.917 px; relatório
+  `linhas-barras.md`): o "sem teto" vale até a coluna do app, de 1.550 px medidos lá (o fio da esquerda em x = 183 e o da direita em 1.732),
+  que acima disso fica no centro com o fio de cada lado; o fio embaixo da barra do topo fica em y = 44, contínuo da barra secundária ao
+  principal, e os das carteiras e da faixa vão de borda a borda; nenhuma barra de rolagem fica à vista (`scrollbar-width: none`), e a faixa
+  dos modelos ganha o "›" redondo de 36 px do Rallies pelo `::scroll-button()` do Chromium, só CSS e só com o mouse.
+- **O "simulado" uma vez por contexto** (a onda do design premium, ADR 0037): a etiqueta ao lado de todo nome, da decisão 5, virou a nota no
+  cabeçalho da faixa, da tabela e da barra das carteiras, a etiqueta junto do título na página do modelo e o aviso de página na arena e no
+  ciclo; visível e discreta, nunca uma etiqueta em cada nome.

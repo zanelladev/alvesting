@@ -50,7 +50,8 @@ describe('a página /entrar', () => {
     'o aviso "%s" sai do servidor, logo abaixo do título e antes do formulário',
     async (aviso, text) => {
       const out = await render({ aviso });
-      const notice = out.indexOf(`>${text}</p>`);
+      // o aviso sem caixa: o ícone do que deu certo (aria-hidden) e a frase, num parágrafo
+      const notice = out.indexOf(`>${text}</span></p>`);
       expect(notice).toBeGreaterThan(out.indexOf('</h1>'));
       expect(notice).toBeLessThan(out.indexOf('<form'));
       // texto simples: nenhuma região viva que já nasça com o texto (o leitor de tela não a anuncia ao carregar a página)

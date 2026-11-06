@@ -77,6 +77,8 @@ export function brapiWorld(options: {
   start: Date;
   publishedAt?: ReadonlyMap<IsoDate, Date>;
   quota?: number;
+  // o campo `logo` da lista da brapi falsa, por papel (ADR 0036)
+  logos?: ReadonlyMap<string, unknown>;
   intercept?: (url: URL, call: number) => Response | Error | undefined;
   client?: BrapiOptions;
 }): BrapiTestWorld {
@@ -86,6 +88,7 @@ export function brapiWorld(options: {
     clock,
     publishedAt: options.publishedAt,
     quota: options.quota,
+    logos: options.logos,
   });
   let call = 0;
   const sleeps: number[] = [];

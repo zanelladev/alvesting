@@ -69,7 +69,7 @@ describe('heroPill', () => {
 });
 
 describe('Hero', () => {
-  it('o título, os dois CTAs (a pílula preta para a arena, a cinza para as regras) e a pílula da temporada depois deles', () => {
+  it('o título, os dois CTAs (a pílula primária para a arena, a cinza para as regras) e a pílula da temporada depois deles', () => {
     const out = render({
       pill: { text: 'Temporada encerrada · pregão 20 de 20', href: '/ciclos/2026-11-09' },
     });
@@ -100,6 +100,8 @@ describe('Hero', () => {
       '<strong>Decisões simuladas: os modelos ainda não estão conectados.</strong> Os nomes são os do elenco, mas quem decide por cada modelo marcado como simulado é uma estratégia fixa e simples. O resultado não diz nada sobre os modelos de verdade.',
     );
     expect(render()).not.toContain('Decisões simuladas');
+    // a Regra da Sans Única: o `[!]` do aviso também é a sans (a mono do hero fica só na grade da arte)
+    expect(out.replace(/<pre class="arte-texto">[^]*?<\/pre>/, '')).not.toContain('font-mono');
   });
 
   it('a arte é decorativa, na moldura escura, e já vem com o quadro 0 no HTML (sem JavaScript), com a brasa do sprite pequeno', () => {
@@ -122,7 +124,9 @@ describe('Hero', () => {
     const volta = tapeLoop('BOVA11 66,25 ▼ -0,97%');
     expect(out).toMatch(/<div aria-hidden="true" data-fita="" class="tape [^"]*">/);
     expect(out).toContain(`<span>${volta}</span><span>${volta}</span>`);
-    expect(out).toContain(`--tape-passos:${volta.length}`);
+    // a volta leva um oitavo de segundo por caractere (uns 8 por segundo, rolando sem passos: a sans não tem célula fixa)
+    expect(out).toContain(`--tape-duracao:${volta.length / 8}s`);
+    expect(out).not.toContain('--tape-passos');
     expect(out).toContain('<p class="sr-only">Na fita: BOVA11 66,25 ▼ -0,97%.</p>');
     expect(out.indexOf('Cotações: brapi.dev, pregão de 09/11/2026.')).toBeLessThan(
       out.indexOf('data-fita'),

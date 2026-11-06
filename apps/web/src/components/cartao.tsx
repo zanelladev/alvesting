@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-// Uma seção da conta e do painel da arena num cartão (docs/redesign-rallies/plano.md, f.4): o canvas com o fio e raio 8, o título na Geist de 18
+// Uma seção da conta e do painel da arena num cartão (docs/redesign-rallies/plano.md, f.4): o canvas com o fio e raio 8, o título em 18/600
 // e o conteúdo. A região tem o nome do título, como a `Section` (ui.tsx): é como o leitor de tela e o e2e a encontram. `perigo` troca o fio pelo
 // vermelho do erro (a exclusão da conta).
 export function SecaoCartao({

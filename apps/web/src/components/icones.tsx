@@ -75,11 +75,10 @@ export const IconeMenu = () => (
   </Icone>
 );
 
-// A marca: o ladrilho âmbar (a brasa da arte) com o glifo de alta vazado. O âmbar é logotipo (a WCAG 1.4.3 o deixa fora da conta de
-// contraste); o glifo é o canvas da moldura, preto nos dois temas.
+// A marca: o ladrilho com o glifo de alta vazado, na primária (o azul do logo, #14144C, no claro; o tom claro dele no escuro). O desenho é o
+// arquivo public/marca.svg, usado como máscara pelo CSS (.marca, no globals.css): trocar pelo logo do Artur é trocar esse arquivo (e o
+// app/icon.svg, o ícone do navegador). Decorativa: o nome "Alvesting" vem sempre ao lado, em texto (a WCAG 1.4.3 deixa o logotipo fora da
+// conta de contraste).
 export const Marca = ({ size = 18 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 18 18" aria-hidden="true" focusable="false">
-    <rect width="18" height="18" rx="5" className="fill-primary" />
-    <path d="M4.75 12.75 9 5.25l4.25 7.5z" className="fill-moldura" />
-  </svg>
+  <span className="marca" style={{ width: size, height: size }} aria-hidden="true" />
 );

@@ -3,7 +3,7 @@ import { ensaioDatabaseUrl, parseArgs } from './cli-args.js';
 
 describe('parseArgs: os argumentos do arena:ensaio', () => {
   it('sem argumento valem 5 pregões e a semente 1', () => {
-    expect(parseArgs([])).toEqual({ kind: 'run', sessions: 5, seed: 1 });
+    expect(parseArgs([])).toEqual({ kind: 'run', sessions: 5, seed: 1, syntheticLogos: false });
   });
 
   it('lê --pregoes e --semente, em qualquer ordem', () => {
@@ -11,12 +11,33 @@ describe('parseArgs: os argumentos do arena:ensaio', () => {
       kind: 'run',
       sessions: 3,
       seed: 42,
+      syntheticLogos: false,
     });
     expect(parseArgs(['--semente', '7', '--pregoes', '20'])).toEqual({
       kind: 'run',
       sessions: 20,
       seed: 7,
+      syntheticLogos: false,
     });
+  });
+
+  // A bandeira do seed do e2e (o e2e:seed e o playwright.config.ts a passam): depois do relatório, os dois logos sintéticos que o e2e lê.
+  it('--logos-sinteticos não leva valor e vale em qualquer posição; sem ela, nenhum logo', () => {
+    expect(parseArgs(['--logos-sinteticos'])).toEqual({
+      kind: 'run',
+      sessions: 5,
+      seed: 1,
+      syntheticLogos: true,
+    });
+    expect(parseArgs(['--pregoes', '3', '--logos-sinteticos', '--semente', '42'])).toEqual({
+      kind: 'run',
+      sessions: 3,
+      seed: 42,
+      syntheticLogos: true,
+    });
+    expect(parseArgs(['--semente', '2'])).toMatchObject({ syntheticLogos: false });
+    expect(parseArgs(['--logos-sinteticos', '1'])).toMatchObject({ kind: 'error' });
+    expect(parseArgs(['--logos-sinteticos=sim'])).toMatchObject({ kind: 'error' });
   });
 
   it('--ajuda mostra o uso', () => {

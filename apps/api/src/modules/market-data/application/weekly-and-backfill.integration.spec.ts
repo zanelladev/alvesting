@@ -18,6 +18,7 @@ import { UniverseRepository } from '../infrastructure/universe.repository.js';
 import { at, brapiWorld, marketOf, type BrapiTestWorld } from '../testing/brapi-market.fixture.js';
 import { BrapiBackfill } from './backfill.js';
 import { BarLoader } from './bar-loader.js';
+import { LogoRefresh } from './logo-refresh.js';
 import { UniverseHandler } from './universe.handler.js';
 import { WeeklyRefresh } from './weekly-refresh.js';
 
@@ -32,6 +33,8 @@ const WEEK = '2026-W45';
 const FROM = historyStart(SUNDAY);
 const DAYS = calendar.tradingDaysBetween(FROM, LAST);
 const day = (date: IsoDate) => new Date(`${date}T00:00:00Z`);
+const href = (input: Parameters<typeof fetch>[0]): string =>
+  input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
 
 describe.skipIf(!testDatabaseUrl)(
   integrationTitle('carga inicial, atualização semanal e universo sobre as barras da brapi'),
@@ -344,6 +347,114 @@ describe.skipIf(!testDatabaseUrl)(
         const summary = await refresh(w2).run('2026-11-02', SUNDAY);
         expect(summary).toMatchObject({ created: 0, asked: 0, requests: 1 });
         expect(historical(w2)).toEqual([]);
+      });
+
+      // Os logos (ADR 0036): no fim da atualização, o SVG de cada papel do banco que a lista traz com logo, por um fetch falso do icons.brapi.dev
+      // (a brapi falsa só serve a lista e o histórico, com o token; os SVG vão por outro fetch, sem ele).
+      it('no fim, os logos: guarda o SVG bom, recusa o inseguro, ignora o endereço fora da forma, e a semana seguinte só pede o que falta', async () => {
+        await loaded(world(['BOVA11', 'PETR4', 'VALE3']));
+        const url = (ticker: string) => `https://icons.brapi.dev/icons/${ticker}.svg`;
+        const GOOD = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>';
+        const icons: Array<{ url: string; authorization: string | null }> = [];
+        const iconsFetch = ((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+          icons.push({
+            url: href(input),
+            authorization: new Headers(init?.headers).get('authorization'),
+          });
+          const body =
+            href(input) === url('PETR4')
+              ? GOOD
+              : '<svg xmlns="http://www.w3.org/2000/svg"><script>x()</script></svg>';
+          return Promise.resolve(
+            new Response(body, { status: 200, headers: { 'content-type': 'image/svg+xml' } }),
+          );
+        }) as typeof fetch;
+        const logos = new Map<string, unknown>([
+          ['PETR4', url('PETR4')],
+          ['VALE3', url('VALE3')],
+          // fora da forma: o cliente da lista o deixa sem logo, e nada é pedido
+          ['NEWW3', 'https://exemplo.invalid/NEWW3.svg'],
+        ]);
+        const week = async () => {
+          const w = world(['BOVA11', 'PETR4', 'VALE3', 'NEWW3'], { logos });
+          await new WeeklyRefresh(
+            w.client,
+            new BarLoader(w.client, market),
+            market,
+            universe,
+            calendar,
+            new LogoRefresh(market, iconsFetch),
+          ).run('2026-11-02', SUNDAY);
+          return w;
+        };
+
+        const w = await week();
+        expect(icons).toEqual([
+          { url: url('PETR4'), authorization: null },
+          { url: url('VALE3'), authorization: null },
+        ]);
+        // a brapi falsa viu só a lista e o histórico do papel novo (os SVG não passam por ela)
+        expect(lists(w)).toHaveLength(1);
+        expect(historical(w).map((c) => c.symbol)).toEqual(['NEWW3']);
+        const rows = await prisma.instrumentLogo.findMany({ include: { instrument: true } });
+        expect(
+          rows.map((row) => [row.instrument.ticker, row.sourceUrl, row.svg, row.bytes]),
+        ).toEqual([['PETR4', url('PETR4'), GOOD, Buffer.byteLength(GOOD)]]);
+
+        // a semana seguinte: o PETR4 está guardado há menos de 30 dias; o VALE3, recusado, é pedido de novo
+        icons.length = 0;
+        await week();
+        expect(icons.map((call) => call.url)).toEqual([url('VALE3')]);
+        expect(await prisma.instrumentLogo.count()).toBe(1);
+      });
+
+      // A tabela só guarda o que passa no validador de hoje (ADR 0036): o SVG que entrou antes de uma regra nova sai na passada seguinte.
+      it('a passada apaga do banco o SVG guardado que uma regra nova do validador passou a recusar, e o pede de novo', async () => {
+        await loaded(world(['BOVA11', 'PETR4', 'VALE3']));
+        const url = (ticker: string) => `https://icons.brapi.dev/icons/${ticker}.svg`;
+        // guardado ontem, antes de o validador recusar <animate>: fresco (menos de 30 dias) e com o mesmo endereço, não seria pedido de novo
+        const before =
+          '<svg xmlns="http://www.w3.org/2000/svg"><rect width="1"><animate attributeName="x" values="0;1"/></rect></svg>';
+        const vale = await prisma.instrument.findUniqueOrThrow({ where: { ticker: 'VALE3' } });
+        await prisma.instrumentLogo.create({
+          data: {
+            instrumentId: vale.id,
+            sourceUrl: url('VALE3'),
+            svg: before,
+            sha256: 'c'.repeat(64),
+            bytes: Buffer.byteLength(before),
+            fetchedAt: new Date(Date.now() - 86_400_000),
+          },
+        });
+        const GOOD = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="2" height="2"/></svg>';
+        const asked: string[] = [];
+        const iconsFetch = ((input: Parameters<typeof fetch>[0]) => {
+          asked.push(href(input));
+          return Promise.resolve(
+            new Response(GOOD, { status: 200, headers: { 'content-type': 'image/svg+xml' } }),
+          );
+        }) as typeof fetch;
+        const warn = vi.spyOn(Logger.prototype, 'warn');
+        const w = world(['BOVA11', 'PETR4', 'VALE3'], {
+          logos: new Map([['VALE3', url('VALE3')]]),
+        });
+        await new WeeklyRefresh(
+          w.client,
+          new BarLoader(w.client, market),
+          market,
+          universe,
+          calendar,
+          new LogoRefresh(market, iconsFetch),
+        ).run('2026-11-02', SUNDAY);
+
+        expect(asked).toEqual([url('VALE3')]);
+        expect(
+          await prisma.instrumentLogo.findMany({ select: { instrumentId: true, svg: true } }),
+        ).toEqual([{ instrumentId: vale.id, svg: GOOD }]);
+        const logged = JSON.stringify(warn.mock.calls);
+        expect(logged).toContain('VALE3');
+        expect(logged).toContain('elemento <animate>');
+        expect(logged).not.toContain('attributeName');
       });
 
       it('lista da brapi que não veio: segue sem ela, sem pedir mais nada e sem derrubar o universo', async () => {

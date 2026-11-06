@@ -6,18 +6,23 @@ import {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
   type FormEvent,
+  type ReactElement,
   type ReactNode,
 } from 'react';
-import { BUTTON, CAIXA, CAIXA_ERRO, INPUT } from './ui';
+import { Icone } from './icones';
+import { NativeSelect, NativeSelectOption } from './reui/native-select';
+import { BUTTON, CAIXA_ERRO, INPUT } from './ui';
 
 // As peças dos formulários da conta (etapa 11, parte 2): campo com rótulo, erro ligado ao campo por aria-describedby, foco no primeiro
 // erro, aviso de status e o botão. Os campos são não controlados (o valor mora no DOM), o envio lê o FormData, e quem manda é a api: a
 // conferência daqui só poupa a ida. O sistema visual do Rallies (src/app/globals.css; ADR 0035): o campo do cadastro deles (44 px, raio 8, o
-// cinza do painel, com o fio) e o envio na pílula preta.
+// cinza do painel, com o fio de controle) e o envio na pílula primária. O campo com erro troca o fio pelo vermelho do erro (`aria-invalid`, no
+// globals.css), e a frase do erro vem embaixo dele, ligada por aria-describedby e lida pelo leitor de tela (`role="alert"`).
 //
 // Sem JavaScript o formulário não pode se enviar: um <form> sem handler faria um GET com a senha na URL (histórico, log da borda). Por isso o
 // <fieldset> nasce desativado e só é ativado depois da hidratação (os campos e o botão ficam inertes), e o <noscript> diz por quê.
@@ -35,14 +40,28 @@ export interface Outcome {
 }
 
 const noop = () => () => undefined;
+let quieto = false;
 // false no servidor e na hidratação, true depois: o JavaScript chegou. Os botões de editar e apagar da carteira esperam por ele, como o
-// formulário (um botão sem handler não faz nada, e a pessoa não saberia por quê).
-export const useHydrated = () =>
-  useSyncExternalStore(
+// formulário (um botão sem handler não faz nada, e a pessoa não saberia por quê). Quando ele chega, o que estava desativado vira ativo (o botão
+// cinza vira a primária): nada transiciona nesse quadro, senão a ação principal esmaeceria na abertura da página (o QA do fechamento, achado 6).
+// A troca é a do tema (beui/theme-selector.tsx): uma folha com `transition: none` entra antes de o navegador recalcular o estilo e sai dois
+// quadros depois, uma vez por página; o hover e o toque continuam a andar em 150 ms.
+export const useHydrated = () => {
+  const hydrated = useSyncExternalStore(
     noop,
     () => true,
     () => false,
   );
+  useLayoutEffect(() => {
+    if (!hydrated || quieto) return;
+    quieto = true;
+    const style = document.createElement('style');
+    style.textContent = '*,*::before,*::after{transition:none!important}';
+    document.head.appendChild(style);
+    requestAnimationFrame(() => requestAnimationFrame(() => style.remove()));
+  }, [hydrated]);
+  return hydrated;
+};
 
 interface FieldErrors {
   errors: Record<string, string>;
@@ -69,7 +88,7 @@ export function AccountForm({
   actions?: ReactNode;
   labelledBy?: string;
   noscript?: boolean;
-  // o envio é a ação principal da superfície: a pílula preta (uma por superfície). Sair, excluir a conta e as ações do painel ficam na
+  // o envio é a ação principal da superfície: a pílula primária (uma por superfície). Sair, excluir a conta e as ações do painel ficam na
   // pílula cinza
   primary?: boolean;
   // os botões na largura da coluna, um embaixo do outro: o envio do cadastro do Rallies, nas telas de entrar e criar conta (a tela dividida)
@@ -147,7 +166,7 @@ export function AccountForm({
     >
       {noscript ? (
         <noscript>
-          <p className={CAIXA}>
+          <p className="text-body">
             Esta tela precisa de JavaScript para enviar o formulário. Ative o JavaScript no
             navegador e recarregue a página.
           </p>
@@ -174,14 +193,28 @@ export function AccountForm({
           {actions}
         </div>
       </fieldset>
-      {/* a região existe desde o começo, para o leitor de tela anunciar o aviso que chega depois; com texto, o foco vai a ela */}
+      {/* a região existe desde o começo, para o leitor de tela anunciar o aviso que chega depois; com texto, o foco vai a ela. O desenho é o
+          painel cinza sem fio, com o ícone do que deu certo (a cor nunca anda sozinha: a frase diz o mesmo) */}
       <p
         role="status"
         tabIndex={status ? -1 : undefined}
         data-form-status={status ? '' : undefined}
-        className={status ? `max-w-prose ${CAIXA}` : 'sr-only'}
+        className={
+          status
+            ? 'flex max-w-prose gap-2.5 rounded-lg bg-surface-card p-4 text-pretty text-ink'
+            : 'sr-only'
+        }
       >
-        {status}
+        {status ? (
+          <>
+            <span aria-hidden="true" className="mt-0.5 shrink-0 text-semantic-success">
+              <Icone size={16}>
+                <path d="M5.5 10.5l3 3 6-7" />
+              </Icone>
+            </span>
+            <span className="min-w-0">{status}</span>
+          </>
+        ) : null}
       </p>
     </form>
   );
@@ -304,7 +337,8 @@ export function TextAreaField({
   );
 }
 
-// Lista de escolha com rótulo (o tipo do evento corporativo). A primeira opção vale se a pessoa não mexer.
+// Lista de escolha com rótulo (o tipo do evento corporativo), no `<select>` do navegador com o desenho do campo (o Native select da ReUI, ADR
+// 0037: no celular, o seletor do sistema). A primeira opção vale se a pessoa não mexer.
 export function SelectField({
   name,
   label,
@@ -323,30 +357,21 @@ export function SelectField({
       <label htmlFor={id} className="text-sm font-medium text-ink">
         {label}
       </label>
-      {/* appearance-none: o <select> nativo do WebKit (iPhone) ignora a altura mínima de 44 px (medido: 27 px); sem a seta nativa, o
-          triângulo é um caractere à parte, que não recebe o toque */}
-      <div className="relative">
-        <select
-          id={id}
-          name={name}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? errorId : undefined}
-          onChange={() => clear(name)}
-          className={`${INPUT} w-full appearance-none pr-10`}
-        >
-          {options.map(([value, text]) => (
-            <option key={value} value={value}>
-              {text}
-            </option>
-          ))}
-        </select>
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-muted"
-        >
-          ▾
-        </span>
-      </div>
+      {/* appearance-none (na peça): o <select> nativo do WebKit (iPhone) ignora a altura mínima de 44 px (medido: 27 px); a seta é um ícone à
+          parte, que não recebe o toque */}
+      <NativeSelect
+        id={id}
+        name={name}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
+        onChange={() => clear(name)}
+      >
+        {options.map(([value, text]) => (
+          <NativeSelectOption key={value} value={value}>
+            {text}
+          </NativeSelectOption>
+        ))}
+      </NativeSelect>
       {error ? <FieldError id={errorId}>{error}</FieldError> : null}
     </div>
   );
@@ -355,7 +380,9 @@ export function SelectField({
 // Escolha de uma opção entre poucas (o modo de preço da carteira), com radios nativos de 44 por 44 px e o texto no rótulo, num grupo com legenda
 // (o leitor de tela diz o nome do grupo e a opção). Controlado de fora: quem renderiza guarda a escolha, porque ela muda o rótulo e a dica de outro
 // campo. Mudar a escolha apaga o erro do campo `clears`, se houver (o valor digitado quer dizer outra coisa no outro modo). A `hint` fica ligada ao
-// grupo por aria-describedby: o leitor de tela a lê ao entrar nele, que é onde a troca de opção avisa o que vai acontecer.
+// grupo por aria-describedby: o leitor de tela a lê ao entrar nele, que é onde a troca de opção avisa o que vai acontecer. `describe` dá a uma
+// opção a explicação que o leitor de tela ouve com ela (a descrição do radio), e `wrap` envolve o rótulo dela (o tooltip da Arc, que mostra a
+// mesma explicação no hover e no foco: o foco do radio sobe até o rótulo).
 export function RadioField({
   name,
   legend,
@@ -364,6 +391,8 @@ export function RadioField({
   options,
   onChange,
   clears,
+  describe = {},
+  wrap = (_value, option) => option,
 }: {
   name: string;
   legend: string;
@@ -372,9 +401,12 @@ export function RadioField({
   options: ReadonlyArray<readonly [value: string, label: string]>;
   onChange: (value: string) => void;
   clears?: string;
+  describe?: Readonly<Record<string, string>>;
+  wrap?: (value: string, option: ReactElement) => ReactNode;
 }) {
   const { clear } = useContext(Errors);
-  const hintId = `${useId()}-dica`;
+  const baseId = useId();
+  const hintId = `${baseId}-dica`;
   return (
     <fieldset aria-describedby={hint ? hintId : undefined} className="min-w-0 space-y-1">
       <legend className="text-sm font-medium text-ink">{legend}</legend>
@@ -383,22 +415,38 @@ export function RadioField({
           {hint}
         </p>
       ) : null}
-      {options.map(([optionValue, label]) => (
-        <label key={optionValue} className="flex items-center gap-3">
-          <input
-            type="radio"
-            name={name}
-            value={optionValue}
-            checked={value === optionValue}
-            onChange={() => {
-              if (clears) clear(clears);
-              onChange(optionValue);
-            }}
-            className="radio"
-          />
-          <span className="min-w-0">{label}</span>
-        </label>
-      ))}
+      {options.map(([optionValue, label]) => {
+        const description = describe[optionValue];
+        const descriptionId = `${baseId}-${optionValue}`;
+        return (
+          <div key={optionValue}>
+            {wrap(
+              optionValue,
+              // o alvo de 44 px é o rótulo inteiro (o radio de 20 px e o texto): o toque no texto marca o radio
+              <label className="flex min-h-11 w-fit max-w-full cursor-pointer items-center gap-3">
+                <input
+                  type="radio"
+                  name={name}
+                  value={optionValue}
+                  checked={value === optionValue}
+                  aria-describedby={description ? descriptionId : undefined}
+                  onChange={() => {
+                    if (clears) clear(clears);
+                    onChange(optionValue);
+                  }}
+                  className="radio"
+                />
+                <span className={description ? 'termo min-w-0' : 'min-w-0'}>{label}</span>
+              </label>,
+            )}
+            {description ? (
+              <span id={descriptionId} className="sr-only">
+                {description}
+              </span>
+            ) : null}
+          </div>
+        );
+      })}
     </fieldset>
   );
 }
@@ -431,11 +479,19 @@ export function CheckField({ name, children }: { name: string; children: ReactNo
 }
 
 // `role="alert"`: o erro que aparece depois do envio é anunciado, cada um, e não só o do primeiro campo (o foco vai a ele, e o leitor de
-// tela lê o erro dele pelo aria-describedby); sem isso, quem usa leitor de tela acharia os outros andando campo a campo.
+// tela lê o erro dele pelo aria-describedby); sem isso, quem usa leitor de tela acharia os outros andando campo a campo. O sinal do erro é o fio
+// do campo no vermelho (`aria-invalid`) e o ícone ao lado da frase, que fica na tinta: nada de faixa colorida ao lado (docs/DESIGN.md), e a cor
+// nunca anda sozinha (o ícone e a frase dizem o mesmo).
 function FieldError({ id, children }: { id: string; children: ReactNode }) {
   return (
-    <p id={id} role="alert" className="border-l-2 border-semantic-error pl-2 text-sm text-ink">
-      {children}
+    <p id={id} role="alert" className="flex gap-1.5 text-sm text-ink">
+      <span aria-hidden="true" className="mt-0.5 shrink-0 text-semantic-error">
+        <Icone size={16}>
+          <circle cx="10" cy="10" r="7" />
+          <path d="M10 6.5V10.5M10 13.5v.01" />
+        </Icone>
+      </span>
+      <span className="min-w-0">{children}</span>
     </p>
   );
 }

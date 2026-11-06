@@ -1,6 +1,8 @@
 import {
   INTERNAL_BARS_LIMIT,
+  LOGO_VERSION_LENGTH,
   type InternalBars,
+  type InternalLogos,
   type InternalTape,
   type InternalTapeRow,
 } from '@alvesting/contracts';
@@ -43,6 +45,32 @@ export class QuotesRepository {
         highCents: safeNumber(bar.highCents),
         lowCents: safeNumber(bar.lowCents),
         closeCents: safeNumber(bar.closeCents),
+      })),
+    };
+  }
+
+  // O SVG guardado do logo de um papel (ADR 0036), ou nulo (sem logo, ou papel que não existe). Só o texto: o endereço de origem, o SHA-256 e
+  // a data da busca não saem.
+  async logo(ticker: string): Promise<string | null> {
+    const row = await this.prisma.instrumentLogo.findFirst({
+      where: { instrument: { ticker } },
+      select: { svg: true },
+    });
+    return row?.svg ?? null;
+  }
+
+  // Os papéis com logo guardado, em ordem de ticker pelos bytes (COLLATE "C": a mesma ordem do JavaScript, que o contrato confere), com a
+  // versão do SVG (o começo do SHA-256). Uma consulta pequena (uns 375 papéis), sem o SVG.
+  async logos(): Promise<InternalLogos> {
+    const rows = await this.prisma.$queryRaw<Array<{ ticker: string; sha256: string }>>`
+      SELECT i.ticker, l.sha256
+      FROM instrument_logo l
+      JOIN instrument i ON i.id = l.instrument_id
+      ORDER BY i.ticker COLLATE "C"`;
+    return {
+      logos: rows.map((row) => ({
+        ticker: row.ticker,
+        version: row.sha256.slice(0, LOGO_VERSION_LENGTH),
       })),
     };
   }

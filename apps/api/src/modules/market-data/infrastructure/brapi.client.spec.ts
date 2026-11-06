@@ -826,11 +826,65 @@ describe('BrapiClient.listStocks', () => {
       page: '1',
     });
     expect(url.href).not.toContain(TOKEN);
+    // `logo` nulo: a linha da lista não trouxe logo (o teste do logo, abaixo, cobre a forma)
     expect(out.listings).toEqual([
-      { ticker: 'PETR4', name: 'PETROBRAS', subType: 'stock' },
-      { ticker: 'TAEE11', name: null, subType: 'unit' },
+      { ticker: 'PETR4', name: 'PETROBRAS', subType: 'stock', logo: null },
+      { ticker: 'TAEE11', name: null, subType: 'unit', logo: null },
     ]);
     expect(out).toMatchObject({ requests: 1, remaining: null, stopped: null });
+  });
+
+  // O logo da lista (ADR 0036): o job baixa o SVG desse endereço, então só vale a forma exata do icons.brapi.dev; o resto é "sem logo", e
+  // um valor torto num papel nunca derruba a lista inteira.
+  it('lê o logo de cada ação: só a URL https exata de icons.brapi.dev/icons/<nome>.svg vale; o resto é sem logo, e nada derruba a lista', async () => {
+    const good = 'https://icons.brapi.dev/icons/PETR4.svg';
+    const logos: Array<[string, unknown]> = [
+      ['PETR4', good],
+      ['VALE3', undefined],
+      ['ABEV3', null],
+      ['ITUB4', 42],
+      ['BBDC4', { url: good }],
+      ['WEGE3', 'http://icons.brapi.dev/icons/WEGE3.svg'],
+      ['B3SA3', 'https://icons.brapi.dev.exemplo.invalid/icons/B3SA3.svg'],
+      ['RENT3', 'https://exemplo.invalid/icons/RENT3.svg'],
+      ['LREN3', 'https://icons.brapi.dev/icons/../LREN3.svg'],
+      ['MGLU3', 'https://icons.brapi.dev/icons/%2e%2e/MGLU3.svg'],
+      ['SUZB3', 'https://icons.brapi.dev/icons/SUZB3.png'],
+      ['GGBR4', 'https://icons.brapi.dev/icons/GGBR4.svg?v=1'],
+      ['CSNA3', 'https://icons.brapi.dev/icons/CSNA3.svg#a'],
+      ['EMBR3', 'https://alguem@icons.brapi.dev/icons/EMBR3.svg'],
+      ['JBSS3', 'https://icons.brapi.dev:8443/icons/JBSS3.svg'],
+      ['RADL3', 'https://icons.brapi.dev/logos/RADL3.svg'],
+      ['PRIO3', 'HTTPS://ICONS.BRAPI.DEV/icons/PRIO3.svg'],
+      ['UGPA3', `${good} `],
+      ['CMIG4', 'javascript:alert(1)//icons.brapi.dev/icons/CMIG4.svg'],
+      ['SBSP3', `https://icons.brapi.dev/icons/${'A'.repeat(40)}.svg`],
+    ];
+    const fetchFn = fakeFetch(() =>
+      json(listBody(logos.map(([stock, logo]) => ({ stock, subType: 'stock', logo })))),
+    );
+    const out = await client(fetchFn).brapi.listStocks();
+    expect(out.listings).toHaveLength(logos.length);
+    expect(Object.fromEntries(out.listings!.map((l) => [l.ticker, l.logo]))).toEqual(
+      Object.fromEntries(logos.map(([ticker]) => [ticker, ticker === 'PETR4' ? good : null])),
+    );
+  });
+
+  // A prova de 05/11/2026 (ADR 0036): 31 das 783 ações da lista vinham com o mesmo endereço, o ícone da própria brapi para quem não tem logo.
+  it('o ícone padrão da brapi (BRAPI.svg, o de quem não tem logo) é sem logo', async () => {
+    const fetchFn = fakeFetch(() =>
+      json(
+        listBody([
+          { stock: 'SEML3', subType: 'stock', logo: 'https://icons.brapi.dev/icons/BRAPI.svg' },
+          { stock: 'BRAP4', subType: 'stock', logo: 'https://icons.brapi.dev/icons/BRAP4.svg' },
+        ]),
+      ),
+    );
+    const out = await client(fetchFn).brapi.listStocks();
+    expect(out.listings?.map((l) => [l.ticker, l.logo])).toEqual([
+      ['SEML3', null],
+      ['BRAP4', 'https://icons.brapi.dev/icons/BRAP4.svg'],
+    ]);
   });
 
   it('segue as páginas enquanto hasNextPage é verdadeiro', async () => {

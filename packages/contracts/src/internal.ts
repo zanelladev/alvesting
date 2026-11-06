@@ -64,3 +64,36 @@ export const internalTapeSchema = z
     message: 'a data do pregão existe se e só se há linha',
   });
 export type InternalTape = z.infer<typeof internalTapeSchema>;
+
+// --- os logos das ações (ADR 0036) -------------------------------------------------------------------------------------------------
+// Os cabeçalhos com que a api serve o SVG guardado (GET /api/v1/interno/logos/:ticker, fora do envelope) e que o site repete ao servi-lo do
+// próprio domínio: o SVG é imagem, nunca documento. Aberto direto na aba, a CSP não deixa rodar script (`default-src 'none'` e `sandbox`) nem
+// buscar nada de fora (só a imagem embutida em data: e o estilo do próprio SVG), e o nosniff impede que o navegador o leia como outro tipo.
+export const LOGO_HEADERS = {
+  'Content-Type': 'image/svg+xml',
+  'X-Content-Type-Options': 'nosniff',
+  'Content-Security-Policy':
+    "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+} as const;
+
+// O 404 da rota dos logos para quem tem o segredo: o papel não tem logo (o site mostra o monograma). O 404 sem esse código é o do segredo
+// (a rota "não existe"), que é erro de configuração.
+export const LOGO_NOT_FOUND = 'LOGO_NOT_FOUND';
+
+// A lista dos logos guardados (GET /api/v1/interno/logos, no envelope): os papéis com logo, em ordem de ticker, cada um com a versão do SVG
+// (os 16 primeiros caracteres hexadecimais do SHA-256 dele). O papel sem logo não aparece. O site sabe no servidor quem tem logo (nenhum
+// pedido perdido, nenhum ícone quebrado) e põe a versão no endereço do SVG (cache longo: SVG novo, versão nova).
+export const LOGO_VERSION_LENGTH = 16;
+
+export const internalLogoSchema = z.strictObject({
+  ticker,
+  version: z.string().regex(/^[0-9a-f]{16}$/),
+});
+export type InternalLogo = z.infer<typeof internalLogoSchema>;
+
+export const internalLogosSchema = z
+  .strictObject({ logos: z.array(internalLogoSchema) })
+  .refine(({ logos }) => logos.every((logo, i) => i === 0 || logos[i - 1]!.ticker < logo.ticker), {
+    message: 'os logos vêm em ordem de ticker, sem repetir',
+  });
+export type InternalLogos = z.infer<typeof internalLogosSchema>;

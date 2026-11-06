@@ -128,6 +128,11 @@ async function open(
       (screen.ready ?? (() => page.locator('[aria-invalid="true"]').first()))(page),
     ).toBeVisible();
   }
+  // a cor do botão anda por 150 ms depois que ele fica habilitado (a hidratação, o envio): o axe mede o estado final, e não o meio da
+  // transição (conta-layout.spec.ts)
+  await page.waitForFunction(
+    () => !document.getAnimations().some((animation) => animation instanceof CSSTransition),
+  );
 }
 
 // A largura do Rallies (o fechamento da onda): a partir de 1280 px a carteira é a do Today, três painéis separados por fio, os dois do lado
@@ -154,6 +159,31 @@ test.describe('carteira em 1440 px', () => {
     }));
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
   });
+});
+
+// Nenhuma rolagem horizontal da página de 360 a 1920 px, com as posições, a rosca e os lançamentos (a coluna do app vai até 1.550 px e fica no
+// centro acima disso), e nenhuma barra de rolagem à vista (o Rallies; globals.css).
+test.describe('carteira de 360 a 1920 px', () => {
+  test.use({ baseURL: FRONT_DOOR_URL });
+  test(
+    'nenhuma largura rola na horizontal, e nenhuma barra de rolagem aparece',
+    { tag: '@tema' },
+    async ({ page, request, ip }) => {
+      await open(page, { name: 'larguras', lots: LOTS }, { request, ip });
+      for (const width of [360, 390, 412, 768, 1024, 1280, 1440, 1920]) {
+        await page.setViewportSize({ width, height: 900 });
+        const sizes = await page.evaluate(() => ({
+          scroll: document.documentElement.scrollWidth,
+          client: document.documentElement.clientWidth,
+          body: document.body.scrollWidth,
+          bar: window.innerWidth - document.documentElement.clientWidth,
+        }));
+        expect(sizes.scroll, `${width} px`).toBeLessThanOrEqual(sizes.client);
+        expect(sizes.body, `${width} px`).toBeLessThanOrEqual(sizes.client);
+        expect(sizes.bar, `${width} px`).toBe(0);
+      }
+    },
+  );
 });
 
 for (const screen of SCREENS) {
@@ -202,10 +232,12 @@ for (const screen of SCREENS) {
           expect(size, `${await input.getAttribute('name')}`).toBeGreaterThanOrEqual(16);
         }
 
-        // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante
+        // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante. O radio mede pelo
+        // rótulo da opção: o desenho dele é o radio nativo de 20 px, e o alvo de 44 px é o <label> inteiro (o radio e o texto), que o marca
+        // (o fechamento da onda: antes o próprio radio era um disco de 44 px)
         const small = await page.evaluate(() => {
           const selector =
-            'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]';
+            'a[href], button, input:not([type="hidden"]):not([type="radio"]), select, textarea, summary, [role="button"], label:has(> input[type="radio"])';
           return [...document.querySelectorAll(selector)]
             .filter((element) => {
               const style = getComputedStyle(element);

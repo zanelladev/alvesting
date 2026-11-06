@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { Lot } from '@alvesting/contracts';
+import { Avisos } from './avisos';
 import { WalletLots } from './wallet-lots';
 
 // Os lançamentos e o formulário da carteira, renderizados no servidor (o HTML que chega ao navegador antes do JavaScript): o que o leitor de
@@ -130,8 +131,17 @@ describe('a carteira vazia', () => {
     expect(out).toMatch(/>Data da compra \(opcional\)<\/label>/);
   });
 
+  // O aviso do resultado é a pilha de avisos da página (o toast da beUI, components/avisos.tsx), antes da lista: a região viva (a lista com
+  // `aria-live="polite"`) existe desde o começo, vazia, para o leitor de tela anunciar o que chega depois.
   it('o aviso do resultado existe desde o começo, vazio, para o leitor de tela anunciar o que chega depois', () => {
-    expect(out).toMatch(/<p role="status" data-notice="" class="sr-only"><\/p>/);
+    const inPage = html(
+      <Avisos>
+        <WalletLots lots={[]} today="2026-11-09" />
+      </Avisos>,
+    );
+    expect(inPage).toMatch(
+      /^<div class="space-y-8"><ol aria-live="polite" aria-atomic="false" aria-label="Avisos"[^>]*><\/ol><section id="lancamentos"/,
+    );
   });
 
   it('quem não sabe o código busca a ação noutra aba, sem entregar a janela e sem perder o formulário', () => {

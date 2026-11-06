@@ -46,6 +46,18 @@ export function parseBackfillArgs(argv: readonly string[]): BackfillArgs {
   return args;
 }
 
+// Os argumentos do market:logos (ADR 0036): só a confirmação do banco. Sem ela o comando não usa a rede.
+export function parseLogosArgs(argv: readonly string[]): { confirmDatabase?: string } {
+  const [flag, value, ...rest] = argv;
+  if (flag === undefined) return {};
+  if (flag !== '--confirmo-banco') throw new Error(`argumento desconhecido: ${flag}`);
+  if (value === undefined || value.startsWith('--')) throw new Error(`${flag} pede um valor`);
+  if (rest.length > 0) {
+    throw new Error(rest[0] === flag ? `${flag} repetido` : `argumento desconhecido: ${rest[0]}`);
+  }
+  return { confirmDatabase: value };
+}
+
 // O banco de destino como a pessoa o reconhece, SEM usuário nem senha: o que a carga mostra antes de buscar e o que a confirmação repete.
 export function databaseLabel(url: string): { host: string; name: string } {
   const parsed = new URL(url);

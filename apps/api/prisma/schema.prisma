@@ -106,9 +106,29 @@ model Instrument {
 
   bars    DailyBar[]
   members UniverseMember[]
+  logo    InstrumentLogo?
 
   @@index([cnpj])
   @@map("instrument")
+}
+
+// O logo da empresa, copiado do icons.brapi.dev (ADR 0036; docs/DADOS.md, seção 3a): o SVG que passou no validador (svg-check.ts), guardado
+// aqui para o site o servir do próprio domínio, sem dado do visitante indo à brapi. Um por papel, e some com ele (cascata). Quem grava é a
+// atualização semanal e o market:logos (o login administrador); a api só lê (a rota interna dos logos).
+model InstrumentLogo {
+  instrumentId String     @id @map("instrument_id") @db.VarChar(26)
+  // o endereço da lista da brapi de onde o SVG veio (a forma exata, logoUrl): endereço trocado pede o SVG de novo
+  sourceUrl    String     @map("source_url")
+  svg          String
+  // do conteúdo baixado, em hexadecimal: o mesmo SHA-256 não regrava o SVG
+  sha256       String     @db.Char(64)
+  bytes        Int
+  // a última busca que passou no validador (com o mesmo SHA-256 só esta data anda); mais de 30 dias pede de novo
+  fetchedAt    DateTime   @map("fetched_at") @db.Timestamptz(3)
+
+  instrument Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@map("instrument_logo")
 }
 
 // Uma barra por (papel, pregão), e nunca sobrescrita: só se insere o que falta, e a barra que chega com valor diferente do

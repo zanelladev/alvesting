@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ThemeSelector } from './beui/theme-selector';
 import {
   IconeArena,
   IconeBuscar,
@@ -83,6 +84,10 @@ export function AppShell({ area, children }: { area: Area; children: ReactNode }
                 Buscar
               </NavLink>
             </li>
+            {/* o seletor de tema no pé do trilho, perto de "Conta" (no celular ele mora na folha "Mais") */}
+            <li className="app-tema">
+              <ThemeSelector name="tema-trilho" vertical label />
+            </li>
             <li>
               <a href="/conta" aria-current={atual('conta')} className="app-item">
                 <span className="app-icone">
@@ -115,11 +120,15 @@ export function AppShell({ area, children }: { area: Area; children: ReactNode }
                 </li>
               ))}
             </ul>
+            <div className="mais-tema">
+              <ThemeSelector name="tema-mais" label />
+            </div>
           </div>
         </nav>
       </header>
       <div className="app-coluna flex min-w-0 flex-1 flex-col">
-        {/* sem teto de largura: o Discover e a Arena do Rallies enchem a tela; cada tela diz a largura do próprio texto */}
+        {/* sem teto até a coluna do app (1.550 px, centrada, com o fio de cada lado: globals.css, `.app`): o Discover e a Arena do Rallies
+            enchem a tela; cada tela diz a largura do próprio texto */}
         <main className="w-full flex-1 px-5 py-6 lg:px-6">{children}</main>
         <Rodape className="space-y-3 border-t border-hairline px-5 pt-8 pb-10 text-xs text-muted lg:px-6" />
       </div>

@@ -11,7 +11,7 @@ import {
 import { FRONT_DOOR_URL } from './api-server';
 import { ORIGIN, addLot, wallet } from './carteira-support';
 import { abrirMenu } from './menu';
-import { brl, dmy } from './data';
+import { brl, dmy, pct, ratioBps } from './data';
 
 // A tela da carteira (etapa 12, parte 2; docs/TELAS.md, seção 9), em pixel-7, iphone-15 (WebKit) e desktop, como todo e2e. O navegador fala com
 // UMA origem só, o Front Door imitado (e2e/front-door.ts): `/api/*` vai para a api da conta, que roda no login de menor privilégio do Postgres
@@ -68,8 +68,23 @@ const settled = expect.configure({ timeout: 15_000 });
 
 const region = (page: Page, name: string) => page.getByRole('region', { name, exact: true });
 const lotCards = (page: Page) => region(page, 'Lançamentos').getByRole('listitem');
-const notice = (page: Page, text: string) => page.getByRole('status').filter({ hasText: text });
+// O aviso do que acabou de acontecer é o da pilha de avisos da página (o Animated Toast Stack da beUI, components/avisos.tsx): a lista "Avisos",
+// com aria-live polite, fixa no pé da tela. Até a design premium era um parágrafo `role="status"` no topo da seção; o texto e o foco são os mesmos.
+// Dois avisos iguais seguidos podem estar juntos na pilha: o que vale é o mais novo, o último.
+const avisos = (page: Page) => page.getByRole('list', { name: 'Avisos', exact: true });
+const notice = (page: Page, text: string) =>
+  avisos(page).getByRole('listitem').filter({ hasText: text }).last();
 const heading = (page: Page) => page.getByRole('heading', { level: 1, name: 'Minha carteira' });
+// O texto que o leitor de tela lê em cada elemento: sem o que está em aria-hidden (as rodas dos algarismos do contador da Arc, que levam o número
+// inteiro num sr-only), com os espaços juntos (o sem quebra do "R$ " vira espaço comum, como no `toHaveText`).
+const readText = (locator: Locator) =>
+  locator.evaluateAll((elements) =>
+    elements.map((element) => {
+      const copy = element.cloneNode(true) as Element;
+      copy.querySelectorAll('[aria-hidden="true"]').forEach((hidden) => hidden.remove());
+      return (copy.textContent ?? '').replace(/\s+/g, ' ').trim();
+    }),
+  );
 
 // Os campos do formulário (o de lançar e o de editar são o mesmo): o escopo é o formulário.
 const fields = (scope: Locator) => ({
@@ -115,7 +130,9 @@ async function expectPositions(page: Page, request: APIRequestContext): Promise<
 
 async function expectSummary(page: Page, request: APIRequestContext): Promise<void> {
   const { totals } = await wallet(request);
-  await settled(region(page, 'Resumo').locator('dd')).toHaveText(summaryValues(totals));
+  await expect
+    .poll(() => readText(region(page, 'Resumo').locator('dd')), { timeout: 15_000 })
+    .toEqual(summaryValues(totals));
 }
 
 async function signedIn(
@@ -360,7 +377,7 @@ test.describe('lançar uma compra', () => {
     await expectPositions(page, page.request);
     await expectSummary(page, page.request);
     // o custo total é o último par da coluna (o valor estimado vem primeiro, como no Today)
-    await expect(region(page, 'Resumo').locator('dd').last()).toHaveText('R$ 7.100,00');
+    expect((await readText(region(page, 'Resumo').locator('dd'))).at(-1)).toBe('R$ 7.100,00');
   });
 
   // O mesmo custo para os mesmos números, com valores que pedem milhar e centavos: o produto é feito em centavos inteiros, nunca em float.
@@ -1024,20 +1041,44 @@ test.describe('por toque', () => {
     await form.getByText('Valor total pago', { exact: true }).tap();
     await expect(f.total).toBeChecked();
     await expect(f.unit).not.toBeChecked();
-    // marcado, o radio não depende da cor: é um disco na cor da tinta com um ponto (texto, que sobrevive ao modo de alto contraste do sistema), e
-    // o vazio é um círculo no fundo da página sem ponto; os dois são redondos, para não se confundir com a caixa de marcar (um quadrado com um
-    // X). O e2e roda no tema claro (ADR 0035): a tinta é a quase preta e o fundo, o branco.
-    const look = (radio: Element) => ({
-      mark: getComputedStyle(radio, '::before').content,
-      background: getComputedStyle(radio).backgroundColor,
-      radius: getComputedStyle(radio).borderTopLeftRadius,
-    });
+    // O radio visível de 20 px, o desenho do radio nativo (a decisão que a T2b deixou, tomada no fechamento da onda): o estado é a espessura da
+    // borda, que sobrevive ao alto contraste do sistema em todo navegador (a cor vira a do sistema, a espessura fica), sem pseudo-elemento nem
+    // fundo (o `::before` num <input> o Firefox não desenha). Desmarcado, a borda de 2 px no fio de controle; marcado, a de 6 px na tinta, com o
+    // miolo no canvas. Os dois redondos, para não se confundir com a caixa de marcar (o quadrado com o X). O alvo de 44 px é o rótulo inteiro da
+    // opção (o radio e o texto), que marca o radio no toque. O e2e roda no tema claro (ADR 0035): a tinta é a quase preta, o fio de controle o
+    // cinza #8a8a90 e o fundo, o branco.
+    const look = (radio: Element) => {
+      const style = getComputedStyle(radio);
+      return {
+        mark: getComputedStyle(radio, '::before').content,
+        border: style.borderTopWidth,
+        color: style.borderTopColor,
+        background: style.backgroundColor,
+        radius: style.borderTopLeftRadius,
+        size: radio.getBoundingClientRect().width,
+        target: radio.closest('label')!.getBoundingClientRect().height,
+      };
+    };
     const painted = await f.total.evaluate(look);
     const empty = await f.unit.evaluate(look);
-    expect(painted).toMatchObject({ mark: '"●"', background: 'rgb(10, 10, 10)' });
-    expect(empty).toMatchObject({ mark: 'none', background: 'rgb(255, 255, 255)' });
+    expect(painted).toMatchObject({
+      mark: 'none',
+      border: '6px',
+      color: 'rgb(10, 10, 10)',
+      background: 'rgb(255, 255, 255)',
+      size: 20,
+    });
+    expect(empty).toMatchObject({
+      mark: 'none',
+      border: '2px',
+      color: 'rgb(138, 138, 144)',
+      background: 'rgb(255, 255, 255)',
+      size: 20,
+    });
     expect(painted.radius).not.toBe('0px');
     expect(empty.radius).not.toBe('0px');
+    expect(painted.target).toBeGreaterThanOrEqual(43.95);
+    expect(empty.target).toBeGreaterThanOrEqual(43.95);
     await f.value.fill('3550');
     await form.getByRole('button', { name: 'Lançar compra' }).tap();
     await settled(
@@ -1191,5 +1232,402 @@ test.describe('só com o teclado', () => {
       'Você ainda não lançou nenhuma compra.',
     );
     expect((await wallet(page.request)).lots).toEqual([]);
+  });
+});
+
+// --- o design premium da carteira (docs/TELAS.md, seção 9; ADR 0037) --------------------------------------------------------------------
+// As peças vivas: o logo de cada ação (o da T0b) à esquerda do ticker, a rosca da alocação (a beUI) com a legenda ligada ao centro, o aviso na
+// pilha (o toast da beUI) e o contador da Arc no resumo, que só rola quando o número muda. O e2e semeia o logo sintético do MOVE3 e do SINA3; o
+// PAUS3 não tem logo (o monograma).
+
+// Quantos algarismos do contador estão no meio da roda agora (opacidade fora de 0 e 1), e o maior número disso visto em `ms` milissegundos, a
+// cada quadro: começa ANTES da ação, para ver a roda girar (ou não) quando o servidor refaz a página.
+const sampleRolls = (page: Page, ms: number) =>
+  page.evaluate(
+    (duration) =>
+      new Promise<{ moving: number; firstToast: Record<string, string> | null }>((resolve) => {
+        const start = performance.now();
+        let moving = 0;
+        let firstToast: Record<string, string> | null = null;
+        const tick = () => {
+          const glyphs = [
+            ...document.querySelectorAll<HTMLElement>('#resumo [data-contador] [class*="glyph"]'),
+          ];
+          moving = Math.max(
+            moving,
+            glyphs.filter((g) => !['', '0', '1'].includes(g.style.opacity)).length,
+          );
+          const toast = document.querySelector<HTMLElement>('[data-aviso]');
+          if (toast && !firstToast) {
+            const style = getComputedStyle(toast);
+            firstToast = {
+              opacity: style.opacity,
+              transform: style.transform,
+              filter: style.filter,
+            };
+          }
+          if (performance.now() - start > duration) resolve({ moving, firstToast });
+          else requestAnimationFrame(tick);
+        };
+        tick();
+      }),
+    ms,
+  );
+
+test.describe('as peças vivas da carteira', () => {
+  test('o logo de cada ação fica à esquerda do ticker, ligado à página dela, nas posições, na legenda e nos lançamentos', async ({
+    page,
+    request,
+    ip,
+  }) => {
+    await signedIn(page, request, ip, 'carteira-logos');
+    await addLot(page.request, { ticker: 'MOVE3', quantity: 10, mode: 'unit', valueCents: 1_000 });
+    await addLot(page.request, { ticker: 'PAUS3', quantity: 10, mode: 'unit', valueCents: 1_000 });
+    await page.goto('/carteira');
+
+    // o logo à esquerda do texto e no meio da linha dele, dentro do link para a página da ação
+    const beside = (link: Locator) =>
+      link.evaluate((a) => {
+        const logo = a.querySelector('[data-logo]')!.getBoundingClientRect();
+        const text = [...a.childNodes].find((n) => n.nodeType === Node.TEXT_NODE)!;
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const box = range.getBoundingClientRect();
+        return {
+          left: logo.right <= box.left + 0.5,
+          middle: Math.abs(logo.top + logo.height / 2 - (box.top + box.height / 2)) < 4,
+        };
+      });
+    const places = [region(page, 'Posições'), ...(await lotCards(page).all())];
+    for (const place of places) {
+      for (const [ticker, kind] of [
+        ['MOVE3', 'imagem'],
+        ['PAUS3', 'monograma'],
+      ] as const) {
+        const link = place.getByRole('link', { name: ticker, exact: true });
+        if ((await link.count()) === 0) continue;
+        await expect(link).toHaveAttribute('href', `/acoes/${ticker}`);
+        const logo = link.locator('[data-logo]');
+        await expect(logo).toHaveAttribute('data-logo', kind);
+        if (kind === 'imagem') {
+          await expect(logo).toHaveAttribute('src', /^\/logos\/MOVE3\.svg\?v=[0-9a-f]+$/);
+          await expect(logo).toHaveAttribute('alt', '');
+        } else {
+          await expect(logo).toHaveAttribute('data-inicial', 'P');
+        }
+        expect(await beside(link)).toEqual({ left: true, middle: true });
+      }
+    }
+    // nas posições os dois têm a linha; nos lançamentos, um cada
+    await expect(region(page, 'Posições').getByRole('link')).toHaveCount(2);
+    await expect(lotCards(page).getByRole('link', { name: /^(MOVE3|PAUS3)$/ })).toHaveCount(2);
+    // a legenda da rosca: o logo do MOVE3 e o monograma do PAUS3, à esquerda do ticker
+    const legend = region(page, 'Alocação').getByRole('button');
+    await expect(
+      legend.filter({ hasText: 'MOVE3' }).locator('img[data-logo="imagem"]'),
+    ).toHaveCount(1);
+    await expect(
+      legend.filter({ hasText: 'PAUS3' }).locator('[data-logo="monograma"]'),
+    ).toHaveCount(1);
+  });
+
+  test('a rosca mostra a alocação de cada posição contra a api, e a legenda liga a fatia ao centro (o foco, as setas e o clique que fixa)', async ({
+    page,
+    request,
+    ip,
+  }) => {
+    await signedIn(page, request, ip, 'carteira-rosca');
+    await addLot(page.request, { ticker: 'MOVE3', quantity: 100, mode: 'unit', valueCents: 3_550 });
+    await addLot(page.request, {
+      ticker: 'SINA3',
+      quantity: 10,
+      mode: 'total',
+      valueCents: 20_000,
+    });
+    await addLot(page.request, {
+      ticker: 'PAUS3',
+      quantity: 2_500,
+      mode: 'unit',
+      valueCents: 1_275,
+    });
+    await page.goto('/carteira');
+    const { positions, totals } = await wallet(page.request);
+    const priced = positions
+      .filter((p) => p.valueCents !== null && p.valueCents > 0)
+      .sort((a, b) => b.valueCents! - a.valueCents! || a.ticker.localeCompare(b.ticker));
+    expect(priced).toHaveLength(3);
+    const share = (cents: number) => pct(ratioBps(cents, totals.valueCents!), false);
+
+    const alloc = region(page, 'Alocação');
+    await expect(alloc.getByRole('img')).toHaveAttribute(
+      'aria-label',
+      `Alocação da carteira pelo valor estimado: ${priced.map((p) => `${p.ticker}, ${share(p.valueCents!)}`).join('; ')}.`,
+    );
+    // uma fatia por posição, da maior para a menor
+    await expect(alloc.locator('[data-fatia]')).toHaveCount(3);
+    const rows = alloc.getByRole('button');
+    await expect(rows).toHaveText(
+      priced.map((p) => `${p.ticker} ${share(p.valueCents!)} ${brl(p.valueCents!)}`),
+    );
+    for (const row of await rows.all()) await expect(row).toBeEnabled();
+
+    // o centro: o valor estimado e quantas ações; o foco numa linha leva o valor e a parte dela ao centro, e a fatia dela fica na frente
+    const center = alloc.locator('[data-rosca-centro]');
+    const centerValue = center.locator('[class*="srOnly"]');
+    await expect(center).toHaveAttribute('data-rosca-centro', 'total');
+    await expect(center).toContainText('3 ações');
+    await expect(centerValue).toHaveText(brl(totals.valueCents!));
+    await rows.nth(1).focus();
+    await expect(center).toHaveAttribute('data-rosca-centro', priced[1]!.ticker);
+    await expect(center).toContainText(`${priced[1]!.ticker} · ${share(priced[1]!.valueCents!)}`);
+    await expect(centerValue).toHaveText(brl(priced[1]!.valueCents!));
+    await expect
+      .poll(() =>
+        alloc
+          .locator('[data-fatia]')
+          .evaluateAll((paths) => paths.map((path) => getComputedStyle(path).opacity)),
+      )
+      .toEqual(['0.3', '1', '0.3']);
+    // as setas andam entre as linhas
+    await page.keyboard.press('ArrowDown');
+    await expect(rows.nth(2)).toBeFocused();
+    await expect(center).toHaveAttribute('data-rosca-centro', priced[2]!.ticker);
+
+    // o clique fixa a fatia (aria-pressed), e ela fica no centro quando o foco sai
+    await rows.nth(0).click();
+    await expect(rows.nth(0)).toHaveAttribute('aria-pressed', 'true');
+    await heading(page).click();
+    await page.mouse.move(0, 0);
+    await expect(center).toHaveAttribute('data-rosca-centro', priced[0]!.ticker);
+    // outro clique solta
+    await rows.nth(0).click();
+    await expect(rows.nth(0)).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('o aviso do lançamento chega na pilha anunciada (aria-live polite), com o foco, fixo no pé da tela, e fecha pelo teclado', async ({
+    page,
+    request,
+    ip,
+  }, testInfo) => {
+    await signedIn(page, request, ip, 'carteira-aviso');
+    await page.goto('/carteira');
+    const pilha = avisos(page);
+    // a região viva existe desde o começo, vazia (o leitor de tela anuncia o que chega depois)
+    await expect(pilha).toHaveAttribute('aria-live', 'polite');
+    await expect(pilha.getByRole('listitem')).toHaveCount(0);
+
+    const form = createForm(page);
+    await fill(form, { ticker: 'MOVE3', quantity: '10', mode: 'unit', value: '10,00' });
+    await form.getByRole('button', { name: 'Lançar compra' }).click();
+    const aviso = notice(page, 'Compra lançada: 10 MOVE3, custo total R$ 100,00.');
+    await settled(aviso).toBeFocused();
+    // fixo no pé da tela, na largura dela, acima da barra de abas do celular
+    const viewport = page.viewportSize()!;
+    const box = (await aviso.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    const bar = await page.getByRole('navigation', { name: 'Principal' }).boundingBox();
+    const floor = viewport.width < 1024 && bar ? bar.y : viewport.height;
+    expect(box.y + box.height).toBeLessThanOrEqual(floor);
+    expect(box.y + box.height).toBeGreaterThan(floor - 120);
+    // o fechar é um botão com nome, na caixa de 44 px (a medida sem a escala da entrada, que ainda pode estar no fim)
+    const close = aviso.getByRole('button', { name: 'Fechar aviso' });
+    const closeBox = await close.evaluate((button: HTMLElement) => [
+      button.offsetWidth,
+      button.offsetHeight,
+    ]);
+    expect(Math.min(...closeBox)).toBeGreaterThanOrEqual(44);
+
+    if (testInfo.project.name.startsWith('desktop')) {
+      // o teclado: o Tab chega ao fechar, o Enter fecha, e o foco vai ao título dos lançamentos (e não ao <body>)
+      await page.keyboard.press('Tab');
+      await expect(close).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(pilha.getByRole('listitem')).toHaveCount(0);
+      await expect(page.locator('#lancamentos-titulo')).toBeFocused();
+      // o Esc também fecha o aviso em que está o foco
+      await fill(form, { ticker: 'MOVE3', quantity: '20', mode: 'unit', value: '10,00' });
+      await form.getByRole('button', { name: 'Lançar compra' }).click();
+      const second = notice(page, 'Compra lançada: 20 MOVE3, custo total R$ 200,00.');
+      await settled(second).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(pilha.getByRole('listitem')).toHaveCount(0);
+      await expect(page.locator('#lancamentos-titulo')).toBeFocused();
+    } else {
+      // no toque, o fechar responde ao toque
+      await close.tap();
+      await expect(pilha.getByRole('listitem')).toHaveCount(0);
+    }
+  });
+
+  test('o aviso sem o foco some sozinho depois de uns segundos', async ({ page, request, ip }) => {
+    await signedIn(page, request, ip, 'carteira-aviso-some');
+    await addLot(page.request, { ticker: 'MOVE3', quantity: 10, mode: 'unit', valueCents: 1_000 });
+    await page.goto('/carteira');
+    // salvar devolve o foco ao Editar: o aviso fica na pilha sem o foco, e sai sozinho
+    const card = lotCards(page).first();
+    await card.getByRole('button', { name: /^Editar/ }).click();
+    const form = page.getByRole('form', { name: 'Editar lançamento de 10 MOVE3' });
+    await fields(form).quantity.fill('11');
+    await form.getByRole('button', { name: 'Salvar alterações' }).click();
+    const saved = notice(page, 'Lançamento salvo: 11 MOVE3, custo total R$ 100,00.');
+    await settled(saved).toBeVisible();
+    await settled(card.getByRole('button', { name: /^Editar/ })).toBeFocused();
+    await expect(saved).toHaveCount(0, { timeout: 12_000 });
+  });
+
+  // O prazo para com o ponteiro sobre o aviso (WCAG 2.2.1). O aviso que sai da tela com o ponteiro em cima (fechado pelo mouse, arrastado) não
+  // recebe o `pointerleave`: sem soltar a pausa quando ele sai, os avisos seguintes ficavam na tela para sempre (a revisão do fechamento, I2).
+  test('o aviso fechado com o ponteiro em cima não prende os seguintes: o próximo some sozinho', async ({
+    page,
+    request,
+    ip,
+  }, testInfo) => {
+    test.skip(!testInfo.project.name.startsWith('desktop'), 'o ponteiro em cima é o do mouse');
+    await signedIn(page, request, ip, 'carteira-aviso-ponteiro');
+    await addLot(page.request, { ticker: 'MOVE3', quantity: 10, mode: 'unit', valueCents: 1_000 });
+    await page.goto('/carteira');
+    const card = lotCards(page).first();
+    const salvar = async (quantity: string, from: string) => {
+      await card.getByRole('button', { name: /^Editar/ }).click();
+      const form = page.getByRole('form', { name: `Editar lançamento de ${from} MOVE3` });
+      await fields(form).quantity.fill(quantity);
+      await form.getByRole('button', { name: 'Salvar alterações' }).click();
+    };
+    await salvar('11', '10');
+    const first = notice(page, 'Lançamento salvo: 11 MOVE3, custo total R$ 100,00.');
+    await settled(first).toBeVisible();
+    // o ponteiro sobre o aviso, e o clique no fechar: o aviso sai com o ponteiro em cima
+    await first.hover();
+    await first.getByRole('button', { name: 'Fechar aviso' }).click();
+    await expect(avisos(page).getByRole('listitem')).toHaveCount(0);
+    await page.mouse.move(8, 8, { steps: 5 });
+    await salvar('12', '11');
+    const second = notice(page, 'Lançamento salvo: 12 MOVE3, custo total R$ 100,00.');
+    await settled(second).toBeVisible();
+    await expect(second).toHaveCount(0, { timeout: 12_000 });
+  });
+
+  test('o contador do resumo rola quando o número muda depois de lançar, e nada rola na abertura', async ({
+    page,
+    request,
+    ip,
+  }) => {
+    await signedIn(page, request, ip, 'carteira-contador');
+    await addLot(page.request, { ticker: 'MOVE3', quantity: 100, mode: 'unit', valueCents: 3_550 });
+    await page.goto('/carteira');
+    await expect(region(page, 'Resumo')).toBeVisible();
+    // a abertura: os três números no contador (a roda de cada algarismo), e nenhum no meio do giro
+    await expect(region(page, 'Resumo').locator('[data-contador]')).toHaveCount(3);
+    expect((await sampleRolls(page, 600)).moving).toBe(0);
+
+    const form = createForm(page);
+    await fill(form, { ticker: 'MOVE3', quantity: '100', mode: 'unit', value: '35,50' });
+    const rolling = sampleRolls(page, 4_000);
+    await form.getByRole('button', { name: 'Lançar compra' }).click();
+    expect((await rolling).moving).toBeGreaterThan(0);
+    await expectSummary(page, page.request);
+  });
+});
+
+// O movimento reduzido (docs/DESIGN.md, 5): com `prefers-reduced-motion: reduce`, o contador troca o número sem girar, o aviso aparece inteiro no
+// primeiro quadro (sem subir nem esmaecer) e a rosca destaca a fatia na hora, sem a mola.
+test.describe('movimento reduzido', () => {
+  test.use({ reducedMotion: 'reduce' });
+
+  test('o contador, a rosca e o aviso trocam na hora', async ({ page, request, ip }) => {
+    await signedIn(page, request, ip, 'carteira-reduzido');
+    await addLot(page.request, { ticker: 'MOVE3', quantity: 100, mode: 'unit', valueCents: 3_550 });
+    await addLot(page.request, {
+      ticker: 'SINA3',
+      quantity: 10,
+      mode: 'total',
+      valueCents: 20_000,
+    });
+    await page.goto('/carteira');
+
+    const form = createForm(page);
+    await fill(form, { ticker: 'MOVE3', quantity: '100', mode: 'unit', value: '35,50' });
+    const sample = sampleRolls(page, 4_000);
+    await form.getByRole('button', { name: 'Lançar compra' }).click();
+    const { moving, firstToast } = await sample;
+    // nenhum algarismo no meio da roda, e o aviso inteiro desde o primeiro quadro em que existe
+    expect(moving).toBe(0);
+    expect(firstToast).toEqual({ opacity: '1', transform: 'none', filter: 'none' });
+    await expectSummary(page, page.request);
+
+    // a rosca: o foco numa linha da legenda destaca a fatia no quadro seguinte, e nada anda
+    const rows = region(page, 'Alocação').getByRole('button');
+    await rows.nth(1).focus();
+    const ring = await page.evaluate(async () => {
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const paths = [...document.querySelectorAll<SVGPathElement>('[data-fatia]')];
+      const glyphs = [
+        ...document.querySelectorAll<HTMLElement>('[data-rosca-centro] [class*="glyph"]'),
+      ];
+      return {
+        opacities: paths.map((path) => getComputedStyle(path).opacity),
+        moving: glyphs.filter((g) => !['', '0', '1'].includes(g.style.opacity)).length,
+        // a pista da tabela que rola (o esmaecer da borda, ui.tsx TableScroll) é uma animação ligada à rolagem e não ao tempo: nada anda sozinho,
+        // e ela fica fora da conta
+        running: document
+          .getAnimations()
+          .filter((a) => a.playState === 'running' && !(a.timeline && 'source' in a.timeline))
+          .length,
+      };
+    });
+    expect(ring).toEqual({ opacities: ['0.3', '1'], moving: 0, running: 0 });
+  });
+});
+
+// Os termos que pedem explicação (o tooltip da Arc): o preço médio e o resultado, no cabeçalho da tabela e no resumo, e o "valor total pago"
+// no radio do formulário. Abrem no hover do mouse e no foco do teclado (o leitor de tela ouve a explicação como a descrição); no toque, a mesma
+// explicação está em texto na tela (o parágrafo das posições, a dica do campo).
+test.describe('os termos com explicação', () => {
+  test('o preço médio, o resultado e o valor total pago explicam-se no tooltip, pelo ponteiro e pelo teclado', async ({
+    page,
+    request,
+    ip,
+  }, testInfo) => {
+    test.skip(
+      !testInfo.project.name.startsWith('desktop'),
+      'o tooltip abre no hover do mouse e no foco do teclado',
+    );
+    await signedIn(page, request, ip, 'carteira-termos');
+    await addLot(page.request, { ticker: 'MOVE3', quantity: 10, mode: 'unit', valueCents: 1_000 });
+    await page.goto('/carteira');
+    const tooltip = page.getByRole('tooltip');
+
+    const precoMedio = region(page, 'Posições').getByRole('button', {
+      name: 'Preço médio',
+      exact: true,
+    });
+    await expect(precoMedio).toBeEnabled();
+    await precoMedio.hover();
+    await expect(tooltip).toContainText('dividido pela quantidade');
+    // o ponteiro sai em passos, como um mouse de verdade: a Radix deixa passar para o balão (WCAG 1.4.13) e só fecha num movimento depois
+    // da saída e fora dessa área; o salto de uma vez manda um movimento só, o do ponto de saída, e o balão fica aberto
+    await page.mouse.move(0, 0, { steps: 10 });
+    await expect(tooltip).toHaveCount(0);
+    // o foco do teclado abre, e o leitor de tela ouve a explicação como a descrição; o Esc fecha
+    await precoMedio.focus();
+    await expect(precoMedio).toHaveAccessibleDescription(/dividido pela quantidade/);
+    await page.keyboard.press('Escape');
+    await expect(tooltip).toHaveCount(0);
+
+    for (const place of ['Posições', 'Resumo']) {
+      const resultado = region(page, place).getByRole('button', { name: 'Resultado', exact: true });
+      await resultado.hover();
+      await expect(tooltip).toContainText('O valor estimado menos o custo');
+      await page.mouse.move(0, 0, { steps: 10 });
+      await expect(tooltip).toHaveCount(0);
+    }
+
+    // o radio "Valor total pago": a explicação é a descrição dele, e o tooltip abre no rótulo
+    const form = createForm(page);
+    await expect(fields(form).total).toHaveAccessibleDescription(/O total da nota desta compra/);
+    await form.getByText('Valor total pago', { exact: true }).hover();
+    await expect(tooltip).toContainText('O total da nota desta compra');
   });
 });

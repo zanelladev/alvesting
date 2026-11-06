@@ -352,6 +352,90 @@ describe('imagens em Bicep', () => {
   });
 });
 
+// O código copiado de registro (ADR 0037): todo arquivo das pastas das três bibliotecas tem a linha dele na tabela "Componentes copiados de
+// registros", pelo caminho do arquivo ou da pasta dele na coluna Onde, e cada pasta tem o LICENSE da MIT. Os testes nossos (`.spec`) ficam fora.
+describe('componentes copiados de registros', () => {
+  const ARC = 'apps/web/src/components/arc';
+  const section = (...rows) =>
+    `## Componentes copiados de registros (ADR 0037)\n\nTexto.\n\n${doc(...rows)}\n## Outra\n`;
+  const copied = (onde, overrides = {}) =>
+    row('Arc `tooltip`', 'componente copiado (registro shadcn da Arc)', { onde, ...overrides });
+  const files = {
+    [`${ARC}/LICENSE`]: 'MIT',
+    [`${ARC}/tooltip/tooltip.tsx`]: '',
+    [`${ARC}/tooltip/tooltip.module.css`]: '',
+    [`${ARC}/lib/motion-tokens.ts`]: '',
+    [`${ARC}/arc.spec.tsx`]: '',
+  };
+
+  test('falha e lista cada arquivo copiado sem linha na tabela', async () => {
+    const root = await workspace({
+      ...files,
+      'docs/DEPENDENCIAS.md': section(copied(`${ARC}/lib/motion-tokens.ts`)),
+    });
+    const result = await checkDocs(root);
+    assert.deepEqual(names(result), [
+      `componente:${ARC}/tooltip/tooltip.module.css`,
+      `componente:${ARC}/tooltip/tooltip.tsx`,
+    ]);
+    assert.match(result.missing[0].reason, /Componentes copiados de registros/);
+  });
+
+  test('a pasta na coluna Onde cobre os arquivos de dentro dela, e o teste nosso não precisa de linha', async () => {
+    const root = await workspace({
+      ...files,
+      'docs/DEPENDENCIAS.md': section(
+        copied(`${ARC}/tooltip`),
+        copied(`${ARC}/lib/motion-tokens.ts, apps/web/src/app/globals.css (o bloco)`),
+      ),
+    });
+    assert.deepEqual((await checkDocs(root)).missing, []);
+  });
+
+  test('a pasta com o nome começado igual não cobre: tooltip não é tooltip-extra', async () => {
+    const root = await workspace({
+      ...files,
+      [`${ARC}/tooltip-extra/x.tsx`]: '',
+      'docs/DEPENDENCIAS.md': section(
+        copied(`${ARC}/tooltip`),
+        copied(`${ARC}/lib/motion-tokens.ts`),
+      ),
+    });
+    assert.deepEqual(names(await checkDocs(root)), [`componente:${ARC}/tooltip-extra/x.tsx`]);
+  });
+
+  test('a linha precisa estar na seção certa e completa', async () => {
+    const outside = await workspace({
+      ...files,
+      'docs/DEPENDENCIAS.md': `## Desenho de terceiros\n\n${doc(copied(`${ARC}/tooltip`), copied(`${ARC}/lib`))}`,
+    });
+    assert.equal((await checkDocs(outside)).missing.length, 3);
+
+    const incomplete = await workspace({
+      ...files,
+      'docs/DEPENDENCIAS.md': section(
+        copied(`${ARC}/tooltip`, { data: 'hoje' }),
+        copied(`${ARC}/lib`),
+      ),
+    });
+    const result = await checkDocs(incomplete);
+    assert.deepEqual(
+      result.missing.map((m) => m.reason),
+      ['Data deve ser dd/mm/aaaa', 'Data deve ser dd/mm/aaaa'],
+    );
+  });
+
+  test('a pasta da biblioteca sem o LICENSE falha', async () => {
+    const root = await workspace({
+      'apps/web/src/components/beui/line-chart.tsx': '',
+      'docs/DEPENDENCIAS.md': section(copied('apps/web/src/components/beui/line-chart.tsx')),
+    });
+    const result = await checkDocs(root);
+    assert.deepEqual(names(result), ['componente:apps/web/src/components/beui/LICENSE']);
+    assert.match(result.missing[0].reason, /LICENSE/);
+  });
+});
+
 describe('conteúdo das colunas', () => {
   const pkg = { 'package.json': { dependencies: { zod: '4.6.7' } } };
   const reasonFor = async (overrides) => {

@@ -9,7 +9,9 @@ import {
   type PriceMode,
   type QuantityError,
 } from '@alvesting/contracts/portfolio-rules';
+import type { Position } from '@alvesting/contracts';
 import { messageFor, type Reply } from './account-client';
+import { ratioBps } from './chart';
 import { formatBRL, formatDate, formatQuantity } from './format';
 
 // O que o navegador faz com a carteira (etapa 12, parte 2; docs/TELAS.md, seção 9): conferir o que a pessoa digitou antes de enviar, montar o
@@ -192,4 +194,51 @@ export function lotFailure(reply: Reply): LotFailure {
     };
   }
   return { message: messageFor(reply) };
+}
+
+// A alocação da carteira, para a rosca (docs/TELAS.md, seção 9; o valor de cada posição é do dono, ADR 0033): a parte de cada posição com
+// fechamento no valor estimado, da maior para a menor (o empate na ordem do ticker), em pontos-base inteiros com o meio para longe do zero
+// (`ratioBps`, a regra do projeto). Até seis ações, uma fatia por ação; mais que isso, as cinco maiores e "Outras" com a soma do resto: uma rosca
+// de duzentas fatias não se lê. A posição sem cotação (e a de valor zero) não tem fatia: fica fora do valor estimado, e o custo dela segue no
+// custo total. A cor é a da ordem (`--fatia-1` a `--fatia-6` e `--fatia-outras`, no globals.css: os tons da primária, que seguem o tema).
+export interface Fatia {
+  id: string;
+  nome: string;
+  valueCents: number;
+  shareBps: number;
+  cor: string;
+  tickers: string[];
+}
+const FATIAS = 6;
+
+export function alocacao(positions: readonly Position[]): { totalCents: number; fatias: Fatia[] } {
+  const priced = positions
+    .filter(
+      (p): p is Position & { valueCents: number } => p.valueCents !== null && p.valueCents > 0,
+    )
+    .sort((a, b) => b.valueCents - a.valueCents || a.ticker.localeCompare(b.ticker));
+  const totalCents = priced.reduce((sum, p) => sum + p.valueCents, 0);
+  const share = (cents: number) => ratioBps(cents, totalCents) ?? 0;
+  const own = priced.length > FATIAS ? priced.slice(0, FATIAS - 1) : priced;
+  const fatias: Fatia[] = own.map((p, i) => ({
+    id: p.ticker,
+    nome: p.ticker,
+    valueCents: p.valueCents,
+    shareBps: share(p.valueCents),
+    cor: `var(--fatia-${i + 1})`,
+    tickers: [p.ticker],
+  }));
+  const rest = priced.slice(own.length);
+  if (rest.length > 0) {
+    const valueCents = rest.reduce((sum, p) => sum + p.valueCents, 0);
+    fatias.push({
+      id: 'outras',
+      nome: `Outras (${rest.length} ações)`,
+      valueCents,
+      shareBps: share(valueCents),
+      cor: 'var(--fatia-outras)',
+      tickers: rest.map((p) => p.ticker),
+    });
+  }
+  return { totalCents, fatias };
 }

@@ -14,6 +14,31 @@ const plain = (markup: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// O texto que o leitor de tela lê: sem o que está em aria-hidden (os algarismos das rodas do contador da Arc, que vão uma vez só, inteiros, num
+// sr-only). Corta cada elemento aria-hidden com tudo o que ele tem dentro.
+function lido(markup: string): string {
+  let out = markup;
+  for (
+    let start = out.search(/<\w+[^>]*aria-hidden="true"/);
+    start >= 0;
+    start = out.search(/<\w+[^>]*aria-hidden="true"/)
+  ) {
+    const tag = /^<(\w+)/.exec(out.slice(start))![1]!;
+    const re = new RegExp(`<${tag}\\b[^>]*?(/?)>|</${tag}>`, 'g');
+    re.lastIndex = start;
+    let depth = 0;
+    for (let m = re.exec(out); m; m = re.exec(out)) {
+      if (m[0].startsWith('</')) depth -= 1;
+      else if (m[1] !== '/') depth += 1;
+      if (depth === 0) {
+        out = out.slice(0, start) + out.slice(re.lastIndex);
+        break;
+      }
+    }
+  }
+  return plain(out);
+}
+
 const SEM_FECHAMENTO = {
   closeCents: null,
   closeDate: null,
@@ -148,7 +173,7 @@ describe('WalletPositions', () => {
     expect(out).toContain('aria-label="Posições da carteira, por ticker"');
     expect(out).toContain('tabindex="0"');
     expect(out).toContain('<caption class="sr-only">Posições da carteira, por ticker</caption>');
-    const columns = [...out.matchAll(/<th scope="col"[^>]*>(.*?)<\/th>/g)].map((m) => m[1]);
+    const columns = [...out.matchAll(/<th scope="col"[^>]*>(.*?)<\/th>/g)].map((m) => plain(m[1]!));
     expect(columns).toEqual([
       'Ação',
       'Valor',
@@ -157,7 +182,7 @@ describe('WalletPositions', () => {
       'Preço médio',
       'Fechamento',
     ]);
-    expect(out).toMatch(/<th scope="row"[^>]*>MOVE3<\/th>/);
+    expect(plain(/<th scope="row"[^>]*>(.*?)<\/th>/.exec(out)![1]!)).toBe('MOVE3');
   });
 
   // O mesmo número das posições dos modelos (/modelos e /acoes, tables.tsx): o glifo ▲ ▼ ■ vem do CSS (`[data-dir]::before`, com o texto
@@ -192,7 +217,7 @@ describe('WalletPositions', () => {
 
 describe('WalletSummary', () => {
   const dds = (markup: string) =>
-    [...markup.matchAll(/<dd[^>]*>(.*?)<\/dd>/g)].map((m) => plain(m[1]!));
+    [...markup.matchAll(/<dd[^>]*>(.*?)<\/dd>/gs)].map((m) => lido(m[1]!));
   const dts = (markup: string) =>
     [...markup.matchAll(/<dt[^>]*>(.*?)<\/dt>/g)].map((m) => plain(m[1]!));
 
@@ -257,21 +282,94 @@ describe('WalletSummary', () => {
     );
   });
 
-  // A lista curta da coluna (a partir de 1024 px, ao lado da tabela): o mesmo que a tabela diz, sem par termo/valor (os três pares da região são os
-  // que o e2e confere contra a api), e a pílula preta que leva ao formulário.
-  it('a lista curta das posições repete a tabela (o ticker, o percentual com o glifo e o fechamento com a data), e a pílula leva ao formulário', () => {
+  // A alocação (a rosca da beUI, components/wallet-charts.tsx): uma linha da legenda por posição com fechamento, com a parte e o valor; a posição
+  // sem cotação fica fora. Os três pares da região continuam os que o e2e confere contra a api, e a pílula primária leva ao formulário.
+  it('a rosca da alocação: a imagem com todas as partes no nome e a legenda com a parte e o valor de cada ação, sem a que não tem cotação', () => {
     const out = html(
       <WalletSummary
-        totals={totals()}
-        positions={[position(), position({ ticker: 'SEMN3', ...SEM_FECHAMENTO })]}
+        totals={totals({ valueCents: 1_000_000, unpriced: 1 })}
+        positions={[
+          position({ ticker: 'MOVE3', valueCents: 800_000 }),
+          position({ ticker: 'SINA3', valueCents: 200_000 }),
+          position({ ticker: 'SEMN3', ...SEM_FECHAMENTO }),
+        ]}
+        logos={{ MOVE3: 'abc123' }}
       />,
     );
     expect(dds(out)).toHaveLength(3);
-    const text = plain(out);
-    expect(text).toContain('MOVE3 +12,68% R$ 40,00 em 09/11/2026');
-    expect(text).toContain('SEMN3 sem cotação');
-    expect(out).toMatch(/<span data-dir="up"[^>]*>\+12,68%<\/span>/);
-    expect(out).toContain('<a href="#lancar" class="btn btn-primary">Lançar compra</a>');
+    expect(out).toContain(
+      'role="img" aria-label="Alocação da carteira pelo valor estimado: MOVE3, 80,00%; SINA3, 20,00%."',
+    );
+    const legenda = [
+      ...out.matchAll(/<button[^>]*data-legenda="(\w+)"[^>]*>(.*?)<\/button>/gs),
+    ].map((m) => [m[1], lido(m[2]!)]);
+    expect(legenda).toEqual([
+      ['MOVE3', 'MOVE3 80,00% R$ 8.000,00'],
+      ['SINA3', 'SINA3 20,00% R$ 2.000,00'],
+    ]);
+    // o logo da ação na linha (o da T0b), e o monograma da que não tem logo
+    expect(out).toContain('src="/logos/MOVE3.svg?v=abc123"');
+    expect(out).toContain('data-inicial="S"');
+    // os botões da legenda nascem desativados (o servidor e o navegador sem JavaScript); a hidratação os liga
+    expect(out).toMatch(/<button type="button" data-legenda="MOVE3" disabled=""/);
+    // o atalho para o formulário é a pílula cinza: a primária é o envio do formulário (o QA do fechamento, achado 9)
+    expect(out).toContain('<a href="#lancar" class="btn">Lançar compra</a>');
+  });
+
+  it('sem nenhuma posição com fechamento, não há rosca', () => {
+    const out = html(
+      <WalletSummary
+        totals={totals({ valueCents: null, pnlCents: null, pnlBps: null, unpriced: 1 })}
+        positions={[position({ ticker: 'SEMN3', ...SEM_FECHAMENTO })]}
+      />,
+    );
+    expect(out).not.toContain('role="img"');
+    expect(out).not.toContain('Alocação');
+  });
+
+  // O valor estimado, o resultado e o custo no contador da Arc (o número que rola quando muda): o leitor de tela lê o texto inteiro uma vez (o
+  // sr-only, com o formatBRL), e as rodas dos algarismos ficam fora dele (aria-hidden). O "Resultado" é o termo com o tooltip.
+  it('os três números no contador: o texto lido inteiro, as rodas escondidas do leitor de tela, e o resultado com a explicação', () => {
+    const out = html(<WalletSummary totals={totals()} />);
+    expect(out.match(/data-contador=""/g)).toHaveLength(3);
+    expect(
+      [
+        ...out.matchAll(
+          /<span class="sr-only">([^<]*)<\/span><span aria-hidden="true" data-contador=""/g,
+        ),
+      ].map((m) => plain(m[1]!)),
+    ).toEqual(['R$ 8.000,00', '+R$ 900,00', 'R$ 7.100,00']);
+    expect(out).toMatch(
+      /<dt[^>]*><button type="button" class="termo[^"]*"[^>]*>Resultado<\/button><\/dt>/,
+    );
+  });
+});
+
+describe('WalletPositions: o desenho limpo do Rallies', () => {
+  it('o ticker na sans 500 com o logo à esquerda, ligado à página da ação; nenhuma mono na tabela', () => {
+    const out = html(
+      <WalletPositions
+        positions={[position(), position({ ticker: 'SINA3' })]}
+        logos={{ MOVE3: 'v1' }}
+      />,
+    );
+    expect(out).not.toContain('font-mono');
+    const [move, sina] = [...out.matchAll(/<th scope="row"[^>]*>(.*?)<\/th>/g)].map((m) => m[1]!);
+    expect(move).toMatch(
+      /<a [^>]*href="\/acoes\/MOVE3"[^>]*><img src="\/logos\/MOVE3\.svg\?v=v1" alt=""[^>]*\/?>MOVE3<\/a>/,
+    );
+    expect(sina).toMatch(
+      /<span aria-hidden="true" data-logo="monograma" data-inicial="S"[^>]*><\/span>SINA3<\/a>/,
+    );
+    expect(out).toMatch(/<th scope="row" class="[^"]*font-medium[^"]*"/);
+  });
+
+  it('o resultado e o preço médio são termos com explicação (o tooltip da Arc), no cabeçalho da coluna', () => {
+    const out = html(<WalletPositions positions={[position()]} />);
+    const termos = [
+      ...out.matchAll(/<button type="button" class="termo[^"]*"[^>]*>([^<]+)<\/button>/g),
+    ].map((m) => m[1]);
+    expect(termos).toEqual(['Resultado', 'Preço médio']);
   });
 });
 
@@ -280,6 +378,7 @@ describe('WalletEmpty', () => {
     const out = html(<WalletEmpty />);
     expect(out).not.toContain('<dd');
     expect(out).not.toContain('id="resumo"');
-    expect(out).toContain('<a href="#lancar" class="btn btn-primary">Lançar compra</a>');
+    // o atalho para o formulário é a pílula cinza: a primária é o envio do formulário (o QA do fechamento, achado 9)
+    expect(out).toContain('<a href="#lancar" class="btn">Lançar compra</a>');
   });
 });

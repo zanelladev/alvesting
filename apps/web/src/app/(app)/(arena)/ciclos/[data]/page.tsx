@@ -1,18 +1,24 @@
 import type { Metadata } from 'next';
 import type { CycleView } from '@alvesting/contracts';
 import { cycleRefSchema } from '@alvesting/contracts';
-import { AREA_ARENA, NavegacaoDaArea, telasDaArena } from '../../../../../components/arena/pagina';
+import {
+  AREA_ARENA,
+  AvisoSimulado,
+  NavegacaoDaArea,
+  telasDaArena,
+} from '../../../../../components/arena/pagina';
 import { DecisionCard } from '../../../../../components/decisions';
 import { Empty, Fact, Facts, PageHead, Section } from '../../../../../components/ui';
 import { api } from '../../../../../lib/api';
 import { formatDate, formatTime, formatWeekdayDate } from '../../../../../lib/format';
+import { versoesDosLogos } from '../../../../../lib/logos';
 import { orNotFound } from '../../../../../lib/page';
 import { withApiDown } from '../../../../../lib/with-api-down';
 
 // O ciclo de um pregão (plano §3 e §10; no desenho do Rallies, docs/redesign-rallies/plano.md, e.7: as decisões em itens de feed, numa
-// coluna): os horários, a versão e o SHA-256 do prompt (o texto nunca, nem em
-// bloco de código), o SHA-256 do briefing, as decisões de cada modelo e os itens descartados com o motivo. `:data` é AAAA-MM-DD; o ULID do
-// ciclo também vale (a api aceita os dois).
+// coluna): os horários, a versão e o SHA-256 do prompt (o texto nunca, nem em bloco de código), o SHA-256 do briefing (a mono, a única desta
+// tela), as decisões de cada modelo, com o logo de cada ação à esquerda do ticker, e os itens descartados com o motivo. O "simulado" vai uma
+// vez, no aviso discreto do topo, e os itens tiram a etiqueta deles. `:data` é AAAA-MM-DD; o ULID do ciclo também vale (a api aceita os dois).
 export const dynamic = 'force-dynamic';
 
 const SKIP_REASON = {
@@ -20,12 +26,14 @@ const SKIP_REASON = {
   orcamento: 'o teto de custo foi atingido',
 } as const satisfies Record<NonNullable<CycleView['skipReason']>, string>;
 
-// A situação no cabeçalho, como a v1 a marcava: o colchete diz o estado sem depender da cor (não há cor de aviso: o aberto fica no cinza).
+// A situação no cabeçalho, como a v1 a marcava: o colchete diz o estado sem depender da cor, na etiqueta cinza sem borda (a mesma do
+// "simulado"), com o texto na tinta. A cor do dado fica no glifo ▲ ▼ ■ (a Regra do Glifo): o verde do "fechado" com borda era a única pílula
+// de borda das telas da arena e, no escuro, o limão sobre o preto (o QA do fechamento, achado 12).
 const FLAG = {
-  CLOSED: { text: '[ok] fechado', tone: 'text-semantic-success' },
-  OPEN: { text: '[!] aberto', tone: '' },
-  SKIPPED: { text: '[x] pulado', tone: 'text-semantic-error' },
-} as const satisfies Record<CycleView['status'], { text: string; tone: string }>;
+  CLOSED: '[ok] fechado',
+  OPEN: '[!] aberto',
+  SKIPPED: '[x] pulado',
+} as const satisfies Record<CycleView['status'], string>;
 
 type Props = { params: Promise<{ data: string }> };
 
@@ -46,20 +54,22 @@ function status(cycle: CycleView): string {
   return cycle.status === 'CLOSED' ? 'Fechado' : 'Aberto';
 }
 
-// O hash é dado, não código: o valor inteiro na mono, quebrando onde precisar (64 caracteres não cabem em 360 px), sem bloco de código.
+// O hash é dado, não código: o valor inteiro na mono (a `.hash`, a única mono da tela), quebrando onde precisar (64 caracteres não cabem em
+// 360 px), sem bloco de código.
 const Hash = ({ term, value }: { term: string; value: string }) => (
   <div className="space-y-1">
     <dt className="text-sm text-muted">{term}</dt>
-    <dd className="font-mono text-sm break-all text-ink">{value}</dd>
+    <dd className="hash text-13 text-ink">{value}</dd>
   </div>
 );
 
 export default withApiDown(async function CyclePage({ params }: Props) {
   const { data } = await params;
-  // o último ciclo da temporada atual marca a aba "Último ciclo" quando é este
-  const [cycle, { lastCycle }] = await Promise.all([
+  // o último ciclo da temporada atual marca a aba "Último ciclo" quando é este; os logos das ações não dependem dos dois
+  const [cycle, { lastCycle }, logos] = await Promise.all([
     orNotFound(api.cycle(data)),
     api.arenaCurrent(),
+    versoesDosLogos(),
   ]);
   const flag = FLAG[cycle.status];
   const last = lastCycle?.date ?? null;
@@ -78,10 +88,20 @@ export default withApiDown(async function CyclePage({ params }: Props) {
           modelo neste pregão.
         </p>
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 muted">
-          <span className={`badge font-mono ${flag.tone}`}>{flag.text}</span>
+          <span className="inline-flex h-6 items-center rounded-full bg-surface-strong px-2.5 align-middle text-xs leading-none font-medium whitespace-nowrap text-ink">
+            {flag}
+          </span>
           <span>{formatWeekdayDate(cycle.date)}</span>
         </p>
       </PageHead>
+      {/* o ciclo não traz o provedor do competidor, e sim o que respondeu cada decisão */}
+      <AvisoSimulado
+        competitors={cycle.decisions.map((decision) => ({
+          name: decision.competitor.name,
+          type: 'MODEL',
+          provider: decision.applied?.provider ?? null,
+        }))}
+      />
 
       <Section id="horarios" title="Horários">
         <Facts>
@@ -126,6 +146,8 @@ export default withApiDown(async function CyclePage({ params }: Props) {
                 by="model"
                 // o ciclo não traz o provedor do competidor, e sim o que respondeu a decisão
                 simulated={decision.applied?.provider === 'fake'}
+                avisoNaPagina
+                logos={logos}
               />
             ))}
           </div>

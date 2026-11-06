@@ -32,7 +32,9 @@ async function ranked(request: Parameters<typeof fetchApi>[0]) {
   return board.rows.filter((r) => r.competitor.type === 'MODEL' || r.competitor.type === 'RANDOM');
 }
 
-test('a faixa dos seis laboratórios: o logo, o nome do modelo da temporada e a etiqueta, com o aviso de marca inteiro', async ({
+// O "simulado" uma vez por contexto (docs/DESIGN.md): uma etiqueta no cabeçalho da faixa, e não uma em cada ladrilho. O ladrilho é lugar
+// apertado: o nome sai sem o sufixo de versão ("(0813)"), que fica na arena e na página do modelo.
+test('a faixa dos seis laboratórios: o logo, o nome do modelo sem o sufixo de versão, a etiqueta uma vez no cabeçalho e o aviso de marca inteiro', async ({
   page,
   request,
 }) => {
@@ -43,16 +45,66 @@ test('a faixa dos seis laboratórios: o logo, o nome do modelo da temporada e a 
   const strip = region(page, 'Seis laboratórios, o mesmo prompt');
   const tiles = strip.getByRole('listitem');
   await expect(tiles).toHaveCount(LABS.length);
+  await expect(strip.getByText(SIMULATED, { exact: true })).toHaveCount(1);
+  await expect(strip.getByText(SIMULATED, { exact: true })).toBeVisible();
+  // o banco sintético tem nome com sufixo de versão: o teste prova o corte
+  expect(models.some((m) => /\(\d+\)$/.test(m.name))).toBe(true);
   for (const [i, [lab, prefix]] of LABS.entries()) {
     const model = models.find((m) => m.slug.startsWith(prefix))!;
     const tile = tiles.nth(i);
     // o logo é decorativo (o nome vem ao lado, em texto)
     await expect(tile.locator(`[data-lab="${lab}"]`)).toHaveAttribute('aria-hidden', 'true');
-    await expect(tile).toContainText(model.name);
-    await expect(tile.getByText(SIMULATED, { exact: true })).toBeVisible();
+    await expect(tile).toHaveText(model.name.replace(/\s+\(\d+\)$/, ''));
   }
   await expect(strip).toContainText(`${BRAND_NOTICE} ${SIMULATED_NOTICE}`);
 });
+
+// A Regra da Sans Única (docs/DESIGN.md): no que é da landing, tudo é a sans, com algarismos tabulares. A mono fica só na grade da arte (a
+// célula do ASCII) e no hash; os recortes das peças da arena (a faixa dos modelos, a decisão e o ranking) têm o teste da tela delas.
+test('a landing é toda na sans: a mono só na grade da arte e no SHA-256', async ({ page }) => {
+  await page.goto('/');
+  const mono = await page.getByRole('main').evaluate((main) =>
+    [...main.querySelectorAll<HTMLElement>('*')]
+      .filter(
+        (element) =>
+          !element.closest('.arte, .hash, [role="region"][aria-label^="Retorno"], article, table'),
+      )
+      .filter((element) =>
+        [...element.childNodes].some(
+          (node) => node.nodeType === Node.TEXT_NODE && node.textContent!.trim() !== '',
+        ),
+      )
+      .filter((element) => /mono/i.test(getComputedStyle(element).fontFamily))
+      .map(
+        (element) => `${element.tagName.toLowerCase()}: ${element.textContent.trim().slice(0, 40)}`,
+      ),
+  );
+  expect(mono).toEqual([]);
+});
+
+// A Regra da Voz Única (docs/DESIGN.md): no principal da landing a primária pinta só a ação principal, o "Abrir a arena" do hero e o do fim.
+test(
+  'a primária só nos dois botões "Abrir a arena", nos dois temas',
+  { tag: '@tema' },
+  async ({ page }) => {
+    await page.goto('/');
+    const primary = await page
+      .locator('main .btn-primary')
+      .first()
+      .evaluate((element) => getComputedStyle(element).backgroundColor);
+    const painted = await page.getByRole('main').evaluate(
+      (main, color) =>
+        [...main.querySelectorAll<HTMLElement>('*')]
+          .filter((element) => {
+            const style = getComputedStyle(element);
+            return [style.backgroundColor, style.color, style.borderTopColor].includes(color);
+          })
+          .map((element) => element.textContent.trim()),
+      primary,
+    );
+    expect(painted).toEqual(['Abrir a arena', 'Abrir a arena']);
+  },
+);
 
 test('o cartão "Arena agora": a faixa dos modelos e do Sorteio na ordem do ranking, com o retorno e o percentil, e o link para a arena', async ({
   page,
@@ -137,6 +189,12 @@ test('os painéis mostram recortes de UI com o dado da api: o último ciclo, a �
   await expect(card).toHaveCount(1);
   await expect(card.getByRole('heading', { level: 3 })).toContainText(decision.competitor.name);
   if (decision.summary) await expect(card).toContainText(decision.summary);
+  // o logo de cada ação ao lado do ticker, como no feed da arena (os dois papéis com logo do seed do e2e; os outros, o monograma)
+  for (const { ticker } of decision.items) {
+    await expect(
+      card.getByRole('link', { name: ticker, exact: true }).locator('[data-logo]'),
+    ).toHaveAttribute('data-logo', ['MOVE3', 'SINA3'].includes(ticker) ? 'imagem' : 'monograma');
+  }
   await expect(why.getByRole('link', { name: 'Ver o feed' })).toHaveAttribute(
     'href',
     '/arena#feed',
@@ -163,6 +221,35 @@ test('os painéis mostram recortes de UI com o dado da api: o último ciclo, a �
     '/carteira',
   );
 });
+
+// A tabela compacta do "Sorte ou habilidade?" cabe no celular sem rolar, com o nome curto e o Percentil à vista: o painel é sobre o percentil,
+// e antes ele era a coluna que ficava escondida à direita (o QA do fechamento, achado 4).
+for (const width of [360, 390]) {
+  test(`em ${width} px a tabela do "Sorte ou habilidade?" cabe inteira, com o Percentil`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/');
+    const luck = region(page, 'Sorte ou habilidade?');
+    const scroller = luck.getByRole('region', { name: /ranking/i });
+    await scroller.scrollIntoViewIfNeeded();
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+    });
+    const fit = await scroller.evaluate((box) => ({
+      overflow: box.scrollWidth - box.clientWidth,
+      percentil: (() => {
+        const header = [...box.querySelectorAll('th')].find(
+          (th) => th.textContent === 'Percentil',
+        )!;
+        return (
+          Math.round(header.getBoundingClientRect().right - box.getBoundingClientRect().right) <= 0
+        );
+      })(),
+    }));
+    expect(fit).toEqual({ overflow: 0, percentil: true });
+  });
+}
 
 test('o FAQ tem as seis perguntas tiradas do Como funciona, e o CTA leva à arena e às regras', async ({
   page,

@@ -185,6 +185,11 @@ export const TABLE_POLICY: Readonly<Record<string, TablePolicy>> = {
     api: ['SELECT'],
     why: 'a página da ação e o macro (BOVA11) leem; o eod do worker grava',
   },
+  instrument_logo: {
+    personal: false,
+    api: ['SELECT'],
+    why: 'a rota interna dos logos (GET /interno/logos/:ticker) lê o SVG guardado; a atualização semanal do worker e o market:logos gravam (migration 20261105120000_instrument_logo, ADR 0036)',
+  },
   trading_day: {
     personal: false,
     api: none,

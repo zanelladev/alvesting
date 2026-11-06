@@ -69,3 +69,31 @@ writeFileSync(dst, Buffer.concat([buf.subarray(0, 8), chunk('IHDR', ihdr), chunk
 ```
 
 O `e2e/hero.spec.ts` confere, sem JavaScript, que o texto do quadro 0 no HTML é igual ao `frames[0]` do arquivo inteiro.
+
+## Nota de 05/11/2026: a brasa no azul da marca
+
+A onda "design premium" trocou a primária do âmbar `#ffb000` pelo azul do logo, `#14144C` (ADR 0037), e o Artur pediu a mesma escadaria
+animada refeita no azul. **A arte continua arquivo** (ornamento pré-renderizado, nunca gerado por código): só a brasa mudou, e só a cor dela.
+
+- **O que mudou**: as cores da paleta (o pedaço `PLTE`) dos quatro sprites de paleta de 8 bits, `escadaria.png`, `escadaria-q0.png`, `urso.png`
+  e `urso-q0.png`. Os índices de cada pixel (o `IDAT`), a transparência (o `tRNS`), o cabeçalho e os glifos (os `.json`) são os da v1, byte a
+  byte; o tamanho de cada arquivo também (o `PLTE` novo tem o tamanho do antigo, e o CRC dele foi refeito com o `zlib.crc32` do Node).
+- **A regra da cor**: cada cor visível vira o tom da escala da primária (a do `globals.css`, do 50 ao 950, a matiz 275,49 em OKLCH, amostrada
+  em 8 bits) com a **luminância relativa mais próxima** da dela. O contraste de cada célula com o preto da moldura fica o de antes (o maior
+  desvio é de 1,22% na escadaria e 0,93% no urso), e o desenho, o mesmo: o mais claro continua o mais claro, e as sombras continuam sombras.
+  Quando duas cores de luminância diferente cairiam no mesmo tom de 8 bits, a mais clara sobe para o tom seguinte da rampa: a ordem nunca se
+  inverte nem empata. O preto (o fundo e o vazio da arte) e as entradas transparentes ficam. O resultado vai de uns `#272975` (entre o 800 e o
+  900, as sombras mais fundas) a `#dfe4fd` (perto do 100, o claro do touro); as cores mais usadas caem entre o 700 e o 300 (a pedra e os
+  degraus), e as do 300 ao 100 ficam no brilho do touro e do urso.
+- **O comando**: `node scripts/arte-azul.mjs` (lê a escala do `globals.css` e reescreve os quatro PNG de `apps/web/public/ascii/arte`; rodar de
+  novo não muda nada, porque cada tom da rampa é o mais próximo de si). **O teste**, `scripts/arte-azul.test.mjs` (no `node --test` do
+  `pnpm test`), prova que só a paleta mudou: o SHA-256 de tudo menos os dados do `PLTE` é o dos arquivos âmbar da v1 (medido antes da troca), a
+  paleta nova é a do script aplicado à de antes (as 67 cores âmbar estão no teste), cada cor visível é um tom da rampa, nenhum par de cores
+  inverte nem empata a ordem de luminância, o contraste com o preto fica a menos de 3% do de antes, todo pedaço tem o CRC certo e o quadro 0
+  tem a paleta do arquivo inteiro (o laço troca um sprite pelo outro no meio da animação).
+- **A fita** do pé da moldura saiu da mono para a sans, com os algarismos tabulares do resto do site (a Regra da Sans Única, `docs/DESIGN.md`):
+  sem a célula fixa da mono, ela rola contínua, em linha reta, a uns 8 caracteres por segundo, e não mais um caractere por passo (o
+  `steps()` da decisão 5). O resto da decisão 5 fica: CSS, decorativa, o mesmo dado em `sr-only`, parada com movimento reduzido.
+- **Fica**: o quadro 0 no HTML sem `preload`, o laço só a partir de 1024 px depois do `load`, a moldura escura nos dois temas, a procedência e
+  a pendência dos termos do Higgsfield (`docs/DEPENDENCIAS.md`, "Artes", com os blobs novos). A tela dividida das telas de entrar usa a mesma
+  escadaria e mudou de cor junto.

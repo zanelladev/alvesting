@@ -1,6 +1,7 @@
 import type { AdminCosts, AdminJobs, AdminSeason, AdminSeasons } from '@alvesting/contracts';
 import { formatBps, formatDate, formatDateTime, formatUsdMicro } from '../lib/format';
 import { CreateSeasonForm, EditSeasonForm, ResubmitDlqForm, StartSeasonForm } from './admin-forms';
+import { Icone } from './icones';
 import { STICKY, Th } from './tables';
 import { Aviso, CAIXA_ERRO, Empty, Fact, Facts, ROW, TABLE, TD, TableScroll } from './ui';
 
@@ -9,8 +10,10 @@ import { Aviso, CAIXA_ERRO, Empty, Fact, Facts, ROW, TABLE, TD, TableScroll } fr
 // que vem do banco ou de terceiros (o nome da temporada, o motivo de uma falha, o MessageId) é texto: o React o escapa.
 
 // O nome da linha fica preso à esquerda quando a tabela rola dentro da própria caixa: o cabeçalho de coluna e a célula presa são os das tabelas
-// da arena (tables.tsx). O tipo do job vai na mono (é um identificador); o competidor e o dia, não.
+// da arena (tables.tsx). Tudo na sans, com algarismos tabulares (docs/DESIGN.md, a Regra da Sans Única): o tipo do job, a fila, o MessageId e o
+// slug são nomes, na sans 500; a mono fica só para o hash e o código (o JSON da temporada, no campo dele).
 const WRAP = 'break-all';
+const NOME = 'celula-presa px-2 py-1 text-left text-sm font-medium text-ink';
 // o item dentro do cartão da seção (uma mensagem da DLQ, uma temporada): o fio e o raio do cartão, com menos respiro, sem cartão dentro de cartão
 const BOX = 'min-w-0 rounded-lg border border-hairline p-4';
 
@@ -25,8 +28,8 @@ export function JobsPanel({ jobs }: { jobs: AdminJobs }) {
   return (
     <>
       <p className="max-w-prose">
-        O último job de cada tipo e quantos há em cada estado. &quot;Esperando&quot; é o{' '}
-        <code>eod</code> que aguarda o arquivo do pregão, e não conta como falha.
+        O último job de cada tipo e quantos há em cada estado. &quot;Esperando&quot; é o eod que
+        aguarda o arquivo do pregão, e não conta como falha.
       </p>
       {jobs.jobs.length === 0 ? (
         <Empty>Nenhum job rodou ainda.</Empty>
@@ -48,7 +51,7 @@ export function JobsPanel({ jobs }: { jobs: AdminJobs }) {
             <tbody>
               {jobs.jobs.map((job) => (
                 <tr key={job.type} className={ROW}>
-                  <th scope="row" className={`${STICKY} font-mono`}>
+                  <th scope="row" className={NOME}>
                     {job.type}
                   </th>
                   <td className={TD}>{STATUS[job.latest.status] ?? job.latest.status}</td>
@@ -67,18 +70,24 @@ export function JobsPanel({ jobs }: { jobs: AdminJobs }) {
         <>
           <h3 className="pt-4 font-display text-base">Falhas recentes</h3>
           <ul className="space-y-2">
+            {/* cada falha com o ícone do erro (a cor nunca anda sozinha: o título da lista e o ícone dizem o mesmo), sem faixa colorida ao lado */}
             {jobs.failures.map((run) => (
-              <li
-                key={`${run.type}:${run.key}`}
-                className="min-w-0 border-l-2 border-semantic-error pl-2"
-              >
-                <p className={`font-mono text-sm text-ink ${WRAP}`}>
-                  {run.type} {run.key}
-                </p>
-                <p className="muted">
-                  {formatDateTime(run.startedAt)}, tentativa {run.attempts}
-                  {run.error ? `: ${run.error}` : ''}
-                </p>
+              <li key={`${run.type}:${run.key}`} className="flex min-w-0 gap-2">
+                <span aria-hidden="true" className="mt-0.5 shrink-0 text-semantic-error">
+                  <Icone size={16}>
+                    <circle cx="10" cy="10" r="7" />
+                    <path d="M7.5 7.5l5 5M12.5 7.5l-5 5" />
+                  </Icone>
+                </span>
+                <div className="min-w-0">
+                  <p className={`text-sm font-medium text-ink ${WRAP}`}>
+                    {run.type} {run.key}
+                  </p>
+                  <p className="muted">
+                    {formatDateTime(run.startedAt)}, tentativa {run.attempts}
+                    {run.error ? `: ${run.error}` : ''}
+                  </p>
+                </div>
               </li>
             ))}
           </ul>
@@ -91,7 +100,7 @@ export function JobsPanel({ jobs }: { jobs: AdminJobs }) {
         <ul className="space-y-1">
           {jobs.fetchStates.map((state) => (
             <li key={state.source}>
-              <span className={`font-mono ${WRAP}`}>{state.source}</span>: conferido em{' '}
+              <span className={`font-medium text-ink ${WRAP}`}>{state.source}</span>: conferido em{' '}
               {formatDateTime(state.checkedAt)}
             </li>
           ))}
@@ -125,7 +134,7 @@ export function QueuesPanel({ queues }: { queues: AdminJobs['queues'] }) {
         <ul className="space-y-6">
           {queues.map(({ queue, deadLetters }) => (
             <li key={queue} className="min-w-0 space-y-2">
-              <h3 className="font-mono text-base">{queue}</h3>
+              <h3 className="text-15 font-medium">{queue}</h3>
               {deadLetters.status === 'unavailable' ? (
                 <p className={`max-w-prose ${CAIXA_ERRO}`}>
                   Não deu para ler a DLQ desta fila agora {UNREAD}
@@ -147,7 +156,7 @@ export function QueuesPanel({ queues }: { queues: AdminJobs['queues'] }) {
                           {/* a posição entra no nome do formulário (aria-labelledby aponta para cá): a mesma mensagem pode estar duas
                             vezes na DLQ (o MessageId é determinístico e o Service Bus Basic não detecta duplicata), e dois formulários
                             com o mesmo nome violam o landmark único */}
-                          <p id={id} className={`font-mono text-sm text-ink ${WRAP}`}>
+                          <p id={id} className={`text-sm font-medium text-ink ${WRAP}`}>
                             {message.messageId}
                             <span className="sr-only">
                               {` (mensagem ${index + 1} de ${deadLetters.messages.length})`}
@@ -317,7 +326,7 @@ function SeasonCard({ season }: { season: AdminSeason }) {
       </Facts>
       <ul className="space-y-1 text-sm">
         {season.competitors.map((competitor) => (
-          <li key={competitor.slug} className={`font-mono ${WRAP}`}>
+          <li key={competitor.slug} className={WRAP}>
             {competitor.kind === 'MODEL'
               ? `${competitor.slug}: ${competitor.provider} ${competitor.modelId}`
               : competitor.kind === 'BENCHMARK'

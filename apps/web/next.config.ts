@@ -47,6 +47,20 @@ const config: NextConfig = {
       // que ela carregue. Vem depois da regra geral, porque a última regra que casa com a mesma chave vence
       // (node_modules/next/dist/docs, next.config.js/headers.md, "Header Overriding Behavior").
       { source: '/redefinir-senha', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] },
+      // O logo de um papel (src/app/logos; ADR 0036, "Como o site mostra") é imagem, nunca documento: sai com a CSP dos logos do contrato
+      // (LOGO_HEADERS, packages/contracts/src/internal.ts), que deixa o SVG aberto direto na aba inerte (`sandbox`, nenhum script, nada de
+      // fora). A rota manda a mesma, mas o Next só põe o cabeçalho da rota quando a config não pôs o mesmo antes
+      // (node_modules/next/dist/server/send-response.js), e a CSP geral venceria: a regra vem depois da geral, e a última vence. Um segmento
+      // só, o arquivo da rota: a página 404 do Next em /logos e em /logos/a/b segue com a CSP geral (e com o CSS dela).
+      {
+        source: '/logos/:arquivo',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+          },
+        ],
+      },
     ]),
 };
 

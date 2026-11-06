@@ -34,6 +34,22 @@ export interface BarDivergence {
   fields: string[];
 }
 
+// Um papel do banco que a lista da brapi traz com logo, e o logo que já está guardado (ou nulo). ADR 0036.
+export interface LogoTarget {
+  instrumentId: string;
+  ticker: string;
+  stored: { sourceUrl: string; sha256: string; fetchedAt: Date } | null;
+}
+
+export interface LogoRow {
+  instrumentId: string;
+  sourceUrl: string;
+  svg: string;
+  sha256: string;
+  bytes: number;
+  fetchedAt: Date;
+}
+
 export interface InsertResult {
   inserted: number;
   divergent: BarDivergence[];
@@ -248,6 +264,70 @@ export class MarketRepository {
       WHERE s.status = 'RUNNING'
       ORDER BY p.ticker`;
     return rows.map((row) => row.ticker);
+  }
+
+  // Os logos (ADR 0036; logo-refresh.ts). Os papéis do banco entre `tickers` (o que o banco não tem fica de fora: o logo é do papel), com o
+  // logo guardado, em ordem de ticker. Uma consulta, um bind.
+  async logoTargets(tickers: readonly string[]): Promise<LogoTarget[]> {
+    if (tickers.length === 0) return [];
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        id: string;
+        ticker: string;
+        source_url: string | null;
+        sha256: string | null;
+        fetched_at: Date | null;
+      }>
+    >`
+      SELECT i.id, i.ticker, l.source_url, l.sha256, l.fetched_at
+      FROM instrument i
+      LEFT JOIN instrument_logo l ON l.instrument_id = i.id
+      WHERE i.ticker = ANY(${[...tickers]}::text[])
+      ORDER BY i.ticker`;
+    return rows.map((row) => ({
+      instrumentId: row.id,
+      ticker: row.ticker,
+      stored:
+        row.source_url === null
+          ? null
+          : { sourceUrl: row.source_url, sha256: row.sha256!, fetchedAt: row.fetched_at! },
+    }));
+  }
+
+  // Todo logo guardado, com o SVG: a passada o reconfere com o validador de hoje e apaga o que ele recusa (logo-refresh.ts, passo 1).
+  // ponytail: lê todos os SVG de uma vez (uns 375, poucos MB, uma vez por semana); com milhares de papéis, em lotes pelo ticker.
+  async storedLogos(): Promise<Array<{ instrumentId: string; ticker: string; svg: string }>> {
+    const rows = await this.prisma.instrumentLogo.findMany({
+      orderBy: { instrument: { ticker: 'asc' } },
+      select: { instrumentId: true, svg: true, instrument: { select: { ticker: true } } },
+    });
+    return rows.map((row) => ({
+      instrumentId: row.instrumentId,
+      ticker: row.instrument.ticker,
+      svg: row.svg,
+    }));
+  }
+
+  async deleteLogo(instrumentId: string): Promise<void> {
+    await this.prisma.instrumentLogo.deleteMany({ where: { instrumentId } });
+  }
+
+  // O SVG novo, ou outro (SHA-256 diferente): a linha inteira.
+  async saveLogo(logo: LogoRow): Promise<void> {
+    const { instrumentId, ...fields } = logo;
+    await this.prisma.instrumentLogo.upsert({
+      where: { instrumentId },
+      create: logo,
+      update: fields,
+    });
+  }
+
+  // O mesmo SHA-256: o SVG não é regravado, só o endereço de origem e a data da busca andam (os 30 dias contam de novo).
+  async touchLogo(instrumentId: string, sourceUrl: string, fetchedAt: Date): Promise<void> {
+    await this.prisma.instrumentLogo.update({
+      where: { instrumentId },
+      data: { sourceUrl, fetchedAt },
+    });
   }
 
   // Os papéis das carteiras dos usuários (portfolio_lot). Só o ticker: nenhum dado pessoal sai daqui. SQL cru porque o `distinct` do

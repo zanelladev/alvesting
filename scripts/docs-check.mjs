@@ -1,8 +1,10 @@
 // pnpm docs:check: tudo que vem de fora precisa de uma linha completa em docs/DEPENDENCIAS.md.
 // Olha dependencies, devDependencies, optionalDependencies e peerDependencies de todo package.json do
 // workspace; imagens do docker-compose, services:/container: dos workflows, FROM de Dockerfile e
-// image: literal de .bicep; actions (uses:) dos workflows e de .github/actions/**/action.yml. Falha listando
-// o que falta.
+// image: literal de .bicep; actions (uses:) dos workflows e de .github/actions/**/action.yml; e o código
+// copiado de registro (ADR 0037): todo arquivo de apps/web/src/components/{arc,beui,reui} (fora os testes
+// nossos e o LICENSE) com a linha dele na seção "Componentes copiados de registros", pelo caminho do arquivo
+// ou da pasta dele na coluna Onde, e o LICENSE em cada pasta. Falha listando o que falta.
 // ponytail: confere que a linha existe, tem as 8 colunas, Link http(s) e Data dd/mm/aaaa, não que a versão
 // bate. A versão exata está no pnpm-lock.yaml; se a tabela começar a divergir dele, comparar a coluna
 // Versão com o lockfile. Em Bicep só o image: com texto literal é visto; imagem montada em variável (como
@@ -31,7 +33,14 @@ const KINDS = {
   npm: { label: 'pacote npm', type: /npm/i },
   docker: { label: 'imagem Docker', type: /docker/i },
   action: { label: 'GitHub Action', type: /action/i },
+  componente: { label: 'componente copiado' },
 };
+
+// As pastas do código copiado de registro e a seção do DEPENDENCIAS.md que as documenta (ADR 0037).
+const COPIED_DIRS = ['arc', 'beui', 'reui'].map((lib) => `apps/web/src/components/${lib}`);
+const COPIED_SECTION = 'Componentes copiados de registros';
+// os testes nossos ao lado das peças não vêm de fora
+const OURS = /\.(spec|test)\.[cm]?[jt]sx?$/;
 
 async function* walk(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -155,6 +164,38 @@ async function collectRequired(root) {
   return required;
 }
 
+// Os arquivos das pastas do código copiado (o caminho a partir da raiz), e as pastas que existem.
+async function copiedFiles(root) {
+  const files = [];
+  const dirs = [];
+  for (const dir of COPIED_DIRS) {
+    try {
+      for await (const file of walk(path.join(root, dir)))
+        files.push(path.relative(root, file).split(path.sep).join('/'));
+      dirs.push(dir);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  }
+  return { files, dirs };
+}
+
+// As linhas da seção do código copiado: do título dela até o título seguinte do mesmo nível.
+function sectionRows(markdown, title) {
+  const lines = markdown.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^## /.test(line) && line.includes(title));
+  if (start === -1) return [];
+  const end = lines.findIndex((line, i) => i > start && /^## /.test(line));
+  return tableRows(lines.slice(start + 1, end === -1 ? undefined : end).join('\n'));
+}
+
+// Os caminhos da coluna Onde ("a/b.tsx, a/c (o bloco)") que cobrem um arquivo: ele mesmo ou uma pasta acima dele.
+const covers = (cell, file) =>
+  cell
+    .split(',')
+    .map((part) => part.trim().split(/\s/)[0].replace(/`/g, '').replace(/\/$/, ''))
+    .some((place) => place !== '' && (file === place || file.startsWith(`${place}/`)));
+
 // Linhas de tabela do markdown, já divididas em células.
 function tableRows(markdown) {
   return markdown
@@ -231,8 +272,35 @@ export async function checkDocs(root) {
         reason,
       });
   }
+
+  const { files, dirs } = await copiedFiles(root);
+  const copiedRows = sectionRows(markdown, COPIED_SECTION);
+  const copies = files.filter(
+    (file) => !OURS.test(file) && path.posix.basename(file) !== 'LICENSE',
+  );
+  for (const file of copies) {
+    const matching = copiedRows.filter((cells) => covers(cells[5] ?? '', file));
+    const problems = matching.map(problemOf);
+    const reason = !docExists
+      ? `${DOC} não existe`
+      : matching.length === 0
+        ? `sem linha na seção "${COPIED_SECTION}" (o caminho dele ou da pasta na coluna Onde)`
+        : problems.includes(undefined)
+          ? undefined
+          : problems[0];
+    if (reason) missing.push({ kind: 'componente', name: file, source: file, reason });
+  }
+  for (const dir of dirs) {
+    if (!files.includes(`${dir}/LICENSE`))
+      missing.push({
+        kind: 'componente',
+        name: `${dir}/LICENSE`,
+        source: dir,
+        reason: 'a pasta do código copiado precisa do LICENSE da MIT ao lado das cópias',
+      });
+  }
   missing.sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
-  return { checked: required.size, missing };
+  return { checked: required.size + copies.length + dirs.length, missing };
 }
 
 async function main(root) {
@@ -245,7 +313,11 @@ async function main(root) {
     `docs:check falhou: ${missing.length} de ${checked} itens sem linha válida em ${DOC}\n`,
   );
   for (const m of missing)
-    console.log(`  ${KINDS[m.kind].label}: ${m.name}  (${m.source})  ${m.reason}`);
+    console.log(
+      m.kind === 'componente'
+        ? `  ${KINDS[m.kind].label}: ${m.name}  ${m.reason}`
+        : `  ${KINDS[m.kind].label}: ${m.name}  (${m.source})  ${m.reason}`,
+    );
   console.log(
     '\nUma linha por item: Item | Tipo | Versão | Licença | Para quê | Onde | Data | Link.',
   );

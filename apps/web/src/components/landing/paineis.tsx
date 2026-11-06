@@ -8,15 +8,19 @@ import { Empty, NavLink, Strip, StripItem, isSimulated } from '../ui';
 
 // Os recortes de UI da landing (docs/redesign-rallies/plano.md, d.3 e d.5), no lugar das capturas do app que o Rallies põe sobre a pintura:
 // pedaços de tela de verdade, com o dado da api (nunca uma pintura, uma captura nem um número inventado). Onde não há dado ainda, o recorte diz
-// o que falta. O cartão é o `.recorte` (globals.css, o bloco da landing): o canvas com o fio e a sombra do recorte do Rallies.
+// o que falta. O cartão é o `.recorte` (globals.css, o bloco da landing): o canvas que flutua, com a sombra do recorte do Rallies e o anel de
+// 1 px da elevação (a Regra Plana: sombra para o que eleva, sem fio por cima dela).
 
 const NO_RESULT =
   'Ainda não há resultado: a primeira liquidação acontece depois do primeiro pregão.';
 
+// o "Saiba mais ›" do Rallies; o "›" anda 2 px para a frente no hover (`.seta`, globals.css, o bloco da landing)
 const SaibaMais = ({ href, children }: { href: string; children: ReactNode }) => (
   <NavLink href={href} className="saiba-mais">
     {children}
-    <span aria-hidden="true">›</span>
+    <span aria-hidden="true" className="seta">
+      ›
+    </span>
   </NavLink>
 );
 
@@ -80,11 +84,14 @@ export function Paineis({
   lastCycle,
   decision,
   ranked,
+  logos,
 }: {
   lastCycle: LastCycle | null;
   decision: FeedDecision | null;
   // os modelos e o Sorteio, na ordem do ranking (vazio antes da primeira liquidação)
   ranked: readonly LeaderboardRow[];
+  // a versão do logo de cada ticker (lib/logos.ts, versoesDosLogos): o logo da ação ao lado do ticker na justificativa, como no feed da arena
+  logos?: ReadonlyMap<string, string>;
 }) {
   const returnOf = (slug: string) =>
     ranked.find((row) => row.competitor.slug === slug)?.returnBps ?? null;
@@ -114,16 +121,17 @@ export function Paineis({
                 ))}
               </Strip>
             </div>
+            {/* a versão e o SHA-256 são identificadores em hexadecimal: a mono do hash (`.hash`, que quebra em qualquer ponto) */}
             <dl className="space-y-3">
               <div className="space-y-1">
                 <dt className="text-xs text-muted">Versão do prompt</dt>
-                <dd className="font-mono text-13 break-all text-ink">
+                <dd className="hash text-13 text-ink">
                   {lastCycle.prompt?.version ?? 'sem registro'}
                 </dd>
               </div>
               <div className="space-y-1">
                 <dt className="text-xs text-muted">SHA-256 do prompt</dt>
-                <dd className="font-mono text-xs break-all text-ink">
+                <dd className="hash text-xs text-ink">
                   {lastCycle.prompt?.sha256 ?? 'sem registro'}
                 </dd>
               </div>
@@ -149,6 +157,7 @@ export function Paineis({
               by="model"
               simulated={isSimulated(decision.competitor)}
               returnBps={returnOf(decision.competitor.slug)}
+              logos={logos}
             />
           </div>
         ) : (

@@ -21,8 +21,34 @@ vi.mock('next/headers', () => ({
 }));
 vi.mock('next/navigation', () => ({ redirect, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('../../../../lib/wallet', () => ({ readPortfolio }));
+// os logos das ações (lib/logos.ts, só do servidor): o índice vazio, só monogramas
+vi.mock('../../../../lib/logos', () => ({ versoesDosLogos: () => Promise.resolve(new Map()) }));
 
 const { default: WalletPage, metadata } = await import('./page');
+
+// Corta cada elemento aria-hidden com tudo o que ele tem dentro (as rodas do contador da Arc, o logo).
+function semEscondido(markup: string): string {
+  let out = markup;
+  for (
+    let start = out.search(/<\w+[^>]*aria-hidden="true"/);
+    start >= 0;
+    start = out.search(/<\w+[^>]*aria-hidden="true"/)
+  ) {
+    const tag = /^<(\w+)/.exec(out.slice(start))![1]!;
+    const re = new RegExp(`<${tag}\\b[^>]*?(/?)>|</${tag}>`, 'g');
+    re.lastIndex = start;
+    let depth = 0;
+    for (let m = re.exec(out); m; m = re.exec(out)) {
+      if (m[0].startsWith('</')) depth -= 1;
+      else if (m[1] !== '/') depth += 1;
+      if (depth === 0) {
+        out = out.slice(0, start) + out.slice(re.lastIndex);
+        break;
+      }
+    }
+  }
+  return out;
+}
 
 const SEM_FECHAMENTO = {
   closeCents: null,
@@ -193,7 +219,8 @@ describe('a página /carteira', () => {
     );
     expect(order.every((i) => i > 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    const text = plain(out);
+    // o texto que o leitor de tela lê: sem as rodas dos algarismos do contador (aria-hidden), que levam o número inteiro num sr-only
+    const text = plain(semEscondido(out));
     expect(text).toContain('Custo total R$ 3.750,00');
     expect(text).toContain('Valor estimado R$ 4.000,00');
     expect(text).toContain('Resultado +R$ 450,00 (+12,68%, ganho)');

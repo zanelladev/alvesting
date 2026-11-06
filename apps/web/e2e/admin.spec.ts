@@ -389,6 +389,10 @@ test.describe('a DLQ (falsa): reenviar com confirmação, e idempotente', () => 
     await resend.getByRole('checkbox').check();
     await resend.getByRole('button', { name: 'Reenviar para a fila' }).click();
     await expect(resend.getByRole('status')).toContainText('Mensagem reenviada para a fila');
+    // o aviso curto da pilha da página (o toast da beUI, aria-live polite); o resultado inteiro continua no formulário
+    await expect(
+      page.getByRole('list', { name: 'Avisos', exact: true }).getByRole('listitem').last(),
+    ).toContainText('Pedido de reenvio feito para a fila market.');
     expect(await deadLetters('market')).not.toContain(messageId);
     expect((await published('market')).filter((id) => id === messageId)).toHaveLength(1);
 

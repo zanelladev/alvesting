@@ -11,6 +11,7 @@ import {
   validateNewPassword,
   validateSignInPassword,
 } from '../lib/account-validation';
+import { guardarAvisoPendente, useAvisar } from './avisos';
 import { AccountForm, CheckField, TextField, type Outcome } from './form-kit';
 import { BUTTON, LINK, NavLink } from './ui';
 
@@ -297,8 +298,15 @@ export function AcceptConsentsForm({
     }
     if (Object.keys(fields).length > 0) return { fields };
     const out = await send('/api/v1/me/consents', { body: { terms, privacy } });
+    // O aceite recarrega a conta (o fluxo é o de sempre), e a confirmação chega depois da recarga, na pilha de avisos (components/avisos.tsx).
+    if (out.ok) {
+      guardarAvisoPendente(
+        `Aceite registrado: termos de uso (versão ${terms}) e política de privacidade (versão ${privacy}).`,
+      );
+      return window.location.reload();
+    }
     // 409: as versões mudaram de novo enquanto a pessoa lia; recarregar mostra as vigentes
-    if (out.ok || out.status === 409) return window.location.reload();
+    if (out.status === 409) return window.location.reload();
     return { form: messageFor(out) };
   }
   return (
@@ -354,5 +362,26 @@ export function DeleteAccountForm({ labelledBy }: { labelledBy: string }) {
         <TextField name="password" label="Senha" type="password" autoComplete="current-password" />
       ) : null}
     </AccountForm>
+  );
+}
+
+// Baixar os dados: um link comum, sem JavaScript (a api responde com Content-Disposition: attachment e o navegador baixa o arquivo); com ele, o
+// aviso diz que o arquivo foi pedido e onde ele aparece, sem prometer o resultado: o aviso sai no clique, antes da resposta, e a api pode
+// recusar (a sessão que venceu noutra aba; a revisão do fechamento, M16).
+export function ExportLink() {
+  const avisar = useAvisar();
+  return (
+    <a
+      href="/api/v1/me/export"
+      download="alvesting-meus-dados.json"
+      className={BUTTON}
+      onClick={() =>
+        avisar(
+          'Pedimos o arquivo dos seus dados ao servidor: o alvesting-meus-dados.json aparece na pasta de downloads do navegador.',
+        )
+      }
+    >
+      Baixar meus dados (JSON)
+    </a>
   );
 }

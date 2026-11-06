@@ -1,6 +1,7 @@
 import type { DropReason, HoldReason, PublicCompetitor } from '@alvesting/contracts';
 import { formatBps, formatConfidence, formatDate, formatPercentValue } from '../lib/format';
 import { Logo } from './competidor';
+import { LogoDoPapel } from './logo-do-papel';
 import { LINK, NavLink, SimulatedTag, direction } from './ui';
 
 // A decisão de um modelo num pregão, como o feed da arena, a página do modelo, a do ciclo e a landing a mostram. O texto do modelo (resumo e
@@ -58,14 +59,14 @@ const DROP_REASON: Record<DropReason, string> = {
 };
 
 // Compra e venda cheia ou vazada, e o HOLD tracejado: o que o item faz se lê pela palavra e pela borda, sem depender de cor (a etiqueta
-// `badge` do sistema, globals.css).
+// `badge` do sistema, globals.css), na sans 500 (a mono é só para hash e código).
 const BADGE: Record<Action, string> = {
   BUY: 'border-ink bg-ink text-canvas',
   SELL: 'border-ink text-ink',
   HOLD: 'border-dashed text-body',
 };
 export const ActionBadge = ({ action }: { action: Action }) => (
-  <span data-action={action} className={`badge font-mono ${BADGE[action]}`}>
+  <span data-action={action} className={`badge font-medium ${BADGE[action]}`}>
     {action}
   </span>
 );
@@ -83,7 +84,10 @@ const HEAD_LINK = `${LINK} no-underline hover:underline`;
 // etiqueta, o ticker num chip, o percentual, a confiança e a justificativa; os itens descartados recuados, como uma resposta. Um item por
 // vez, separado do de cima por um fio (o primeiro da lista, sem). `date`: a data do pregão, como link para o ciclo (não vai na página do
 // ciclo, que já é ele). `by`: o que dá o título do item, o modelo (no feed e no ciclo) ou a data (na página do próprio modelo, que já
-// mostra o nome e o logo). `simulated`: a decisão veio do provedor fake, e o nome do modelo leva a etiqueta (ui.tsx, SimulatedTag).
+// mostra o nome e o logo). `simulated`: a decisão veio do provedor fake, e o item leva a etiqueta "simulado" logo depois do título (ui.tsx,
+// SimulatedTag), uma vez por item; `avisoNaPagina` a tira, quando a página já tem o aviso que cobre a lista (o feed da arena, o ciclo).
+// `logos`: a versão do logo de cada ticker (lib/logos.ts, versoesDosLogos), para o logo à esquerda do ticker de cada ordem; sem ela, o
+// monograma.
 // O contrato de DOM que os testes leem fica: o `article`, o `h3` com o link do modelo ou da data, um `p` só no cabeçalho (a data e a visão de
 // mercado), o resumo como o único `p` direto do item e um `li` por ordem, com o `[data-action]` e o link do ticker.
 export function DecisionCard({
@@ -91,22 +95,23 @@ export function DecisionCard({
   date,
   by,
   simulated = false,
+  avisoNaPagina = false,
   returnBps,
+  logos,
 }: {
   decision: DecisionCardData;
   date?: string;
   by: 'model' | 'date';
   simulated?: boolean;
+  avisoNaPagina?: boolean;
   returnBps?: number | null;
+  logos?: ReadonlyMap<string, string>;
 }) {
   const { competitor } = decision;
   const modelLink = (
-    <>
-      <NavLink href={`/modelos/${competitor.slug}`} className={HEAD_LINK}>
-        {competitor.name}
-      </NavLink>
-      {simulated ? <SimulatedTag /> : null}
-    </>
+    <NavLink href={`/modelos/${competitor.slug}`} className={HEAD_LINK}>
+      {competitor.name}
+    </NavLink>
   );
   // a data na linha de baixo do cabeçalho vai em muted; como título do item (na página do modelo), na tinta do h3
   const dateLink = (muted: boolean) =>
@@ -139,6 +144,7 @@ export function DecisionCard({
           <h3 className="text-15 font-semibold text-ink">
             {by === 'model' ? modelLink : dateLink(false)}
           </h3>
+          {by === 'model' && simulated && !avisoNaPagina ? <SimulatedTag /> : null}
           {returnBps === undefined || returnBps === null ? null : (
             <span
               data-dir={direction(returnBps)}
@@ -170,7 +176,8 @@ export function DecisionCard({
             return (
               <li key={item.position} className="flex flex-wrap items-center gap-x-2">
                 <ActionBadge action={item.action} />
-                <NavLink href={`/acoes/${item.ticker}`} className="chip font-mono">
+                <NavLink href={`/acoes/${item.ticker}`} className="chip font-medium">
+                  <LogoDoPapel ticker={item.ticker} versao={logos?.get(item.ticker)} />
                   {item.ticker}
                 </NavLink>
                 {percent ? <span className="text-sm text-ink tabular-nums">{percent}</span> : null}

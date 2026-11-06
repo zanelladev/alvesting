@@ -11,6 +11,7 @@ import { MessagingModule } from '../messaging/messaging.module.js';
 import { SettlementPublisher } from '../settlement/application/settlement-publisher.js';
 import { BarLoader } from './application/bar-loader.js';
 import { EodHandler } from './application/eod.handler.js';
+import { LogoRefresh } from './application/logo-refresh.js';
 import { MarketQueueHandler } from './application/market-queue.handler.js';
 import { MarketSchedulers } from './application/market-schedulers.js';
 import { UniverseHandler } from './application/universe.handler.js';
@@ -47,9 +48,22 @@ import { UniverseRepository } from './infrastructure/universe.repository.js';
       inject: [BrapiClient, MarketRepository],
       useFactory: (...deps: ConstructorParameters<typeof BarLoader>) => new BarLoader(...deps),
     },
+    // os logos das ações (ADR 0036): o fetch global, sem token, só para o icons.brapi.dev (o endereço que a lista dá e o logoUrl confere)
+    {
+      provide: LogoRefresh,
+      inject: [MarketRepository],
+      useFactory: (market: MarketRepository) => new LogoRefresh(market),
+    },
     {
       provide: WeeklyRefresh,
-      inject: [BrapiClient, BarLoader, MarketRepository, UniverseRepository, TradingCalendar],
+      inject: [
+        BrapiClient,
+        BarLoader,
+        MarketRepository,
+        UniverseRepository,
+        TradingCalendar,
+        LogoRefresh,
+      ],
       useFactory: (...deps: ConstructorParameters<typeof WeeklyRefresh>) =>
         new WeeklyRefresh(...deps),
     },

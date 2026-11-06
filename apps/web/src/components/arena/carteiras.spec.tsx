@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { CompetitorDetail } from '@alvesting/contracts';
-import { BarraCarteiras, ratioBps } from './carteiras';
+import { ratioBps } from '../../lib/chart';
+import { BarraCarteiras } from './carteiras';
 
 // A barra "Carteiras" da arena (plano do redesenho, e.2): a alocação é o valor da posição sobre o patrimônio, e o resultado % é o resultado
 // sobre o custo, os dois em pontos-base inteiros, com o meio para longe do zero (a regra do projeto, docs/METODOLOGIA.md). O e2e confere os
@@ -62,24 +63,63 @@ const detail = (over: Partial<CompetitorDetail> = {}): CompetitorDetail => ({
 });
 
 describe('BarraCarteiras', () => {
-  const html = (carteiras: CompetitorDetail[]) =>
-    renderToStaticMarkup(<BarraCarteiras carteiras={carteiras} capitalCents={10_000_000} />);
+  const html = (carteiras: CompetitorDetail[], props: { avisoNaPagina?: boolean } = {}) =>
+    renderToStaticMarkup(
+      <BarraCarteiras
+        carteiras={carteiras}
+        capitalCents={10_000_000}
+        logos={new Map([['MOVE3', 'abc123']])}
+        {...props}
+      />,
+    );
 
-  it('uma tabela por modelo: o ticker, a alocação com o anel, o resultado e o resultado %, com a direção', () => {
+  it('uma tabela por modelo: o ticker com o logo, a alocação com o anel, o resultado com a direção e o resultado % com o sinal', () => {
     const out = html([detail()]);
     expect(out).toContain(
       '<caption class="sr-only">Carteira de Claude Opus 5.5 em 09/11/2026</caption>',
     );
-    expect(out).toContain('href="/acoes/MOVE3"');
+    // o logo da empresa à esquerda do ticker, dentro do link (ADR 0036), e o ticker na sans 500 (a mono só no hash)
+    expect(out).toMatch(
+      /<a class="[^"]*" href="\/acoes\/MOVE3"><img src="\/logos\/MOVE3\.svg\?v=abc123"[^>]*>MOVE3<\/a>/,
+    );
+    expect(out).not.toContain('font-mono');
     // 1.000.000 / 10.000.000 = 10%; 200.000 / 800.000 = 25%
     expect(out).toContain('10,00%');
     expect(out).toMatch(/data-dir="up"[^>]*>\+R\$\u00a02\.000,00</);
-    expect(out).toMatch(/data-dir="up"[^>]*>\+25,00%</);
+    // a Regra do Glifo: o glifo no resultado em reais, e o resultado % só com o sinal
+    expect(out).toMatch(/<td class="[^"]*">\+25,00%<\/td>/);
     // o anel é decorativo: o número está ao lado, em texto
     expect(out).toMatch(/<svg[^>]*aria-hidden="true"/);
     // o pé: o resultado da temporada (patrimônio menos o capital) e o caixa
     expect(out).toMatch(/<dt[^>]*>Resultado<\/dt><dd[^>]*data-dir="flat"[^>]*>R\$\u00a00,00<\/dd>/);
     expect(out).toMatch(/<dt[^>]*>Caixa<\/dt><dd[^>]*>R\$\u00a090\.000,00<\/dd>/);
+  });
+
+  // O "simulado" uma vez por contexto: a nota no cabeçalho da barra, e nenhuma etiqueta nos nomes; a página que já avisa (a arena) a tira. O
+  // nome é o curto, com o sufixo de versão para o leitor de tela e no tooltip (o da Arc).
+  it('a nota "simulado" vai uma vez, no título da barra; o nome do modelo é o curto, com o inteiro no tooltip', () => {
+    const qwen = detail({
+      competitor: {
+        slug: 'qwen3-8-max',
+        name: 'Qwen3.8 Max (0902)',
+        type: 'MODEL',
+        provider: 'fake',
+        modelId: 'fake/momentum',
+      },
+    });
+    const out = html([detail(), qwen]);
+    expect(out.match(/>simulado</g)).toHaveLength(1);
+    expect(out).toMatch(
+      /Carteiras<\/h2><p class="nota-simulada[^"]*"> <span[^>]*>simulado<\/span> Os modelos/,
+    );
+    expect(out).toMatch(
+      /<h3[^>]*><span aria-hidden="true" data-lab="qwen"[^>]*><\/span><a (?=[^>]*data-state="closed")[^>]*href="\/modelos\/qwen3-8-max"[^>]*>Qwen3.8 Max<span class="sr-only"> \(0902\)<\/span><\/a><\/h3>/,
+    );
+    // sem sufixo de versão, sem tooltip: ele repetiria o nome
+    expect(out).toMatch(
+      /<a class="[^"]*" href="\/modelos\/claude-opus-5-5">Claude Opus 5.5<\/a><\/h3>/,
+    );
+    expect(html([detail(), qwen], { avisoNaPagina: true })).not.toContain('simulado');
   });
 
   it('a carteira sem posição e a de antes da primeira liquidação dizem o que há, sem tabela', () => {

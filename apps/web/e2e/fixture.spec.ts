@@ -53,8 +53,10 @@ test.describe('temporada que ainda não teve ciclo', () => {
     await expect(region(page, 'Ranking')).toContainText(noResult);
     await expect(region(page, 'Decisões')).toContainText('Nenhuma decisão ainda.');
     await expect(region(page, 'Decisões').getByRole('article')).toHaveCount(0);
-    // sem ranking não há modelo para o filtro do feed nem carteira para mostrar
+    // sem ranking não há modelo para o filtro do feed nem carteira para mostrar (abaixo de 1280 px as carteiras são a outra vista da arena,
+    // `?vista=carteiras`, desde o fechamento da onda do design premium; a partir dela, as duas vistas aparecem juntas)
     await expect(page.getByRole('navigation', { name: 'Filtrar por modelo' })).toHaveCount(0);
+    await page.goto(`${FIXTURE_WEB_URL}/arena?vista=carteiras`);
     await expect(region(page, 'Carteiras')).toContainText(
       'As carteiras aparecem depois da primeira liquidação.',
     );
@@ -217,18 +219,18 @@ test.describe('cotações pela rota interna', () => {
         expect((await revalidate()).status()).toBe(200);
         await request.post(`${FIXTURE_API_URL}/__test/zerar`);
         await page.goto(`${FIXTURE_WEB_URL}/acoes/CACH3`);
-        await expect(region(page, 'Cotações recentes')).toContainText('1 pregões');
+        await expect(region(page, 'Cotações recentes')).toContainText('1 pregão');
         expect(await reads()).toBe(1);
 
         // a segunda visita sai do cache de dados: a api não é consultada
         await page.reload();
-        await expect(region(page, 'Cotações recentes')).toContainText('1 pregões');
+        await expect(region(page, 'Cotações recentes')).toContainText('1 pregão');
         expect(await reads()).toBe(1);
 
         // depois da revalidação, a primeira leitura vai buscar
         expect((await revalidate()).status()).toBe(200);
         await page.reload();
-        await expect(region(page, 'Cotações recentes')).toContainText('1 pregões');
+        await expect(region(page, 'Cotações recentes')).toContainText('1 pregão');
         expect(await reads()).toBe(2);
       } finally {
         await request.post(`${FIXTURE_API_URL}/__test/unlock`);

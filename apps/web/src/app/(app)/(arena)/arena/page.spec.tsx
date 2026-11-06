@@ -20,6 +20,10 @@ vi.mock('../../../../lib/api', async (importOriginal) => ({
   api,
 }));
 vi.mock('../../../../lib/quotes', () => ({ REFERENCE_TICKER: 'BOVA11', ...quotes }));
+// os logos das ações (o índice da rota interna): nenhum, as linhas com ticker levam o monograma
+vi.mock('../../../../lib/logos', () => ({
+  versoesDosLogos: () => Promise.resolve(new Map<string, string>()),
+}));
 
 const { default: Arena } = await import('./page');
 

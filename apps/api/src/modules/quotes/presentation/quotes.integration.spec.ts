@@ -3,6 +3,7 @@ import {
   INTERNAL_TAPE_LIMIT,
   envelopeSchema,
   internalBarsSchema,
+  internalLogosSchema,
   internalTapeSchema,
 } from '@alvesting/contracts';
 import { Global, Logger, Module, type INestApplication } from '@nestjs/common';
@@ -44,6 +45,11 @@ class TestEnvModule {}
 const day = (value: string) => new Date(`${value}T00:00:00Z`);
 const BASE = '/api/v1/interno/barras';
 const TAPE = '/api/v1/interno/fita';
+const LOGOS = '/api/v1/interno/logos';
+// os cabeçalhos com que o SVG sai (ADR 0036), escritos aqui à mão: o teste prende os valores, e não a constante do contrato
+const LOGO_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox";
+const LOGO_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><title>Petrobras</title><rect width="8" height="8" fill="#0a0"/></svg>';
 const EMPTY_TAPE = { success: true, data: { date: null, rows: [] }, error: null };
 
 describe.skipIf(!testDatabaseUrl)(integrationTitle('A rota interna de cotações'), () => {
@@ -477,6 +483,140 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('A rota interna de cotações
     });
   });
 
+  // Os logos das ações (ADR 0036): o SVG que a atualização semanal guardou, servido como imagem, fora do envelope, com os cabeçalhos que o
+  // deixam inerte até aberto direto na aba; e a lista de quem tem logo, com a versão. Sem logo, 404 com o código próprio (o 404 da rota que
+  // não existe é só o do segredo). As duas leem o banco como está: a passada dos logos só deixa nele o que passa no validador de hoje.
+  describe('os logos, com o segredo', () => {
+    const store = async (ticker: string, svg: string, sha256 = 'a'.repeat(64)) => {
+      const { id } = await admin.instrument.findUniqueOrThrow({ where: { ticker } });
+      await admin.instrumentLogo.create({
+        data: {
+          instrumentId: id,
+          sourceUrl: `https://icons.brapi.dev/icons/${ticker}.svg`,
+          svg,
+          sha256,
+          bytes: Buffer.byteLength(svg),
+          fetchedAt: new Date('2026-11-01T12:00:00Z'),
+        },
+      });
+    };
+    // o corpo como texto, seja qual for o tipo que o supertest viu
+    const text = (res: request.Response) =>
+      Buffer.isBuffer(res.body) ? res.body.toString('utf8') : res.text;
+
+    beforeEach(async () => {
+      await store('PETR4', LOGO_SVG);
+    });
+
+    it('200 com o SVG guardado, byte a byte, como image/svg+xml, nosniff, a CSP que o deixa inerte e no-store', async () => {
+      const res = await withSecret(`${LOGOS}/PETR4`).buffer(true);
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toBe('image/svg+xml');
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(res.headers['content-security-policy']).toBe(LOGO_CSP);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(text(res)).toBe(LOGO_SVG);
+      // fora do envelope: o corpo é a imagem, sem success, data nem error
+      expect(text(res)).not.toMatch(/"success"/);
+    });
+
+    it('minúsculas valem, como nas barras', async () => {
+      const res = await withSecret(`${LOGOS}/petr4`).buffer(true);
+      expect(res.status).toBe(200);
+      expect(text(res)).toBe(LOGO_SVG);
+    });
+
+    it('sem logo (o papel sem logo guardado e o papel que não existe): 404 no envelope, LOGO_NOT_FOUND, no-store, nunca o SVG de outro', async () => {
+      for (const ticker of ['SEMB3', 'ZZZZ3', 'BOVA11']) {
+        const res = await withSecret(`${LOGOS}/${ticker}`);
+        expect(res.status, ticker).toBe(404);
+        expect(res.headers['cache-control'], ticker).toBe('no-store');
+        expect(res.headers['content-type'], ticker).toMatch(/^application\/json/);
+        expect(res.body, ticker).toEqual({
+          success: false,
+          data: null,
+          error: { code: 'LOGO_NOT_FOUND', message: 'Este papel não tem logo' },
+        });
+      }
+    });
+
+    it('a lista: no envelope, no-store, só os papéis com logo, em ordem de ticker, com a versão (os 16 primeiros hex do SHA-256)', async () => {
+      await store('BOVA11', LOGO_SVG, `${'0123456789abcdef'}${'f'.repeat(48)}`);
+      const res = await withSecret(LOGOS);
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(envelopeSchema(internalLogosSchema).parse(res.body).data).toEqual({
+        logos: [
+          { ticker: 'BOVA11', version: '0123456789abcdef' },
+          { ticker: 'PETR4', version: 'a'.repeat(16) },
+        ],
+      });
+      // o SEMB3 não tem logo: fora da lista; e nada além do ticker e da versão sai (nem o SVG, nem o endereço de origem, nem o SHA-256 inteiro)
+      expect(JSON.stringify(res.body)).not.toMatch(/SEMB3|svg|icons|https|a{17}/);
+    });
+
+    it('a lista na ordem dos bytes do ticker (a mesma do JavaScript), e a lista vazia sem logo nenhum', async () => {
+      for (const ticker of ['B3SA3', 'BBAS3', 'ABEV3']) {
+        await admin.instrument.create({
+          data: {
+            id: newId(),
+            ticker,
+            name: ticker,
+            spec: 'ON',
+            kind: 'STOCK',
+            lastSeen: day('2026-10-30'),
+          },
+        });
+        await store(ticker, LOGO_SVG);
+      }
+      const tickers = (
+        (await withSecret(LOGOS)).body as { data: { logos: Array<{ ticker: string }> } }
+      ).data.logos.map((logo) => logo.ticker);
+      expect(tickers).toEqual(['ABEV3', 'B3SA3', 'BBAS3', 'PETR4']);
+      expect(tickers).toEqual([...tickers].sort());
+      await admin.instrumentLogo.deleteMany();
+      expect((await withSecret(LOGOS)).body).toEqual({
+        success: true,
+        data: { logos: [] },
+        error: null,
+      });
+    });
+
+    it('a lista com parâmetro de query é 400 no envelope, no-store', async () => {
+      for (const path of [`${LOGOS}?x=1`, `${LOGOS}?ticker=PETR4`]) {
+        const res = await withSecret(path);
+        expect(res.status, path).toBe(400);
+        expect(res.headers['cache-control'], path).toBe('no-store');
+      }
+    });
+
+    it('ticker torto e parâmetro de query são 400 no envelope, no-store, nunca 404 nem 500', async () => {
+      for (const path of [
+        `${LOGOS}/PETR`,
+        `${LOGOS}/PETR4XXXXXXXXXX`,
+        `${LOGOS}/PETR4.svg`,
+        `${LOGOS}/%00`,
+        `${LOGOS}/P%20T4`,
+        `${LOGOS}/..%2FPETR4`,
+        `${LOGOS}/PETR4?x=1`,
+        `${LOGOS}/PETR4?a=1&a=2`,
+      ]) {
+        const res = await withSecret(path);
+        expect(res.status, path).toBe(400);
+        expect(res.headers['cache-control'], path).toBe('no-store');
+        expect(res.body, path).toMatchObject({ success: false, data: null });
+      }
+    });
+
+    it('só GET (e o HEAD que vem com ele, sem corpo): o POST não acha a rota', async () => {
+      const head = await http().head(`${LOGOS}/PETR4`).set('Authorization', `Bearer ${SECRET}`);
+      expect(head.status).toBe(200);
+      expect(head.headers['content-security-policy']).toBe(LOGO_CSP);
+      const post = await http().post(`${LOGOS}/PETR4`).set('Authorization', `Bearer ${SECRET}`);
+      expect(post.status).toBe(404);
+    });
+  });
+
   describe('sem o segredo, ou com o errado', () => {
     // A rota inexistente de verdade, no mesmo prefixo: o corpo e os cabeçalhos da recusa têm de ser os dela (o que muda é só o caminho no texto).
     const MISSING = '/api/v1/interno/nao-existe/PETR4';
@@ -563,9 +703,60 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('A rota interna de cotações
       },
     );
 
+    // A lista dos logos, com o mesmo guard: a recusa é a da rota que não existe, sem parâmetro no caminho.
+    it.each(refusals)(
+      'a lista dos logos %s: 404 no-store, igual ao da rota que não existe',
+      async (_name, ask) => {
+        const missingList = '/api/v1/interno/nao-existe';
+        const refused = await ask(LOGOS);
+        const missing = await ask(missingList);
+        expect(refused.status).toBe(404);
+        expect(refused.headers['cache-control']).toBe('no-store');
+        expect(refused.body).toEqual({
+          success: false,
+          data: null,
+          error: { code: 'NOT_FOUND', message: `Cannot GET ${LOGOS}` },
+        });
+        expect(names(refused)).toEqual(names(missing));
+      },
+    );
+
+    // Os logos, com o mesmo guard: a recusa é a da rota que não existe, e o logo guardado nunca sai.
+    it.each(refusals)(
+      'os logos %s: 404 no-store, igual ao da rota que não existe, sem o SVG',
+      async (_name, ask) => {
+        const { id } = await admin.instrument.findUniqueOrThrow({ where: { ticker: 'PETR4' } });
+        await admin.instrumentLogo.create({
+          data: {
+            instrumentId: id,
+            sourceUrl: 'https://icons.brapi.dev/icons/PETR4.svg',
+            svg: LOGO_SVG,
+            sha256: 'a'.repeat(64),
+            bytes: Buffer.byteLength(LOGO_SVG),
+            fetchedAt: new Date('2026-11-01T12:00:00Z'),
+          },
+        });
+        const refused = await ask(`${LOGOS}/PETR4`);
+        const missing = await ask(MISSING);
+        expect(refused.status).toBe(404);
+        expect(refused.headers['cache-control']).toBe('no-store');
+        expect(refused.headers['content-type']).toBe(missing.headers['content-type']);
+        expect(refused.headers['content-security-policy']).toBe(
+          missing.headers['content-security-policy'],
+        );
+        expect(refused.body).toEqual({
+          success: false,
+          data: null,
+          error: { code: 'NOT_FOUND', message: `Cannot GET ${LOGOS}/PETR4` },
+        });
+        expect(names(refused)).toEqual(names(missing));
+        expect(refused.text).not.toContain('<svg');
+      },
+    );
+
     it('o segredo certo não aparece em nenhuma resposta de recusa (corpo nem cabeçalho)', async () => {
       for (const [name, ask] of refusals) {
-        for (const path of [`${BASE}/PETR4`, TAPE]) {
+        for (const path of [`${BASE}/PETR4`, TAPE, `${LOGOS}/PETR4`, LOGOS]) {
           const res = await ask(path);
           expect(res.text, `${name} ${path}`).not.toContain(SECRET);
           expect(JSON.stringify(res.headers), `${name} ${path}`).not.toContain(SECRET);
@@ -574,7 +765,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('A rota interna de cotações
     });
 
     it('HEAD sem o segredo também é 404, e sem corpo', async () => {
-      for (const path of [`${BASE}/PETR4`, TAPE]) {
+      for (const path of [`${BASE}/PETR4`, TAPE, `${LOGOS}/PETR4`, LOGOS]) {
         const res = await http().head(path);
         expect(res.status, path).toBe(404);
         expect(res.text ?? '', path).toBe('');
@@ -582,7 +773,13 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('A rota interna de cotações
     });
 
     it('recusa antes de validar: com o segredo errado nem o ticker torto nem a query viram 400', async () => {
-      for (const path of [`${BASE}/PETR`, `${TAPE}?x=1`]) {
+      for (const path of [
+        `${BASE}/PETR`,
+        `${TAPE}?x=1`,
+        `${LOGOS}/PETR`,
+        `${LOGOS}/SEMB3`,
+        `${LOGOS}?x=1`,
+      ]) {
         const res = await withSecret(path, 'errado-0123456789abcdef0123456789abcdef');
         expect(res.status, path).toBe(404);
       }
@@ -594,7 +791,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('A rota interna de cotações
       const doc = await http().get('/api/docs-json');
       expect(doc.status).toBe(200);
       expect(JSON.stringify((doc.body as { paths: unknown }).paths)).not.toContain('interno');
-      expect(JSON.stringify(doc.body)).not.toMatch(/interno|barras|fita|QUOTES/i);
+      expect(JSON.stringify(doc.body)).not.toMatch(/interno|barras|fita|logos|QUOTES/i);
     });
   });
 });
@@ -632,7 +829,7 @@ describe.skipIf(!testDatabaseUrl)(
 
     it('as rotas estão desligadas: 404 para todos, até com um Bearer qualquer', async () => {
       const http = request(app.getHttpServer() as Parameters<typeof request>[0]);
-      for (const path of [`${BASE}/PETR4`, TAPE]) {
+      for (const path of [`${BASE}/PETR4`, TAPE, `${LOGOS}/PETR4`, LOGOS]) {
         for (const auth of [undefined, `Bearer ${SECRET}`, 'Bearer undefined']) {
           const req = http.get(path);
           const res = await (auth ? req.set('Authorization', auth) : req);

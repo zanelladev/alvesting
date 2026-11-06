@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ThemeSelector } from './beui/theme-selector';
 import { IconeMenu, Marca } from './icones';
 import { Rodape } from './rodape';
 import { NavLink } from './ui';
@@ -47,7 +48,10 @@ export function SiteHeader() {
               </li>
             ))}
           </ul>
+          {/* o seletor de tema antes de "Entrar" (na folha, a linha "Tema"); ele não carrega biblioteca nenhuma: a landing segue sem JavaScript
+              de cliente acima da dobra (components/beui/theme-selector.tsx) */}
           <div className="menu-acoes">
+            <ThemeSelector name="tema-site" label />
             <a href="/entrar" className="pill">
               Entrar
             </a>
@@ -66,7 +70,7 @@ export function SiteHeader() {
 }
 
 // O rodapé grande do Rallies (plano, d.8): as colunas de links (a navegação "Mapa do site") e a marca à direita; depois, no mesmo `<footer>`,
-// o aviso fixo, as atribuições e o aviso de marca (rodape.tsx, o mesmo do app), o © e, cortado no pé, o nome gigante (a Geist 600 na tinta a
+// o aviso fixo, as atribuições e o aviso de marca (rodape.tsx, o mesmo do app), o © e, cortado no pé, o nome gigante (a sans 600 na tinta a
 // 6%, decorativo: o texto mora no CSS, `.nome-gigante`, fora do que o leitor de tela e o axe leem).
 const COLUNAS = [
   [
