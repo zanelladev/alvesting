@@ -74,10 +74,17 @@ export function createFakeBrapi(options: FakeBrapiOptions): FakeBrapi {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const now = clock.now();
     const authorization = new Headers(init?.headers).get('authorization');
-    // a cota cai a cada requisição e vem em toda resposta (RateLimit-Remaining), como na brapi de verdade
+    // a cota cai a cada requisição e vem em toda resposta do histórico, nos dois pares de cabeçalho, como na brapi de verdade
+    // (o cliente só lê o X-RateLimit-Remaining)
     const quota = options.quota ?? DEFAULT_QUOTA;
     const remaining = Math.max(0, quota - requests.length - 1);
-    const rate = { 'ratelimit-limit': String(quota), 'ratelimit-remaining': String(remaining) };
+    const rate = {
+      'ratelimit-limit': String(quota),
+      'ratelimit-remaining': String(remaining),
+      'x-ratelimit-limit': String(quota),
+      'x-ratelimit-remaining': String(remaining),
+      'x-ratelimit-window': 'rolling-30d',
+    };
     if (authorization !== `Bearer ${FAKE_TOKEN}`) {
       return Promise.resolve(json(401, { error: true, code: 'INVALID_TOKEN' }, rate));
     }

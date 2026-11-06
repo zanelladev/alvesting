@@ -80,7 +80,7 @@ const CRONS = {
   cycle: '0 11 * * 1-5',
   eod: '30 0 * * 2-6',
   universe: '0 12 * * 0',
-  retention: '0 13 * * 0',
+  retention: '0 13 * * *', // diária (04/11/2026): a promessa de 7 dias da política de privacidade depende disso
   backup: '0 6 1 * *',
 }; // §6, em UTC
 const SCALE = { padrao: [1, 5], economico: [0, 5] }; // ca-web e ca-api: [mínimo, máximo] (§5.3 e §5.12)
@@ -1098,6 +1098,34 @@ for (const profile of PROFILES) {
         assert.equal(Number(c.resources.cpu), 0.25);
         assert.equal(c.resources.memory, '0.5Gi');
       }
+    },
+  );
+
+  // A política de privacidade promete o PIOR CASO do cadastro nunca confirmado: 7 dias depois de criado. É o corte do código (RETENTION_DAYS.user)
+  // mais a espera até a limpeza seguinte, e a espera só é de 1 dia se a limpeza roda todo dia. Os dois andam juntos: cron diário e corte de 6 dias.
+  test(
+    at(
+      'a limpeza (retention) roda todo dia, e o corte do cadastro não confirmado é de 6 dias: 6 + 1 = os 7 dias da política',
+    ),
+    () => {
+      const job = profileModel(profile).one('Microsoft.App/jobs', 'job-sched-retention');
+      const cron = job.properties.configuration.scheduleTriggerConfig.cronExpression;
+      const [minute, hour, dayOfMonth, month, dayOfWeek] = cron.split(' ');
+      assert.match(`${minute} ${hour}`, /^\d+ \d+$/, `hora fixa, uma vez por dia (veio "${cron}")`);
+      assert.deepEqual(
+        [dayOfMonth, month, dayOfWeek],
+        ['*', '*', '*'],
+        `a limpeza tem de ser diária (veio "${cron}"): semanal deixaria o cadastro não confirmado até 14 dias, e a política diz 7`,
+      );
+      const source = readFileSync(
+        join(dirname(INFRA), 'apps/api/src/modules/maintenance/application/retention.handler.ts'),
+        'utf8',
+      );
+      assert.match(
+        source,
+        /RETENTION_DAYS[^=]*=\s*\{\s*user: 6,/,
+        'RETENTION_DAYS.user = 6: 7 dias prometidos menos 1 dia até a limpeza diária',
+      );
     },
   );
 

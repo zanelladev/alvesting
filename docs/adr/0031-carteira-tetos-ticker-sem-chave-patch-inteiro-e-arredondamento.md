@@ -28,8 +28,8 @@ onde a carteira pode crescer, como ler o que o usuário digita, o que fazer com 
 3. **O custo total é o único valor guardado**: no modo "preço por ação" é quantidade × preço, no modo "valor total pago" é o próprio valor; o modo em que o usuário digitou não é guardado, e os dois geram o mesmo custo para
    os mesmos números (teste de propriedade com 20 mil pares, e o de integração que posta os dois modos). A comparação do produto com o teto é exata sem BigInt: o produto exato só passa de 2^53 quando já passa do teto, e a
    multiplicação arredondada é monotônica, então quem passa do teto continua passando e quem fica abaixo é exato.
-4. **O ticker é texto, validado na escrita contra `instrument`, sem chave estrangeira.** O conjunto é o que `/stocks?q` busca e `/stocks/:ticker` serve (`kind = 'STOCK'`), **cotado por unidade** (`quote_factor = 1`: o GOLL54 e o AZUL53,
-   papéis por lote com preço truncado que o banco de dev ainda guarda, ficam de fora, na escrita e na leitura do fechamento; `docs/DADOS.md`, seção 4): ticker desconhecido, referência (o BOVA11) e papel por lote são
+4. **O ticker é texto, validado na escrita contra `instrument`, sem chave estrangeira.** O conjunto é o que `/stocks?q` busca e `/stocks/:ticker` serve (`kind = 'STOCK'`; até 04/11/2026 o conjunto também
+   excluía o papel por lote, GOLL54 e AZUL53, pelo fator de cota `quote_factor = 1`, mas o dev foi recriado e a coluna saiu, `docs/DADOS.md`, seção 1): ticker desconhecido e referência (o BOVA11) são
    400 no campo `ticker`. A limpeza de `instrument` que o schema prevê (`docs/DADOS.md`, seção 4) não pode travar por causa da carteira de um usuário: com a chave estrangeira, apagar um papel falharia enquanto alguém o
    tivesse. `ponytail`: o ticker que sai de `instrument` fica no lançamento e a posição sai sem fechamento (valor e P&L nulos, `unpriced` nos totais); a saída seria uma tabela de papéis aposentados e um aviso na tela. O `CHECK` do
    banco repete só o formato do ticker.

@@ -1,7 +1,7 @@
 # Política de privacidade
 
-Versão: 0.2
-Vigência: 03/11/2026
+Versão: 0.3
+Vigência: 04/11/2026
 
 > RASCUNHO para revisão do autor e do orientador. Este texto ainda não foi revisado por quem entende de direito e não vale como texto final.
 
@@ -43,11 +43,13 @@ Não compartilhamos seus dados com mais ninguém, exceto por obrigação legal o
 
 - **Conta e aceites**: enquanto a conta existir. Quando você exclui a conta, apagamos do banco, no mesmo ato, o cadastro, as contas vinculadas, as sessões, os pedidos pendentes de verificação, o histórico de aceites e a carteira com os lançamentos. Ficam apenas o registro de auditoria da exclusão, com o código aleatório da conta e sem nome nem e-mail, e as cópias de segurança abaixo.
 - **Carteira**: até você apagar o lançamento ou excluir a conta. Você pode corrigir ou apagar cada lançamento a qualquer momento, e apagar a conta apaga a carteira inteira. Não guardamos o histórico das alterações; só o ponto de restauração abaixo guarda estados antigos, por até 7 dias.
-- **Sessão**: até 7 dias, renovada quando você usa o site; sair encerra na hora. Uma limpeza semanal apaga as sessões vencidas, então o registro de uma sessão que você deixou de usar pode ficar até 14 dias.
-- **Cadastro não confirmado**: se você criar a conta e nunca confirmar o e-mail, o nome e o e-mail ficam guardados por até 14 dias: uma limpeza semanal apaga o cadastro não confirmado que tem mais de 7 dias.
-- **Links por e-mail**: o de confirmação vale 60 minutos e o de redefinição de senha, 30 minutos. Os pedidos vencidos também são apagados pela limpeza semanal.
+- **Sessão**: até 7 dias, renovada quando você usa o site; sair encerra na hora. Uma limpeza diária apaga as sessões vencidas em até 1 dia depois de vencerem, então o registro de uma sessão que você deixou de usar fica guardado no máximo 8 dias.
+- **Cadastro não confirmado**: se você criar a conta e nunca confirmar o e-mail, o nome e o e-mail são apagados em até 7 dias depois de criados. A limpeza diária apaga os cadastros que já passaram de 6 dias; somando a espera até a próxima limpeza, o prazo é de no máximo 7 dias, com a limpeza em dia (veja o fim deste item). As cópias de segurança abaixo guardam o que foi apagado por até 7 dias a mais.
+- **Links por e-mail**: o de confirmação vale 60 minutos e o de redefinição de senha, 30 minutos. Os pedidos vencidos são apagados pela mesma limpeza diária, em até 1 dia depois de vencerem.
 - **Cópia de segurança do banco**: o serviço de banco mantém um ponto de restauração contínuo por 7 dias, e só ele guarda dado pessoal, a carteira inclusive. Depois disso, o que você excluiu deixa de existir também nas cópias. Há ainda uma cópia mensal do banco, guardada por até 12 meses para provar que o banco se restaura: ela leva a estrutura do banco e os dados públicos da arena, e **não leva nenhum dado das tabelas da conta nem da carteira** (cadastro, contas vinculadas, sessões, pedidos de verificação, aceites, a carteira e os lançamentos). Se um dia guardarmos dado pessoal por mais tempo, esta política muda.
 - **Registro de segurança da borda** (endereço IP e URL): 90 dias.
+
+Os prazos de sessão, de cadastro não confirmado e de links por e-mail contam com a limpeza diária rodando. Se uma limpeza falhar ou não rodar, o que passou do corte é apagado na próxima que rodar, e o prazo cresce pelos dias sem limpeza (em regra, um dia a mais).
 
 ## 6. Transferência internacional de dados (LGPD, art. 33)
 

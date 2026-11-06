@@ -309,7 +309,7 @@ vencido: quem aceitou a versão 0.1 dos textos fica sem a carteira até aceitar 
 
 | Campo | Regra |
 |---|---|
-| `ticker` | 4 caracteres e 1 ou 2 dígitos (`PETR4`, `B3SA3`, `BOVA11`); aceita minúsculas e sai maiúsculo. Tem de ser uma **ação que a api conhece**: as que `/stocks?q` busca (`instrument.kind = STOCK`), **cotadas por unidade** (`quote_factor = 1`, o que deixa de fora o GOLL54 e o AZUL53, papéis por lote que o banco de dev guarda com preço truncado, `docs/DADOS.md`, seção 4); ticker desconhecido, referência (o BOVA11) e papel por lote são 400 no campo |
+| `ticker` | 4 caracteres e 1 ou 2 dígitos (`PETR4`, `B3SA3`, `BOVA11`); aceita minúsculas e sai maiúsculo. Tem de ser uma **ação que a api conhece**: as que `/stocks?q` busca (`instrument.kind = STOCK`); ticker desconhecido e referência (o BOVA11) são 400 no campo |
 | `quantity` | inteiro de 1 a 1.000.000 |
 | `mode` | `unit`: `valueCents` é o preço de **uma** ação; `total`: `valueCents` é o **total pago** no lançamento |
 | `valueCents` | inteiro de 1 a 100.000.000.000 (R$ 1.000.000.000,00), em centavos |
@@ -373,7 +373,7 @@ ticker no formato do contrato e data a partir de 1900. **Sem chave estrangeira p
 `updated_at` (a carteira dona e a data de criação nunca mudam). Os `GRANT` estão na migration, tabela por tabela e sem `ALTER DEFAULT PRIVILEGES`.
 
 **LGPD.** A carteira é dado pessoal (`docs/CONTA.md`, seção 5): sai no `GET /me/export` (`portfolios` e `portfolioLots`, o custo em centavos e a data da compra como `AAAA-MM-DD`), some junto com a conta, na mesma transação (a cascata), e fica **fora do dump do backup mensal** (só o ponto de restauração de 7 dias a guarda). Os textos legais
-estão na versão 0.2 (rascunho). Nada da carteira vai ao log nem à telemetria: o log de requisição é uma lista branca; o span da rota leva o padrão (`/api/v1/me/portfolio/lots/:id`), e o do Postgres, o SQL com os valores como parâmetro (`telemetry.integration.spec.ts`). Não há trilha de auditoria dos lançamentos (ADR 0031).
+estão em rascunho (termos na 0.2, política na 0.3; quem aceitou a 0.2 aceita a 0.3 antes de usar a carteira). Nada da carteira vai ao log nem à telemetria: o log de requisição é uma lista branca; o span da rota leva o padrão (`/api/v1/me/portfolio/lots/:id`), e o do Postgres, o SQL com os valores como parâmetro (`telemetry.integration.spec.ts`). Não há trilha de auditoria dos lançamentos (ADR 0031).
 
 ### Consulta e EXPLAIN
 
@@ -385,10 +385,10 @@ FROM instrument i
 CROSS JOIN LATERAL (
   SELECT d.date, d.close_cents FROM daily_bar d WHERE d.instrument_id = i.id ORDER BY d.date DESC LIMIT 1
 ) b
-WHERE i.ticker IN (...) AND i.quote_factor = 1
+WHERE i.ticker IN (...)
 ```
 
-O `quote_factor = 1` (só papel cotado por unidade) entra como `Filter` na linha de `instrument` que o índice do ticker já leu: não muda o plano. Os tempos abaixo são de antes dele e não foram medidos de novo.
+É a consulta que os tempos abaixo mediram. (Por um tempo ela levou um filtro `AND i.quote_factor = 1`, do papel por lote do arquivo antigo, que saiu com a coluna em 04/11/2026; os tempos nunca o incluíram.)
 
 `EXPLAIN (ANALYZE, BUFFERS)` no Postgres 17.11 local, num banco descartável com dado **sintético** (600 papéis × 1.000 pregões = 600 mil barras; 5.001 carteiras e 150.200 lançamentos; a carteira medida tem 200 lançamentos em 150 papéis distintos):
 
@@ -405,7 +405,7 @@ A migration cria só os dois índices que essas consultas usam (`portfolio_user_
 O teto de 200 lançamentos limita a consulta e a resposta (uns 80 KB no pior caso). Estes números valem para as condições medidas; o plano com a tabela de barras de produção não foi visto (nada rodou na Azure).
 
 **Testes** (nenhum chama B3, LLM ou a Azure; tudo sintético, e-mails `@example.test`): `packages/contracts/src/portfolio-rules.spec.ts` (a regra de dinheiro, com o teste de propriedade dos dois modos e do pior caso) e `portfolio.spec.ts` (os schemas); no api, `modules/portfolio/domain/positions.spec.ts` (preço médio, arredondamento,
-P&L, sem fechamento, o pior caso, a barra acima do teto e o percentual fora do inteiro seguro) e `modules/portfolio/presentation/portfolio.integration.spec.ts` (a api de verdade com o login de menor privilégio: os dois modos, os 400 e a query nas quatro rotas, o dono com dois usuários, o 404, o aceite vencido, o teto e a corrida, a barra absurda, o papel por lote, o Swagger); `infrastructure/database/api-role.integration.spec.ts` (o catálogo, as recusas do banco, o gatilho e a espera da segunda
+P&L, sem fechamento, o pior caso, a barra acima do teto e o percentual fora do inteiro seguro) e `modules/portfolio/presentation/portfolio.integration.spec.ts` (a api de verdade com o login de menor privilégio: os dois modos, os 400 e a query nas quatro rotas, o dono com dois usuários, o 404, o aceite vencido, o teto e a corrida, a barra absurda, o Swagger); `infrastructure/database/api-role.integration.spec.ts` (o catálogo, as recusas do banco, o gatilho e a espera da segunda
 conexão), `table-policy.spec.ts` e `domain/user-data.spec.ts` (a carteira coberta pelos invariantes); `me.integration.spec.ts` (o export e a exclusão: as linhas antes e depois); `telemetry.integration.spec.ts` (nada da carteira na telemetria); `backup-verify.handler.integration.spec.ts` (a carteira fora do dump); `infra/tests/check.mjs` (as rotas fora do cache);
 e, nos e2e, `smoke.spec.ts` (a sonda 401, com `@api`) e `account-api.spec.ts` (o ciclo da conta com os dois modos, o export e a exclusão pelo build de produção).
 

@@ -34,7 +34,6 @@ export interface DayBar {
   close: bigint;
   // volume financeiro do dia, em centavos
   volume: bigint;
-  trades: number;
 }
 
 export interface SplitEvent {
@@ -211,7 +210,6 @@ export function buildMarket(options: MarketOptions): SyntheticMarket {
         low: BigInt(low),
         close: BigInt(close),
         volume: (baseVolume * BigInt(80 + (d.readUInt16BE(8) % 41))) / 100n,
-        trades: 200 + (d.readUInt16BE(10) % 3_000),
       });
       previous = close;
     });

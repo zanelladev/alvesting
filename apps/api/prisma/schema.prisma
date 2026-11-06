@@ -70,9 +70,6 @@ enum InstrumentKind {
 }
 
 enum BarSource {
-  // legado: as barras que o banco de dev já tinha, carregadas do arquivo da B3 antes de a brapi virar a fonte única (ADR 0032, docs/DADOS.md,
-  // seção 1). Nada novo grava este valor, e nada exige dele para tratar a barra como definitiva
-  COTAHIST
   // a fonte única: a brapi. O volume é estimado (quantidade x fechamento)
   BRAPI
 
@@ -84,33 +81,28 @@ enum TradingDaySource {
   // a lista pode mudar (2027 é provisório) e a linha não acompanha. Quem precisa saber se um dia é pregão
   // pergunta ao TradingCalendar (código); qualquer outro valor é dado confirmado
   CALENDAR
-  // legado: confirmado por um arquivo do COTAHIST, no dev, antes da brapi (ADR 0032). Nada novo grava este valor
-  COTAHIST
   // confirmado pela brapi: o pregão tem barras gravadas (o eod concluiu, ou a carga inicial as trouxe)
   BRAPI
 
   @@map("trading_day_source")
 }
 
-// ticker = o código negociado. O papel semeado pela lista da brapi tem ISIN nulo e a classe tirada do sufixo do código (docs/DADOS.md, seção 8);
-// os que o dev já tinha mantêm o nome, o ISIN e a classe do COTAHIST. last_seen é o último pregão com barra.
+// ticker = o código negociado. O papel semeado pela lista da brapi tem ISIN nulo e a classe tirada do sufixo do código (docs/DADOS.md, seção 3).
+// last_seen nasce com o último pregão da janela da carga que semeou o papel (a lista da brapi o trouxe) e só avança, com a barra mais nova que se
+// grava: NÃO é a data da última barra do papel (o que não negocia nos últimos pregões fica com a data da carga). Nada lê a coluna.
 model Instrument {
-  id          String         @id @db.VarChar(26)
-  ticker      String         @unique @db.VarChar(12)
-  name        String
-  isin        String?        @db.VarChar(12)
+  id        String         @id @db.VarChar(26)
+  ticker    String         @unique @db.VarChar(12)
+  name      String
+  isin      String?        @db.VarChar(12)
   // classe da espécie (ON, PN, PNA, UNT, CI...), sem os sufixos de evento e de segmento
-  spec        String         @db.VarChar(10)
-  kind        InstrumentKind
-  // Legado do COTAHIST (FATCOT): todo papel novo entra com 1. Só GOLL54 (1000) e AZUL53 (1000000), gravados antes de o
-  // papel por lote ser descartado, têm outro valor, e o universo e a carteira do usuário os ignoram. Sai numa migration
-  // de limpeza, depois de apagar os dois e as barras deles (docs/DADOS.md, seção 4)
-  quoteFactor Int            @default(1) @map("quote_factor")
-  lastSeen    DateTime       @map("last_seen") @db.Date
-  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  spec      String         @db.VarChar(10)
+  kind      InstrumentKind
+  lastSeen  DateTime       @map("last_seen") @db.Date
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   // CNPJ da companhia, 14 dígitos. Vem do cadastro de valores mobiliários do FCA da CVM (etapa 5) e é o que leva o
   // fato relevante da CVM ao ticker certo. Vazio até o FCA citar o código (docs/DADOS.md, seção 14)
-  cnpj        String?        @db.Char(14)
+  cnpj      String?        @db.Char(14)
 
   bars    DailyBar[]
   members UniverseMember[]
@@ -119,7 +111,7 @@ model Instrument {
   @@map("instrument")
 }
 
-// Uma barra por (papel, pregão), de qualquer fonte, e nunca sobrescrita: só se insere o que falta, e a barra que chega com valor diferente do
+// Uma barra por (papel, pregão), e nunca sobrescrita: só se insere o que falta, e a barra que chega com valor diferente do
 // gravado vira o sinal barras-divergentes, sem mudar nada. Correção é pelo evento corporativo do admin (docs/DADOS.md, seção 6).
 model DailyBar {
   id           String    @id @db.VarChar(26)
@@ -131,8 +123,6 @@ model DailyBar {
   closeCents   BigInt    @map("close_cents")
   // volume financeiro do dia em centavos. Na BRAPI é estimado: quantidade x fechamento (a brapi informa a quantidade)
   volumeCents  BigInt    @map("volume_cents")
-  // negócios do dia: só as barras legadas do COTAHIST têm; a BRAPI não informa
-  trades       Int?
   source       BarSource
 
   instrument Instrument @relation(fields: [instrumentId], references: [id])
@@ -144,10 +134,8 @@ model DailyBar {
 
 // Um dia em que a B3 negocia. Os passados saem das barras da brapi (confirmados), os futuros da lista de feriados (previstos).
 model TradingDay {
-  date           DateTime         @id @db.Date
-  source         TradingDaySource
-  // Legado: o SHA-256 do ZIP diário do COTAHIST que o dev guardou. Nulo nos dias confirmados pela brapi (nada mais é guardado no Blob)
-  cotahistSha256 String?          @map("cotahist_sha256") @db.Char(64)
+  date   DateTime         @id @db.Date
+  source TradingDaySource
 
   @@map("trading_day")
 }

@@ -46,7 +46,6 @@ export function marketOf(spec: MarketSpec): SyntheticMarket {
             low: close - 20n,
             close,
             volume: close * 1_000n,
-            trades: 100,
           };
         }),
     );

@@ -269,9 +269,12 @@ describe('BrapiClient.fetchBars: a resposta', () => {
 });
 
 describe('BrapiClient.fetchBars: a cota', () => {
-  const withRemaining = (remaining: number) => ({ 'ratelimit-remaining': String(remaining) });
+  const withRemaining = (remaining: number) => ({
+    'x-ratelimit-remaining': String(remaining),
+    'x-ratelimit-window': 'rolling-30d',
+  });
 
-  it('lê RateLimit-Remaining de toda resposta e devolve a última (só o número)', async () => {
+  it('lê X-RateLimit-Remaining de toda resposta e devolve a última (só o número)', async () => {
     const fetchFn = fakeFetch((url, _init, call: number) =>
       historical(url.searchParams.get('symbols')!, [price(OCT_30)], withRemaining(9000 - call)),
     );
@@ -321,6 +324,72 @@ describe('BrapiClient.fetchBars: a cota', () => {
     );
     const { run } = await collect(client(fetchFn).brapi, papers('A1', 'B1', 'C1'));
     expect(run).toEqual({ requests: 3, remaining: null, stopped: null });
+    expect(warnedAbout('X-RateLimit-Remaining')).toBe(false); // 3 respostas sem o cabeçalho ainda são normais
+  });
+
+  // O X-RateLimit-Remaining é a única fonte da cota. Se ele some de uma passada inteira (a brapi o renomeou, o plano mudou, um proxy o cortou),
+  // a reserva de 500 deixa de proteger sem erro nenhum: 5 respostas 200 do histórico sem ele são um aviso no log (fora do ALERT_LOG).
+  it('5 respostas do histórico sem o X-RateLimit-Remaining avisam que a reserva ficou cega; com ele em ao menos uma, não', async () => {
+    const without = fakeFetch((url) =>
+      historical(url.searchParams.get('symbols')!, [price(OCT_30)]),
+    );
+    const blind = await collect(
+      client(without).brapi,
+      papers('A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1'),
+    );
+    expect(blind.run).toEqual({ requests: 7, remaining: null, stopped: null });
+    expect(warn).toHaveBeenCalledWith(
+      { responses: 7 },
+      expect.stringContaining('X-RateLimit-Remaining'),
+    );
+    expect(alerted(ALERT_LOG.brapiQuotaLow)).toBe(false);
+
+    warn.mockClear();
+    const oneHeader = fakeFetch((url, _init, call) =>
+      historical(
+        url.searchParams.get('symbols')!,
+        [price(OCT_30)],
+        call === 3 ? withRemaining(9000) : {},
+      ),
+    );
+    const seen = await collect(
+      client(oneHeader).brapi,
+      papers('A1', 'B1', 'C1', 'D1', 'E1', 'F1', 'G1'),
+    );
+    expect(seen.run).toEqual({ requests: 7, remaining: 9000, stopped: null });
+    expect(warnedAbout('X-RateLimit-Remaining')).toBe(false);
+  });
+
+  // Achado da carga do dev de 04/11/2026: a resposta 200 do histórico pode vir pelo limitador de 20 por minuto, com os cabeçalhos
+  // abaixo, sem X-RateLimit-* e sem gastar cota (PETR4 entre duas respostas com a cota de verdade, 14.989 e 14.988). Lido como a cota,
+  // esse 20 parou a carga na 5ª requisição por "cota baixa".
+  it('o histórico servido pelo limitador de 20 por minuto não muda a cota conhecida, não para a passada e não alerta', async () => {
+    const perMinute = {
+      'ratelimit-limit': '20',
+      'ratelimit-remaining': '20',
+      'ratelimit-reset': '60',
+    };
+    const quota = (remaining: number) => ({
+      'ratelimit-limit': '15000',
+      'ratelimit-remaining': String(remaining),
+      ...withRemaining(remaining),
+    });
+    const fetchFn = fakeFetch((url) => {
+      const symbol = url.searchParams.get('symbols')!;
+      return historical(
+        symbol,
+        [price(OCT_30)],
+        symbol === 'B1' ? perMinute : quota(symbol === 'A1' ? 14_989 : 14_988),
+      );
+    });
+    const { run, results } = await collect(client(fetchFn).brapi, papers('A1', 'B1', 'C1'));
+    expect(results.map((r) => [r.ticker, r.status])).toEqual([
+      ['A1', 'ok'],
+      ['B1', 'ok'],
+      ['C1', 'ok'],
+    ]);
+    expect(run).toEqual({ requests: 3, remaining: 14_988, stopped: null });
+    expect(alerted(ALERT_LOG.brapiQuotaLow)).toBe(false);
   });
 });
 
@@ -329,7 +398,7 @@ describe('BrapiClient.fetchBars: erros', () => {
     const fetchFn = fakeFetch((url, _init, call) => {
       const symbol = url.searchParams.get('symbols')!;
       if (symbol === 'B1' && call === 2) return json({}, 429, { 'retry-after': '7' });
-      return historical(symbol, [price(OCT_30)], { 'ratelimit-remaining': '9000' });
+      return historical(symbol, [price(OCT_30)], { 'x-ratelimit-remaining': '9000' });
     });
     const { brapi, sleep } = client(fetchFn);
     const { results, run } = await collect(brapi, papers('A1', 'B1', 'C1'));
@@ -383,7 +452,7 @@ describe('BrapiClient.fetchBars: erros', () => {
 
   it('429 com a cota restante na reserva é cota esgotada: para na hora', async () => {
     const fetchFn = fakeFetch(() =>
-      json({}, 429, { 'ratelimit-remaining': '0', 'retry-after': '3' }),
+      json({}, 429, { 'x-ratelimit-remaining': '0', 'retry-after': '3' }),
     );
     const { brapi, sleep } = client(fetchFn);
     const { run } = await collect(brapi, papers('A1', 'B1'));

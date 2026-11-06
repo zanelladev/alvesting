@@ -143,9 +143,14 @@ describe('createFakeBrapi', () => {
     expect(first.headers.get('ratelimit-remaining')).toBe('14999');
     expect(first.headers.get('ratelimit-limit')).toBe('15000');
     expect(second.headers.get('ratelimit-remaining')).toBe('14997');
-    // a lista de verdade responde 20 de 20 por minuto, fora da cota (prova controlada de 04/11/2026)
+    // o que o cliente lê: o X-RateLimit-Remaining da janela móvel de 30 dias
+    expect(first.headers.get('x-ratelimit-remaining')).toBe('14999');
+    expect(first.headers.get('x-ratelimit-window')).toBe('rolling-30d');
+    expect(second.headers.get('x-ratelimit-remaining')).toBe('14997');
+    // a lista de verdade responde 20 de 20 por minuto, fora da cota e sem X-RateLimit-* (prova controlada de 04/11/2026)
     expect(list.headers.get('ratelimit-limit')).toBe('20');
     expect(list.headers.get('ratelimit-remaining')).toBe('20');
+    expect(list.headers.get('x-ratelimit-remaining')).toBeNull();
 
     const near = createFakeBrapi({ market, clock: createSimClock(NOON), quota: 502 });
     const response = await near.fetch(
@@ -153,6 +158,7 @@ describe('createFakeBrapi', () => {
       { headers },
     );
     expect(response.headers.get('ratelimit-remaining')).toBe('501');
+    expect(response.headers.get('x-ratelimit-remaining')).toBe('501');
   });
 
   it('a lista traz as ações do mercado com o subtipo unit para a classe UNT', async () => {

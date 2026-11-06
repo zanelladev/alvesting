@@ -68,7 +68,7 @@ curl -sS -c "$J" -H 'Content-Type: application/json' -H "Origin: $SITE" --data @
 
 **Não ensaiado.** É a rotina que pega o que nenhum alerta vê, como o `eod` que nem chegou a rodar (`docs/INFRA.md`, 5.3).
 
-Quando: depois das 09:35 de Brasília em dia de pregão, e uma vez por semana (domingo, depois da retenção). Pelo painel (`docs/TELAS.md`, seção 8) ou pelo `curl`:
+Quando: depois das 09:35 de Brasília em dia de pregão (a segunda-feira cobre o fim de semana: a retenção roda todo dia, e o `GET /admin/jobs` mostra a última de cada tipo). Pelo painel (`docs/TELAS.md`, seção 8) ou pelo `curl`:
 
 ```bash
 curl -sS -b "$J" "$SITE/api/v1/admin/jobs"     # jobs (o último de cada tipo), failures e queues (a DLQ de cada fila)
@@ -80,7 +80,7 @@ Confira:
 2. **Falhas.** Cada item de `failures` tem explicação (seção 3). Sem explicação, vira pendência.
 3. **DLQ.** As seis filas com zero mensagens. `"unavailable"` quer dizer que a api não conseguiu ler a fila agora (o `peek` depende do papel de Receiver): não é zero. Confira o log da api.
 4. **Custos.** O acumulado do mês contra o teto. Perto do teto, o ciclo com modelo pago é pulado (seção 2).
-5. **Semanal (domingo).** O `retention` (10:00 de Brasília) é `SUCCEEDED`.
+5. **Diário.** O `retention` (10:00 de Brasília, todo dia) mais recente é `SUCCEEDED` e é de ontem, ou de hoje se a conferência é depois das 10:00. É ele que cumpre a promessa da política de privacidade (cadastro nunca confirmado apagado em até 7 dias depois de criado, sessão e pedido de uso único vencidos em até 1 dia depois de vencer): uma execução que falhou ou não rodou adia o prazo em um dia até alguém corrigir (seção 3; `docs/JOBS.md`, 8.1). A política diz isso (se uma limpeza falhar ou não rodar, o prazo cresce pelos dias sem limpeza). **Nenhum alerta vigia a ausência** da `retention` (agendador que não publica, worker que não acorda): um buraco de sábado ou de domingo só aparece aqui, na segunda-feira, e cada dia a mais é um dia além dos 7 prometidos (`docs/INFRA.md`, 5.3, limitações).
 6. **Mensal (dia 1).** O `backup-verify` (03:00 de Brasília) é `SUCCEEDED`. Confira o blob como na seção 5.3.
 
 **Risco:** nenhum. São leituras.
@@ -333,7 +333,7 @@ docker exec alvesting-postgres-1 dropdb -U alvesting alvesting_restore_test
 
 ### 5.4 CPU e disco (`alvesting-banco-cpu`, `alvesting-banco-disco`)
 
-- **Disco acima de 80%** (os 32 GB do `postgres.bicep`: dados, log de transações e log do servidor). Veja o que cresce pelo SQL pontual abaixo. Aumentar é `storageSizeGB` no `postgres.bicep` e deploy (o disco só cresce). A retenção de domingo já limpa sessões, cadastros não confirmados e `fetch` com mais de 30 dias; o `news_item` não tem limpeza, de propósito (`docs/JOBS.md`, 8.1).
+- **Disco acima de 80%** (os 32 GB do `postgres.bicep`: dados, log de transações e log do servidor). Veja o que cresce pelo SQL pontual abaixo. Aumentar é `storageSizeGB` no `postgres.bicep` e deploy (o disco só cresce). A retenção diária já limpa sessões, cadastros não confirmados e `fetch` com mais de 30 dias; o `news_item` não tem limpeza, de propósito (`docs/JOBS.md`, 8.1).
 - **CPU acima de 80% por 5 minutos.** O B1ms é Burstable: sem créditos, a CPU fica no teto. Veja o que roda (`pg_stat_activity`, pelo mesmo caminho). A saída é subir de tier (B2s, plano 5.13, fase 3), por deploy.
 
 **SQL pontual** (leitura, ou a correção da seção 6), pelo job de migração com o comando trocado (`docs/INFRA.md`, 8.6). Só o `command` e os `args` do contêiner `migrate` mudam; o resto do modelo fica como veio. O `DATABASE_URL` desse job é o login **administrador**: o que o SQL escreve, acontece.
@@ -548,7 +548,7 @@ O orçamento de US$ 100 (`budgetAmount = 100`, o crédito do Azure for Students)
 
 Quando: o `eod` concluiu o pregão no prazo das 00:30 de Brasília **sem o BOVA11 ou sem mais de 10% do conjunto obrigatório** (campos `date`, `missing`, `required` e os 20 primeiros tickers). Faltar um ou outro papel sem negócio **não** alerta: vai só ao registro.
 
-1. **Veja a causa.** O log do `ca-worker-data` traz, na mesma noite, a linha do `eod` (`eod: barras do conjunto obrigatório pedidas à brapi`, com `asked`, `requests`, `failed` e `stopped`) e, se a brapi caiu, `brapi: papéis seguidos sem resposta` ou `brapi-cota-baixa`. `stopped` é `outage` (a brapi fora do ar, seção 12.4), `quota` (seção 12.2) ou `time` (o orçamento de 4 minutos acabou).
+1. **Veja a causa.** O log do `ca-worker-data` traz, na mesma noite, a linha do `eod` (`eod: barras do conjunto obrigatório pedidas à brapi`, com `asked`, `requests`, `remaining` (a cota restante, só o número), `failed` e `stopped`) e, se a brapi caiu, `brapi: papéis seguidos sem resposta` ou `brapi-cota-baixa`. `stopped` é `outage` (a brapi fora do ar, seção 12.4), `quota` (seção 12.2) ou `time` (o orçamento de 4 minutos acabou).
 2. **Nada a fazer na mesma noite se a brapi voltou.** A janela de 5 pregões recupera: o `eod` da noite seguinte pede, a cada papel, do pregão mais antigo que lhe falta até o de hoje, confirma os dois pregões e a liquidação do mais novo refaz a temporada em ordem. Conferir no dia seguinte: `SELECT d.date, d.source, (SELECT count(*) FROM daily_bar b WHERE b.date = d.date) AS barras FROM trading_day d WHERE d.date >= current_date - 7 AND d.source <> 'CALENDAR' ORDER BY d.date;` e o `job_run` do `eod` e do `settle` em `SUCCEEDED` (`GET /admin/jobs`).
 3. **Passou da janela** (a brapi fora por mais de 5 pregões): a carga manual recupera um intervalo, só o que falta (seção 12.5, com `--de` e `--ate`). A liquidação dos pregões recuperados entra na próxima liquidação regular, que recalcula a temporada do zero (ver "Lacunas conhecidas").
 4. **Sempre os mesmos papéis** (suspensos): é o esperado; eles mantêm as novas tentativas até as 00:30 e não alertam abaixo de 10%.
@@ -557,12 +557,13 @@ Quando: o `eod` concluiu o pregão no prazo das 00:30 de Brasília **sem o BOVA1
 
 ### 12.2 `brapi-cota-baixa`
 
-Quando: a cota restante da brapi (`RateLimit-Remaining`) chegou à reserva de **500** requisições, de 15 mil numa janela móvel de 30 dias. O `BrapiClient` parou e deixou o resto como falta; o `eod` reagenda e conclui no prazo com o que tem (e o `eod-barras-ausentes` pode alertar junto).
+Quando: a cota restante da brapi (o **`X-RateLimit-Remaining`**, que vem com `X-RateLimit-Window: rolling-30d`) chegou à reserva de **500** requisições, de 15 mil numa janela móvel de 30 dias. O `BrapiClient` parou e deixou o resto como falta; o `eod` reagenda e conclui no prazo com o que tem (e o `eod-barras-ausentes` pode alertar junto). **O `RateLimit-Remaining` sem o `X` não é a cota**: é o do limitador de 20 por minuto (a lista, e às vezes o próprio histórico, sem nenhum `X-RateLimit-*` e sem gastar cota). Lido como cota, o "20" parou a carga do dev na 5ª requisição por "cota baixa" (achado de 04/11/2026, `docs/DADOS.md`, seções 2 e 9); o cliente de hoje só lê o par com `X`.
 
-1. **Veja o consumo.** O painel da brapi (`brapi.dev/dashboard`) mostra o uso. O esperado é uns **7.900 por mês** (`docs/DADOS.md`, seção 6); a linha do alerta traz `remaining` e `reserve`.
-2. **Ache o consumo fora do plano:** uma carga manual repetida (`market:backfill` com `--confirmo-banco` rodado várias vezes), um laço, muitos papéis de carteira (`SELECT count(DISTINCT ticker) FROM portfolio_lot;` o pior caso é uns 140) ou a janela recusada pela brapi (400 `DATE_WINDOW_EXCEEDED` em todos: não gasta cota, e cinco papéis seguidos sem resposta param a passada). A lista, o 400 e o 404 não gastam cota; só a resposta 200 do histórico.
+1. **Veja o consumo.** O painel da brapi (`brapi.dev/dashboard`) mostra o uso. O esperado é uns **7.900 por mês** (`docs/DADOS.md`, seção 6); a linha do alerta traz `remaining` e `reserve`. Se o `remaining` é **20** logo no começo de uma carga, não é falta de cota: desconfie de um cliente que voltou a ler o cabeçalho sem o `X` (o `brapi.client.spec.ts` tem o teste com os cabeçalhos reais) antes de mexer no plano.
+2. **Ache o consumo fora do plano:** uma carga manual repetida (`market:backfill` com `--confirmo-banco` rodado várias vezes), um laço, muitos papéis de carteira (`SELECT count(DISTINCT ticker) FROM portfolio_lot;` o pior caso é uns 140) ou a janela recusada pela brapi (400 `DATE_WINDOW_EXCEEDED` em todos: não gasta cota, e cinco papéis seguidos sem resposta param a passada). A lista, o 400 e o 404 não gastam cota; só a resposta 200 do histórico que passa pela cota (a que traz o `X-RateLimit-Remaining`: na carga do dev, 3 de 372 vieram pelo limitador de 20 por minuto e não gastaram).
 3. **A cota é uma janela móvel de 30 dias** (`X-RateLimit-Window: rolling-30d`, visto na prova controlada de 04/11/2026): cada requisição sai da conta 30 dias depois, então a cota volta aos poucos, e não de uma vez numa data (o FAQ da brapi fala em ciclo mensal que reinicia na data de renovação; a API disse outra coisa para o plano gratuito). Não há o que fazer além de esperar as requisições mais antigas saírem da janela, ou trocar de plano (Startup, 150 mil, R$ 119,99 por mês no plano mensal, segundo a mensagem da própria API; a página de preços de 03/11 mostra R$ 99,99 com a oferta do plano anual; a decisão é do Artur). **Não** use outra conta nem outra chave para "furar": os Termos de Uso da brapi proíbem exceder os limites do plano.
-4. **Confira:** a linha deixa de aparecer quando o `RateLimit-Remaining` passa de 500 de novo.
+4. **Confira:** a linha deixa de aparecer quando o `X-RateLimit-Remaining` passa de 500 de novo.
+5. **O contrário do alerta: a reserva cega.** O cliente só conhece a cota pelo `X-RateLimit-Remaining`. Se a brapi o renomeia ou o corta (um proxy, outro plano), nenhum alerta toca e a reserva deixa de proteger. O sinal é a linha de aviso **sem** alerta `brapi: nenhuma resposta do histórico trouxe o X-RateLimit-Remaining; a reserva de cota ficou cega nesta passada` (campo `responses`, 5 ou mais) e o `remaining: null` na linha do `eod`. Confira o consumo no painel da brapi e os cabeçalhos de uma resposta de verdade (uma requisição, na prova controlada, `docs/DADOS.md`, seção 9) antes de a cota acabar.
 
 **Risco:** baixar a reserva (`QUOTA_RESERVE`, `domain/bar-plan.ts`) tira a folga da recuperação à mão.
 
@@ -585,7 +586,7 @@ Quando: a brapi trouxe, para um papel e um pregão que **já têm barra**, valor
 
 ### 12.5 Carga inicial e recuperação (`market:backfill`)
 
-Quando: o primeiro deploy (o `universe` de domingo precisa dos 60 pregões confirmados, e o banco novo não tem nenhum), a brapi fora por mais de 5 pregões, ou um papel que ficou sem histórico. **Não rode contra o banco de dev** sem o Artur: ele ainda decide o que fazer com as barras do arquivo da B3 (`docs/DADOS.md`, seção 1).
+Quando: o primeiro deploy (o `universe` de domingo precisa dos 60 pregões confirmados, e o banco novo não tem nenhum), a brapi fora por mais de 5 pregões, ou um papel que ficou sem histórico. O banco de dev já foi carregado assim em 04/11/2026 (`docs/DADOS.md`, seções 1 e 9); uma carga nova nele pede só a falta.
 
 1. **Primeiro sem rede.** O comando mostra o banco de destino (servidor e nome, sem credencial) e quantas requisições faria, e **não busca nada**:
 
@@ -602,7 +603,7 @@ pnpm --filter @alvesting/api market:backfill --papeis PETR4,VALE3 --de 2026-10-2
 pnpm --filter @alvesting/api market:backfill --confirmo-banco <nome do banco>
 ```
 
-   É só inserção e retomável: uma segunda passada pede só a falta. No fim mostra as requisições feitas, os papéis sem resposta e a cota restante informada pela brapi (só o número). A carga inicial gasta de 377 pedidos num banco novo a uns 440 no dev (3% da cota; o modo sem rede mostra o número exato). Não publica `settle`.
+   É só inserção e retomável: uma segunda passada pede só a falta. No fim mostra as requisições feitas, os papéis sem resposta e a cota restante informada pela brapi (só o número). A carga inicial é de 377 pedidos num banco novo (2,5% da cota; a do dev, em 04/11/2026, fez 373 e gastou 369; o modo sem rede mostra o número exato). Não publica `settle`.
 
    **Só a carga completa confirma os pregões** (`docs/DADOS.md`, seção 6): sem `--papeis`, sem parada por cota, tempo ou queda, com o BOVA11 respondido e no máximo 10% dos papéis sem resposta. A carga parcial grava as barras e avisa `Carga parcial: nenhum pregão foi confirmado`; **repita o comando** (pede só a falta) até o aviso sumir, e só então espere o `universe`. **Não rode a carga entre 21:30 e 00:30**: o `eod` da noite grava as barras do pregão no mesmo momento, e, se as duas gravações trouxerem valores diferentes para a mesma barra, a que perde a corrida pode passar sem o sinal `barras-divergentes`.
 3. **`400 DATE_WINDOW_EXCEEDED`** (a brapi recusa o pedido que passa de 90 dias entre `startDate` e `endDate`; não gasta cota): a janela padrão (3 meses de calendário mais 3 dias, 86 a 89 dias) cabe. Com `--de` e `--ate` seus, deixe no máximo 90 dias entre eles e repita por partes; a idade do início não importa. A carga mostra só "N papéis sem resposta", sem o código: o corpo de erro nunca é lido.

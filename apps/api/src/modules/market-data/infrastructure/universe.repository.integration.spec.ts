@@ -5,8 +5,6 @@ import {
   testDatabaseUrl,
 } from '../../../infrastructure/database/test-database.fixture.js';
 import type { PrismaService } from '../../../infrastructure/database/prisma.service.js';
-import { newId } from '../../../common/id.js';
-import { LEGACY_SHA, LEGACY_SOURCE } from '../testing/legacy-source.fixture.js';
 import { MarketRepository } from './market.repository.js';
 import { UniverseRepository } from './universe.repository.js';
 
@@ -106,17 +104,6 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('UniverseRepository'), () => 
       expect(await repo.confirmedDaysBetween('2026-10-27', '2026-11-02')).toEqual([
         '2026-10-28',
         '2026-10-30',
-      ]);
-    });
-
-    it('conta o dia legado que o dev trouxe, de antes da brapi, como conta o confirmado pela brapi', async () => {
-      await confirm(['2026-10-28']);
-      await prisma.tradingDay.create({
-        data: { date: day('2026-10-29'), source: LEGACY_SOURCE, [LEGACY_SHA]: 'b'.repeat(64) },
-      });
-      expect(await repo.confirmedDaysBetween('2026-10-28', '2026-10-30')).toEqual([
-        '2026-10-28',
-        '2026-10-29',
       ]);
     });
 
@@ -222,69 +209,19 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('UniverseRepository'), () => 
       ]);
     });
 
-    it('fica de fora a referência e o papel cotado por lote; vale a barra de qualquer origem (a da brapi e a legada do dev)', async () => {
+    it('fica de fora a referência (o BOVA11 tem barra, mas não é candidato ao universo)', async () => {
       await put([
         rec({ ticker: 'AAA3' }),
         rec({ ticker: 'BOVA11', kind: 'REFERENCE' }),
         rec({ ticker: 'CCC3', date: '2026-10-29' }),
         rec({ ticker: 'CCC3', date: '2026-10-30', volumeCents: 99n }),
       ]);
-      // o resíduo do dev: papel por lote (fator 1000), e barras legadas com volume financeiro de verdade
-      const goll = await prisma.instrument.create({
-        data: {
-          id: newId(),
-          ticker: 'GOLL54',
-          name: 'GOL',
-          spec: 'PN',
-          kind: 'STOCK',
-          quoteFactor: 1000,
-          lastSeen: day('2026-10-30'),
-        },
-      });
-      await prisma.dailyBar.create({
-        data: {
-          id: newId(),
-          instrumentId: goll.id,
-          date: day('2026-10-30'),
-          openCents: 1n,
-          highCents: 1n,
-          lowCents: 1n,
-          closeCents: 1n,
-          volumeCents: 5n,
-          source: LEGACY_SOURCE,
-        },
-      });
-      const ddd = await prisma.instrument.create({
-        data: {
-          id: newId(),
-          ticker: 'DDD3',
-          name: 'DDD',
-          spec: 'ON',
-          kind: 'STOCK',
-          lastSeen: day('2026-10-30'),
-        },
-      });
-      await prisma.dailyBar.create({
-        data: {
-          id: newId(),
-          instrumentId: ddd.id,
-          date: day('2026-10-30'),
-          openCents: 1n,
-          highCents: 1n,
-          lowCents: 1n,
-          closeCents: 1n,
-          volumeCents: 7_000n,
-          trades: 12,
-          source: LEGACY_SOURCE,
-        },
-      });
       const stats = await repo.volumeStats(days);
-      expect(stats.map((s) => s.ticker).sort()).toEqual(['AAA3', 'CCC3', 'DDD3']);
+      expect(stats.map((s) => s.ticker).sort()).toEqual(['AAA3', 'CCC3']);
       expect(stats.find((s) => s.ticker === 'CCC3')).toMatchObject({
         totalVolumeCents: 1_099n,
         presenceDays: 2,
       });
-      expect(stats.find((s) => s.ticker === 'DDD3')?.totalVolumeCents).toBe(7_000n);
     });
 
     it('janela vazia não devolve nada', async () => {

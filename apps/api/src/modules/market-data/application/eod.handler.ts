@@ -113,6 +113,8 @@ export class EodHandler {
         date,
         asked: report.asked,
         requests: report.requests,
+        // a cota restante da brapi na última resposta (só o número; nulo se nenhuma trouxe o X-RateLimit-Remaining)
+        remaining: report.remaining,
         inserted: report.inserted,
         failed: report.failed.length,
         stopped: report.stopped,

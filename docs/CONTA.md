@@ -3,10 +3,10 @@
 Plano: §3, §5.6, §5.7, §8, §9 e §12. A **parte 1** entregou a conta **na api**: login, sessão, termos com aceite versionado, exportar e excluir, papéis
 e o comando que promove um admin (seções 1 a 8). A **parte 2** entregou as **telas** (`/entrar`, `/cadastro`, `/verificar-email`, `/esqueci-senha`, `/redefinir-senha`,
 `/conta`, `/termos` e `/privacidade`) e usa o que está aqui: a seção 9 diz como elas falam com a api, a 10 como se testam e a 11 o que não foi verificado. A **carteira** (etapa 12, parte 1: a api)
-já está dentro, com a **versão 0.2** dos textos e o novo aceite (seção 5, "A carteira e a LGPD"; `docs/API.md`, seção 9); o chat (etapa 13) entra depois, com versão nova dos textos e novo aceite.
+já está dentro, com a **versão 0.2** dos textos e o novo aceite (seção 5, "A carteira e a LGPD"; `docs/API.md`, seção 9); em 04/11/2026 a **política subiu para a 0.3** (a limpeza diária e o pior caso de cada prazo, seção 5), e os termos seguiram na 0.2; o chat (etapa 13) entra depois, com versão nova dos textos e novo aceite.
 
 > **Os textos de termos e de privacidade são RASCUNHO** para o Artur e o orientador revisarem. Nenhum advogado os leu. Escritos só com o que existe hoje,
-> estão em `apps/api/src/modules/account/legal/` (versão **0.2**, a da carteira; a 0.1 foi a da conta) e levam o aviso de rascunho no topo. Ver o item 8 antes de abrir ao público.
+> estão em `apps/api/src/modules/account/legal/` (termos na **0.2**, a da carteira, e política na **0.3**, a da limpeza diária; a 0.1 foi a da conta) e levam o aviso de rascunho no topo. Ver o item 8 antes de abrir ao público.
 
 ## 1. Como está montado
 
@@ -95,20 +95,26 @@ respondem 401. **As rotas `/admin` (etapa 10, parte 2; `docs/API.md`, seção 8)
 - **Telemetria** (etapa 10, `docs/INFRA.md`, 5.1): o Application Insights recebe requisições, consultas e exceções da api, e **nunca** e-mail, nome, IP, cookie, token de sessão, de verificação ou de redefinição (nem no caminho nem na query da URL). Lista branca
   no processador de spans (`telemetry/sanitize.ts`), o `redact.ts` sobre texto de exceção e o SQL sem valores; a rota do login é `/api/auth/*`. Teste: `telemetry.integration.spec.ts` faz o cadastro, a verificação, o login e a redefinição com canários e confere o que sai, e, desde a etapa 12, as quatro rotas da carteira (quantidade, custo e data do lançamento não saem em span nem em SQL; a rota é o padrão `/api/v1/me/portfolio/lots/:id`).
 - **Exclusão** apaga tudo do usuário no banco, **numa transação só** (a carteira e os lançamentos inclusive, pela cascata). Ficam a linha de auditoria (só o ULID) e as cópias de segurança do banco (ponto de restauração de 7 dias).
-- **Retenção que a política promete** (`legal/politica-de-privacidade.md`, item 5): sessões vencidas, pedidos de uso único vencidos (`verification`) e cadastros nunca confirmados com mais de 7
-  dias são apagados pela **limpeza semanal da fila `maintenance`** (a mensagem `retention`, todo domingo às 10:00 de Brasília; etapa 10, onda 3d; `docs/JOBS.md`, seção 8.1). As regras: `session` **já vencida** (sem folga);
-  `verification` já vencida; `"user"` com `email_verified` falso criado há **mais de 7 dias** (a cascata leva `account`, `session` e `consent`; o gatilho do aceite deixa passar o `DELETE` em cascata). Em lotes de 500, com o
-  relógio injetado, e a contagem de cada `DELETE` no log, sem dado pessoal. O teste (`retention.handler.integration.spec.ts`) tem linhas de cada lado de cada limite, roda duas vezes sem erro, prova que a conta confirmada
+- **Retenção que a política promete** (`legal/politica-de-privacidade.md`, item 5): sessões vencidas, pedidos de uso único vencidos (`verification`) e cadastros nunca confirmados são apagados pela
+  **limpeza diária da fila `maintenance`** (a mensagem `retention`, todo dia às 10:00 de Brasília, `0 13 * * *`; etapa 10, onda 3d, diária desde 04/11/2026; `docs/JOBS.md`, seção 8.1). As regras: `session` **já vencida** (sem folga);
+  `verification` já vencida; `"user"` com `email_verified` falso criado há **mais de 6 dias** (`RETENTION_DAYS.user`; a cascata leva `account`, `session` e `consent`; o gatilho do aceite deixa passar o `DELETE` em cascata). Em lotes de 500, com o
+  relógio injetado, e a contagem de cada `DELETE` no log, sem dado pessoal. O teste (`retention.handler.integration.spec.ts`) tem linhas de cada lado de cada corte (1 ms para cada lado), roda duas vezes sem erro, prova que a conta confirmada
   (ou a sessão renovada) no meio de um lote não é apagada e que o corte não depende do fuso do banco. Antes dela, o Better Auth só apagava a sessão vencida quando alguém a apresentava de novo.
-  **O que a política diz tem de bater com a cadência**: como a limpeza é semanal, a linha fica o corte MAIS até 7 dias de espera, então o cadastro não confirmado fica **até 14 dias** (a conta criada logo depois de uma
-  execução tem 6 dias e 23 horas na seguinte, sobrevive a ela e sai na outra). O rascunho dizia "até 7 dias", que o código não cumpria; o texto (item 5, versão 0.1, ainda rascunho) agora diz 14, e a sessão que você deixou
-  de usar, 14 (7 de validade mais até 7 de espera). **Decisão do Artur na revisão jurídica:** se quiser a promessa de 7 dias, a saída é a limpeza **diária** (`cron` `0 13 * * *` no `job-sched-retention`, plano §6) com o
-  corte do cadastro em 6 dias (`RETENTION_DAYS.user`); a mensagem já tem a data no `MessageId`, então nada mais muda.
+  **O que a política diz tem de bater com a cadência, e ela promete o PIOR CASO de cada item** (o corte mais a espera até a próxima limpeza, que agora é de 1 dia): o cadastro nunca confirmado some em **até 7 dias depois de criado**
+  (corte de 6 dias mais 1; a conta criada logo depois de uma limpeza tem menos de 6 dias nas 6 seguintes e sai na 7ª); a sessão e o pedido de uso único vencidos somem em **até 1 dia depois de vencer**, e como a sessão vale 7 dias desde o
+  último uso (o padrão do Better Auth, 604800 s e renovação a cada 86400 s, fixado em teste), o registro de uma sessão abandonada fica **no máximo 8 dias**. O teste do pior caso (`retention.handler.integration.spec.ts`, "a promessa da
+  política") roda o relógio injetado de limpeza em limpeza, com cadastros e sessões criados 1 ms antes, na hora exata, 1 ms depois e a 6, 12 e 18 horas de uma limpeza, e confere que nenhum fica mais que a promessa (e que o pior caso é
+  exatamente 7 dias); o `infra/tests/check.mjs` confere o cron diário e o corte de 6 dias juntos. Antes (o texto 0.2) a limpeza era semanal e o texto dizia "até 14 dias" para o cadastro e para a sessão abandonada; a
+  **decisão do Artur de 04/11/2026** ("Todo dia, prazo de 7 dias") trocou a cadência, o corte (de 7 para 6 dias) e o texto, que subiu para a **0.3**. A promessa conta com a limpeza rodando: um dia perdido (a execução falhou e a fila ainda repete,
+  ou o agendador não rodou) adia o prazo em um dia, e o `job-falhou` e a conferência diária do RUNBOOK (seção 1, item 5) são o que pega isso. **O texto da política diz isso** (a ressalva no fim do item 5: "Se uma limpeza falhar ou não
+  rodar, o que passou do corte é apagado na próxima que rodar, e o prazo cresce pelos dias sem limpeza"), porque o relógio real não é o perfeito do teste do pior caso: a limpeza sai do agendador pela fila e pelo KEDA, com minutos de atraso que
+  variam de um dia para o outro. Nenhum alerta vigia a **ausência** da limpeza (um agendador que não publica, um worker que não acorda): só a conferência da segunda-feira vê um buraco de fim de semana (`docs/INFRA.md`, 5.3, limitações). **Decisão do
+  Artur, em aberto:** se ele quiser os 7 dias como compromisso duro, o corte de `user` cai para 5 (o pior caso com a limpeza em dia vira 6 dias, e uma limpeza perdida o leva a uns 7, com a folga dos minutos de atraso); isso muda o texto, a versão, o teste do pior caso e o `check.mjs`.
 - **Cópia de segurança mensal sem dado pessoal** (etapa 10, onda 3d; ADR 0028). O `backup-verify` guarda o `pg_dump` por 12 meses no Blob, e a política promete que as cópias guardam dado pessoal só pelo ponto de restauração
   de 7 dias. Então o dump leva o **esquema inteiro, mas não os dados das tabelas pessoais** (`user`, `session`, `account`, `verification`, `consent` e, desde a etapa 12, `portfolio` e `portfolio_lot`, a classificação escrita à mão em
   `apps/api/src/infrastructure/database/table-policy.ts`, a mesma do papel do Postgres): a restauração de teste confere que elas voltam vazias (com um lançamento de verdade na origem). `audit_log` não é pessoal (só ULID; a política mantém a linha depois da
   exclusão). O chat (13) entra nessa matriz com a migration dele: o teste reprova o modelo ligado ao usuário que não esteja como pessoal, e o `backup-verify` recusa o banco que tem tabela sem decisão.
-  O texto da política (rascunho 0.2) diz isso no item 5; a revisão é do Artur.
+  O texto da política (rascunho 0.2 e 0.3) diz isso no item 5; a revisão é do Artur.
 - **Exportação** leva o cadastro, as contas vinculadas, as sessões, os aceites e a carteira (`portfolios` e `portfolioLots`). Ficam de fora, e a política diz isso, os registros de `audit_log` (guardam só o ULID) e os pedidos pendentes de `verification`
   (guardam credencial).
 - **Log do WAF** (Front Door): guarda IP e URL com query de quem foi bloqueado, 90 dias (docs/INFRA.md, 2.5). A política de privacidade cita isso e o prazo.
@@ -128,6 +134,13 @@ respondem 401. **As rotas `/admin` (etapa 10, parte 2; `docs/API.md`, seção 8)
   seção 4, "A carteira": ela é **informativa**, os valores são **estimados pelo último fechamento disponível** (que pode estar atrasado ou faltar, e não considera proventos, desdobramentos, corretagem nem impostos) e **nada ali é recomendação**. As linhas `TERMS@0.2` e `PRIVACY@0.2` entraram no `FROZEN` do `legal-documents.spec.ts`; as `@0.1` ficam como
   registro do que a conta aceitou. **Quem aceitou a 0.1 recebe 403 `CONSENT_REQUIRED` nas rotas da carteira até aceitar a 0.2** (a `/conta` já mostra o formulário do aceite novo; exportar e excluir seguem abertos): `portfolio.integration.spec.ts` faz o usuário nascer com a 0.1, vê o 403 nas quatro rotas e a carteira abrir depois do aceite.
   Os e2e já aceitam a versão vigente (os helpers leem `GET /legal`, em vez de repetir um número).
+
+### A política 0.3 (04/11/2026, a limpeza diária)
+
+- **O que mudou:** só o item 5 da política (sessão, cadastro não confirmado e links por e-mail passam a dizer o **pior caso** da limpeza diária, sem falar de limpeza semanal) e a linha de versão e vigência (`Versão: 0.3`, `Vigência: 04/11/2026`). O resto do texto é o da 0.2. Ainda é **rascunho**.
+- **Os termos não mudaram** (o SHA-256 é o mesmo da 0.2), então **seguem na 0.2**. A regra de versão é a do arquivo (seção 8, item 1): a versão sobe quando o texto muda, **documento por documento**, e o aceite guarda (usuário, documento, versão, SHA-256). O cadastro novo leva `{ terms: '0.2', privacy: '0.3' }`, que vem do `GET /legal`.
+- **Quem aceitou a 0.2 tem de aceitar a 0.3** antes de usar a carteira e o resto do que pede aceite (toda rota atrás do `ConsentGuard`, o `/admin` inclusive): `GET /me` mostra `consent.upToDate: false` com **só a política pendente** (os termos 0.2 seguem aceitos), as rotas respondem 403 `CONSENT_REQUIRED`, e `POST /me/consents` com as versões vigentes reabre; exportar e excluir seguem abertos. Está provado no `portfolio.integration.spec.ts` (o usuário que nasceu com os textos 0.1, e o que nasceu com os 0.2: 403 nas quatro rotas da carteira, exportar 200, o aceite reabre) e no `me.integration.spec.ts` (o histórico guarda a política 0.2 e a 0.3, cada uma com o SHA-256 que a pessoa viu).
+- O `legal-documents.spec.ts` ganhou a linha `PRIVACY@0.3` no `FROZEN` (as anteriores ficam, como registro do que foi aceito) e a conferência de que o texto diz o pior caso de cada item (cadastro em até 7 dias, sessão guardada no máximo 8, pedido de uso único em até 1 dia depois de vencer) e não fala mais de "semanal" nem de "14 dias". O mesmo spec exige que o "6 dias" do texto seja o `RETENTION_DAYS.user` do código (mudar o corte sem mudar o texto reprova), a ressalva da limpeza que falha ou não roda e a menção ao ponto de restauração do banco no cadastro apagado. O `auth-flows.integration.spec.ts` fixa a validade da sessão (7 dias, renovada no máximo uma vez por dia), que é o padrão do Better Auth e a base do "8 dias".
 
 ## 6. Configuração
 
@@ -176,7 +189,7 @@ numa pasta temporária), agora **atrás da trava de origem** como na Azure (cada
 
 ## 8. Antes de abrir ao público (checklist do plano, 5.16)
 
-1. **Rever os dois textos** (Artur e orientador), agora na **versão 0.2** (a da carteira): o aviso `RASCUNHO` sai do texto na revisão. A revisão cobre também o que a 0.2 acrescentou (a carteira como dado pessoal: itens 2, 3, 5, 6, 7 e 9 da política, e a seção 4 dos termos). Edição de um texto **sem subir a versão** reprova o `legal-documents.spec.ts` (o aceite guarda o SHA-256 do que o usuário viu): suba
+1. **Rever os dois textos** (Artur e orientador), agora nas versões **0.2 dos termos** (a da carteira) e **0.3 da política** (a da limpeza diária): o aviso `RASCUNHO` sai do texto na revisão. A revisão cobre também o que a 0.2 acrescentou (a carteira como dado pessoal: itens 2, 3, 5, 6, 7 e 9 da política, e a seção 4 dos termos) e o que a 0.3 acrescentou (os prazos do item 5 da política, pelo pior caso). Edição de um texto **sem subir a versão** reprova o `legal-documents.spec.ts` (o aceite guarda o SHA-256 do que o usuário viu): suba
    `Versão:` no próprio arquivo e acrescente a linha em `FROZEN`. Versão nova pede novo aceite de todos. **O teste "é rascunho" do `legal-documents.spec.ts` e os e2e `apps/web/e2e/account-api.spec.ts` e `apps/web/e2e/conta.spec.ts` conferem o texto `RASCUNHO`** (o último, na página `/termos` e na `/privacidade`): eles vão quebrar de propósito
    nessa hora e precisam ser ajustados junto.
 2. Confirmar com o orientador a base da transferência internacional (art. 33) e o prazo de retenção que o texto promete.
@@ -185,7 +198,7 @@ numa pasta temporária), agora **atrás da trava de origem** como na Azure (cada
 5. **Domínio próprio verificado no Communication Services** (seção 6): o domínio gerenciado pela Azure aceita 5 e-mails por minuto e 10 por hora para todos, sem aumento, e qualquer pessoa gasta isso sem conta.
 6. **Primeiro admin e rebaixar admin** (seção 4): o `account:demote` existe, e o caminho do `account:promote` e do `account:demote` na Azure (uma execução do `job-migrate` com o modelo trocado, `docs/INFRA.md`, 8.6) está definido e **ainda não foi provado na Azure**: faça o primeiro com a conta de operador e confira o log da execução.
 7. **Papel do Postgres da api** (seção 11): **feito no código** (etapa 10, onda 3d, ADR 0028): migration `20261103100000_api_role`, o comando `db:roles` e a matriz de tabelas. **Na Azure** (parte 4 da etapa 10, no Bicep e sem implantar): o segundo segredo (`database-url-api`, senha de `ALVESTING_PG_API_PASSWORD`), a identidade da api lendo só ele, o `job-migrate` que roda o comando depois do `migrate deploy`, o `DATABASE_URL` do `ca-api` trocado por ele e a api recusando subir em produção com outro login (`docs/INFRA.md`, 2.2 e 8.2). Nada disso rodou na Azure.
-8. **A limpeza periódica da fila `maintenance`** (etapa 10): **feita no código** (seção 5; `docs/JOBS.md`, seção 8.1). Falta o primeiro pregão na Azure para vê-la rodar: o `job-sched-retention` roda aos domingos às 10:00.
+8. **A limpeza periódica da fila `maintenance`** (etapa 10): **feita no código** (seção 5; `docs/JOBS.md`, seção 8.1). Falta o primeiro pregão na Azure para vê-la rodar: o `job-sched-retention` roda todo dia às 10:00 (diário desde 04/11/2026: a política promete o pior caso, 7 dias para o cadastro nunca confirmado).
 
 ## 9. As telas (parte 2)
 
@@ -297,7 +310,7 @@ Sempre em pixel-7 (Chromium), iphone-15 (WebKit) e desktop; e-mail e IP únicos 
   (e) que o Front Door repassa o `Content-Length` do cliente nos POST de `/api/auth/*` (o teto do corpo recusa o corpo sem tamanho declarado, `Transfer-Encoding`, com 413; se a borda passar a fragmentar o corpo, o login
   inteiro quebra e a saída é contar os bytes na leitura: comentário `ponytail` em `auth-route.ts`); (f) a cota de e-mail da assinatura (seção 6).
 - **Limites conhecidos**: o limitador de tentativas, o freio da exclusão e o intervalo mínimo entre e-mails ficam na memória de cada réplica (o WAF, 30 por minuto por IP em `/api/auth/*`, é o limite de verdade); cadastro nunca verificado
-  guarda o e-mail até a limpeza da fila `maintenance` (seção 5); sem ligação automática entre conta de senha e conta Google com o mesmo e-mail (decisão
+  guarda o e-mail até a limpeza diária da fila `maintenance`, em até 7 dias depois de criado (seção 5); sem ligação automática entre conta de senha e conta Google com o mesmo e-mail (decisão
   contra o sequestro de cadastro, ADR 0024); sem troca de e-mail e sem 2FA; **pré-sequestro por cadastro com o e-mail de outra pessoa**: quem cadastra primeiro o e-mail da vítima (sem nunca o verificar) guarda a senha dele, e se a vítima clicar no link
   de verificação que não pediu, a senha de quem cadastrou primeiro passa a valer (o texto do e-mail diz "se você não criou uma conta, ignore"; a mitigação de verdade, invalidar as credenciais ao verificar
   ou pedir a senha no próprio link, é decisão de produto e não está feita); **sem aviso ao dono do e-mail** quando alguém tenta se cadastrar com ele (o Better Auth tem o gancho `onExistingUserSignUp`; usá-lo manda e-mail

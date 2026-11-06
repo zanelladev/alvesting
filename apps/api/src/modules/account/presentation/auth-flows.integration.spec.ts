@@ -390,6 +390,23 @@ describe.skipIf(!testDatabaseUrl)(
         expect(sessions[0]).toMatchObject({ ipAddress: null, userAgent: null });
       });
 
+      // A política de privacidade (item 5) diz "Sessão: até 7 dias, renovada quando você usa o site" e, somada à limpeza diária, que o registro
+      // de uma sessão abandonada fica no máximo 8 dias. A validade não é configurada aqui: é o padrão do Better Auth (604800 s e renovação a
+      // cada 86400 s), e uma atualização dele que mude o padrão tem de reprovar este teste, e não passar em silêncio com a política errada.
+      it('a sessão vale 7 dias e só se renova depois de 1 dia de uso (o que a política de privacidade diz)', async () => {
+        const { userId } = await createLoggedInUser(account, prisma);
+        const [row] = await prisma.session.findMany({ where: { userId } });
+        // o createdAt e o expiresAt são tirados do relógio em instantes um pouco diferentes: alguns milissegundos de folga
+        const lifetime = row!.expiresAt.getTime() - row!.createdAt.getTime();
+        expect(Math.abs(lifetime - 7 * 24 * 3_600_000)).toBeLessThan(5_000);
+
+        const context = await account.auth.$context;
+        expect(context.sessionConfig).toMatchObject({
+          expiresIn: 7 * 24 * 3600,
+          updateAge: 24 * 3600,
+        });
+      });
+
       it('logout: a sessão deixa de existir e o cookie é limpo', async () => {
         const { agent, email } = await createLoggedInUser(account, prisma);
         expect((await getSession(agent)).body).toMatchObject({ user: { email } });

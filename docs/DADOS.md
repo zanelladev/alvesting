@@ -18,8 +18,8 @@ worker-data roteia `eod {pregão}` e `universe {semana}`; o `sched-eod` e o `sch
 > **Mudança de fonte (03/11/2026).** O plano baixava o COTAHIST da B3 todo dia. A página da B3 veda "a coleta automatizada,
 > inclusive por meio de ferramentas de inteligência artificial" (seção 10), então o COTAHIST **saiu**: o parser, o download, o
 > arquivo dos ZIPs no Blob (container `cotahist`) e a carga por arquivo foram apagados. A **brapi** é a fonte única das cotações
-> e o **banco é o cache**: cada barra é pedida uma vez e fica gravada. A decisão está na ADR 0032; o que o Artur ainda decide
-> sobre o que a B3 deixou no disco e no banco de dev está no fim da seção 1.
+> e o **banco é o cache**: cada barra é pedida uma vez e fica gravada. A decisão está na ADR 0032; o que a B3 deixou no disco e no
+> banco de dev foi apagado em 04/11/2026, por decisão do Artur (fim da seção 1).
 
 ### 1. Fontes
 
@@ -29,17 +29,24 @@ worker-data roteia `eod {pregão}` e `universe {semana}`; o `sched-eod` e o `sch
 | Lista de feriados da B3 (`b3-holidays.json`) | Calendário futuro e "hoje é pregão?" dos agendadores. Datas de feriado são fato, e nada as baixa: o arquivo é escrito à mão | seção 5 |
 | Yahoo Finance (consulta manual, uma vez) | Fonte independente da conferência de 01/11/2026 | seção 9 |
 
-**O que a B3 deixou no disco e no banco de dev, à espera do Artur** (nada disso é lido por teste, fixture, e2e, captura ou
-Lighthouse, e nada foi apagado):
+**O que a B3 deixou foi apagado em 04/11/2026, por decisão do Artur** ("Recriar do zero pela brapi"):
 
-- `.data/b3/` (fora do git): `COTAHIST_A2026.ZIP` (90 MB), `COTAHIST_D30102026.ZIP` (0,6 MB) e o PDF do layout. Os termos da B3 vedam
-  coletar de novo; o que já foi baixado fica até o Artur decidir se apaga.
-- O banco `alvesting_dev`: 71.528 barras com `source = COTAHIST` (e `trades` preenchido), 435 papéis com o ISIN e o nome do arquivo,
-  208 dias em `trading_day` com `source = COTAHIST` e o `cotahist_sha256`, e os universos W44 e W45 calculados sobre elas. A brapi
-  **nunca sobrescreve** barra existente (seção 6), então elas ficam como estão; o universo as conta como as da brapi (seção 8).
-- O container `cotahist` do Azurite local, se ainda existir (os ZIPs do `eod` de teste de 01/11). Na Azure nunca existiu.
-- O enum `bar_source`/`trading_day_source` com o valor `COTAHIST` e a coluna `trading_day.cotahist_sha256` ficam como **legado**
-  (migration só aditiva, ADR 0032): sair é a limpeza em duas migrations, depois da decisão do Artur.
+- **O banco de dev** (`alvesting_dev`) foi recriado do zero pelas migrations. Saíram com ele as 71.528 barras do arquivo da B3, os 208 dias
+  do `trading_day`, os 435 papéis com ISIN e nome do arquivo (inclusive o GOLL54 e o AZUL53, de preço por lote) e os universos W44 e W45,
+  calculados sobre elas com a regra de então.
+- **`.data/b3/`** (fora do git: os ZIPs `COTAHIST_A2026` e `COTAHIST_D30102026` e o PDF do layout) foi apagado, e também os containers
+  `cotahist` e `ensaio-cotahist` do Azurite local. Na Azure o container nunca existiu.
+- **O schema** perdeu o que só existia para o arquivo: o valor `COTAHIST` dos enums `bar_source` e `trading_day_source`, a coluna
+  `trading_day.cotahist_sha256`, a `instrument.quote_factor` e a `daily_bar.trades`, pela migration `20261104100000` (não aditiva: a
+  exceção registrada na ADR 0032, nota de 04/11/2026). O código perdeu o filtro de fator de cota (mercado, universo e carteira). A origem
+  da barra (`daily_bar.source`) ficou com um valor só, `BRAPI`, como registro de proveniência.
+- **A carga inicial pela brapi** foi feita pelo orquestrador da onda no mesmo dia (`market:backfill`, 3 meses): 372 papéis com barra
+  faltando, **373 requisições** (a lista e 372 históricos), **19.789 barras** gravadas e **60 pregões** confirmados em 74,4 s; a cota foi
+  de 14.988 para 14.619 (**369 gastas**: 3 respostas do histórico vieram pelo limitador de 20 por minuto e não gastaram, seção 2) e houve
+  114 avisos de fechamento diferente do ajustado (seção 4). O dev ficou com **20.029 barras `BRAPI` de 376 papéis** (375 ações e o BOVA11),
+  de 2026-08-07 a 2026-11-03, 60 pregões confirmados, nenhum ISIN e nenhum universo (`universe_snapshot` vazio); 93 papéis têm menos de
+  60 barras, porque não negociaram todo dia. Conferência: `count(*)` 20.029 e `sum(close_cents)` 36.505.401 em `daily_bar`. A primeira
+  tentativa, antes da correção do cabeçalho de cota (seção 9), tinha gravado 240 barras de 4 papéis e parado. Detalhes na seção 9.
 
 ### 2. A brapi
 
@@ -47,7 +54,7 @@ Lighthouse, e nada foi apagado):
 
 | O que | Valor |
 |---|---|
-| Requisições | 15.000 numa **janela móvel de 30 dias**: toda resposta do histórico traz `X-RateLimit-Window: rolling-30d` (prova controlada de 04/11/2026), e o `RateLimit-Reset` observado é o tempo até a meia-noite UTC seguinte (inferência: a janela anda por dia UTC). O FAQ ("Quais são os limites da API da brapi?") fala em ciclo mensal que reinicia na data de renovação do painel de cobrança; para o plano gratuito vale o que a API devolve. **Só a resposta 200 do histórico gasta cota**: a lista, o 400 e o 404 não gastaram na prova. O cliente não depende disso: lê o `RateLimit-Remaining` de cada resposta do histórico |
+| Requisições | 15.000 numa **janela móvel de 30 dias**: a resposta do histórico que passa pela cota traz `X-RateLimit-Window: rolling-30d` (prova controlada de 04/11/2026), e o `RateLimit-Reset` dessas respostas é o tempo até a meia-noite UTC seguinte (inferência: a janela anda por dia UTC; nas respostas do limitador de 20 por minuto ele é 60). O FAQ ("Quais são os limites da API da brapi?") fala em ciclo mensal que reinicia na data de renovação do painel de cobrança; para o plano gratuito vale o que a API devolve. **Só a resposta 200 do histórico que passou pela cota gasta cota**: a lista, o 400 e o 404 não gastaram na prova, e 3 respostas 200 do histórico da carga do dev (04/11/2026) vieram pelo limitador de 20 por minuto, sem cabeçalho de cota, e também não gastaram (ver "Cabeçalhos de cota"). O cliente lê o `X-RateLimit-Remaining`, que só vem com a cota |
 | Papéis por requisição | 1 (o Startup aceita 10 e o Pro, 20) |
 | Requisições ao mesmo tempo | 1 na conta inteira, não por chave (acima disso, 429) |
 | Histórico | até 3 meses, intervalo `1d` |
@@ -75,19 +82,35 @@ Os dois endpoints que o código usa (docs salvos de 03/11/2026 e a página de au
   (773) ou `unit` (12), nenhum nulo, e **375 viram semente** pelas regras da seção 3 (272 ON, 69 PN, 15 PNA, 9 PNB, 1 PNC, 9 UNT). A
   lista tem WEGE3, ABEV3, PETR4, TAEE11 e BPAC11 e não tem o BOVA11 (a referência vem de constante), e todo papel dela tinha volume no
   último pregão. **A lista tem outro limitador**: `RateLimit-Limit 20`, `RateLimit-Remaining 20`, `RateLimit-Reset 60` (20 por minuto) e
-  nenhum `X-RateLimit-*`; ela não gastou cota, e o cliente não lê o cabeçalho dela (o "20" parece cota baixa para a reserva de 500). A
-  escolha do endpoint está na ADR 0032.
+  nenhum `X-RateLimit-*`; ela não gastou cota, e o cliente não lê esse par de cabeçalhos (o "20" parece cota baixa para a reserva de
+  500). A escolha do endpoint está na ADR 0032.
 
-Cabeçalhos de toda resposta do histórico (nomes vistos na prova controlada): `RateLimit-Limit` (15000), **`RateLimit-Remaining`** (o
-que o código lê), `RateLimit-Reset`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Window` (`rolling-30d`),
-`X-Brapi-Concurrency-Limit` (1), `X-Brapi-Queue-Wait-Ms`, `X-Plan-Data-Freshness` (`1800s`: dado com até 30 minutos); num 429, a doc
-promete também `Retry-After` (segundos), que a prova não viu.
+**Cabeçalhos de cota.** Nomes vistos na prova controlada e na carga do dev: `RateLimit-Limit` (15000), `RateLimit-Remaining`,
+`RateLimit-Reset`, **`X-RateLimit-Limit`**, **`X-RateLimit-Remaining`** (**o único que o código lê**), **`X-RateLimit-Window`**
+(`rolling-30d`), `X-Brapi-Concurrency-Limit` (1), `X-Brapi-Queue-Wait-Ms` e `X-Plan-Data-Freshness` (`1800s`: dado com até 30
+minutos); num 429, a doc promete também `Retry-After` (segundos), que nenhuma das duas medidas viu. Há **dois pares** de cabeçalho
+de limite, de dois limitadores:
+
+| Par | Limitador | Quando vem | Entra na conta da cota |
+|---|---|---|---|
+| `X-RateLimit-Limit`/`-Remaining`/`-Window: rolling-30d` | a cota do plano (15.000 numa janela móvel de 30 dias) | só na resposta que gastou cota (o histórico); o par sem `X` vem junto e repete a cota (15000 e o restante) | **sim**: é o que o cliente lê |
+| `RateLimit-Limit 20`/`-Remaining`/`-Reset 60` | 20 requisições por minuto | na lista, e **também** em respostas 200 do histórico que passaram só por ele, sem nenhum `X-RateLimit-*` | **não**: sem o par com `X`, a resposta não gastou cota |
+
+**Achado da carga do dev (04/11/2026).** Uma resposta 200 do histórico (PETR4) veio pelo limitador de 20 por minuto, com `RateLimit-Limit
+20`, `RateLimit-Remaining 20`, `RateLimit-Reset 60`, **sem nenhum `X-RateLimit-*`**, e não gastou cota (a cota foi de 14.989, na resposta
+do BOVA11, para 14.988, na do BBDC4 logo depois). O cliente, que na época lia o `RateLimit-Remaining`, entendeu o "20" como a cota e
+parou a carga na 5ª requisição por "cota baixa" (reserva de 500), com o sinal `brapi-cota-baixa` por engano. A correção: ler só o
+`X-RateLimit-Remaining`, e a resposta que não o traz (a lista, e o histórico servido por esse limitador) **não muda** a cota conhecida.
+Teste novo em `brapi.client.spec.ts`, com os cabeçalhos reais, e a brapi falsa do ensaio (`ensaio/fake-brapi.ts`) manda os dois pares.
+Com a correção a carga andou inteira (seção 9, "Segunda prova real"). O erro da prova controlada de 04/11 (ler o `RateLimit-Remaining` da
+lista) tinha a mesma raiz: o par sem o `X` é do limitador de 20 por minuto, e só o par com o `X` é a cota.
 
 Como o cliente (`brapi.client.ts`) trata cada resposta:
 
 | Resposta | Tratamento |
 |---|---|
 | 200 com o formato dos docs | As barras do período; o papel sem negócio vem sem a data (ou com preço nulo) e é falta, não erro. Barra com preço fora da escala (acima de R$ 10 milhões por ação, ou volume acima do `bigint` do Postgres: erro de unidade do provedor) também é falta, em vez de um `INSERT` que estoura e derruba o lote do papel toda noite |
+| 200 sem o `X-RateLimit-Remaining` (a lista, ou o histórico servido pelo limitador de 20 por minuto) | As barras entram como as de qualquer outra resposta; a cota conhecida **não muda** (o `RateLimit-Remaining 20` desse limitador não é a cota) |
 | 200 com JSON fora do formato | Falta daquele papel, com aviso; os outros seguem |
 | 200 com `date` fora da forma esperada | A barra avulsa é descartada com aviso (papel, quantas e o timestamp da primeira); se **nenhuma** barra da resposta tem a forma, a resposta toda é `failed` (conta para a queda) |
 | 200 com `changed = true` | O ticker foi trocado e a série é de outro código: falta daquele papel, com aviso, nada gravado |
@@ -124,7 +147,7 @@ tem a forma continua descartado com aviso e, se for a resposta inteira, vira fal
 trava é uma **trava consultiva de transação do Postgres** (`pg_advisory_xact_lock(hashtextextended('brapi', 0))`), que cada requisição
 segura do envio à leitura do corpo e solta no commit, no rollback ou se o processo cair. A espera do `Retry-After` fica fora dela.
 
-**A reserva de cota.** Antes de cada requisição o cliente olha o `RateLimit-Remaining` da última resposta; com ele igual à reserva
+**A reserva de cota.** Antes de cada requisição o cliente olha o `X-RateLimit-Remaining` da última resposta que o trouxe; com ele igual à reserva
 (`QUOTA_RESERVE = 500`, `domain/bar-plan.ts`), a próxima deixaria a conta abaixo dela e a busca para, registra o sinal
 `brapi-cota-baixa` e deixa o resto como falta. 500 é uns 1,6 conjunto obrigatório por noite: sobra para recuperar um papel ou uma
 janela à mão, e o alerta chega com dias de folga se o consumo for o planejado (seção 6).
@@ -164,26 +187,29 @@ brapi, porque a brapi não informa a espécie da B3 nem o ISIN:
 | `1`, `2`, `9`, `10`, `12`... | fora | direito, recibo, fundo: não é ação do lote padrão |
 | (BOVA11) | `CI`, `kind = REFERENCE` | semeado por constante, sempre buscado, fora do universo |
 
-O código é `^[A-Z][A-Z0-9]{3}\d{1,2}$` (`B3SA3`, `BPAC11`). O papel semeado pela lista entra com **ISIN nulo**, `quote_factor = 1`, o
-nome da lista (sem caractere de controle, até 60 caracteres; sem nome, o código) e `last_seen` no último pregão com barra. O papel
-que o dev já tinha mantém o nome, o ISIN e a classe do arquivo antigo: o `INSERT ... ON CONFLICT DO NOTHING` não os toca.
+O código é `^[A-Z][A-Z0-9]{3}\d{1,2}$` (`B3SA3`, `BPAC11`). O papel semeado pela lista entra com **ISIN nulo**, o nome da lista (sem
+caractere de controle, até 60 caracteres; sem nome, o código) e `last_seen` no último pregão da janela da carga (a lista o trouxe). A coluna
+só avança, com a barra mais nova que se grava, e **não é a data da última barra do papel**: o que não negocia nos últimos pregões fica com a
+data da carga. Nada lê a coluna. O papel que já existe nunca é tocado: o `INSERT ... ON CONFLICT DO NOTHING` mantém o nome, o ISIN e a
+classe gravados.
 
-Nada no código dependia do ISIN, da classe nem do fator para decidir: o vínculo do CNPJ pelo FCA da CVM (seção 14) é pela raiz de
-quatro letras do código; o universo e a carteira filtram por `kind` e `quote_factor = 1`, que o papel novo traz. O ISIN nulo fica
-registrado em `deferred`: quem precisar dele (um cruzamento com a CVM por ISIN, por exemplo) o busca depois.
+Nada no código depende do ISIN nem da classe para decidir: o vínculo do CNPJ pelo FCA da CVM (seção 14) é pela raiz de quatro letras do
+código; o universo e a carteira filtram por `kind`. O ISIN nulo fica registrado em `deferred`: quem precisar dele (um cruzamento com a
+CVM por ISIN, por exemplo) o busca depois. Como a brapi cota por unidade, não existe o papel por lote que o arquivo antigo trazia (o
+fator de cota, `quote_factor`, saiu do schema em 04/11/2026, seção 1).
 
 ### 4. Preço e volume
 
-- Preço: centavos por ação, em `bigint` (o `19,99` da brapi vira `1999`: `Math.round`, nunca trunca). A brapi cota por unidade,
-  então não existe o papel por lote que o arquivo antigo trazia.
+- Preço: centavos por ação, em `bigint` (o `19,99` da brapi vira `1999`: `Math.round`, nunca trunca). A brapi cota por unidade.
 - **O volume financeiro é estimado: quantidade × fechamento.** A brapi informa a quantidade, não o volume em reais. A diferença para o
   volume real é pequena, porque o fechamento é o último negócio e não o preço médio do dia; o universo (seção 8) é uma classificação
   por volume médio de 60 pregões, onde esse erro não troca de posição quem está longe da vizinhança. A seção 9 tem os números da
   conferência.
-- `daily_bar` guarda abertura, máxima, mínima, fechamento, volume e a origem (`BRAPI`; `COTAHIST` só nas barras legadas do dev, com
-  `trades`). **Barra gravada nunca é sobrescrita, de nenhuma fonte** (seção 6).
-- O banco recusa, por `CHECK` (migration `20261101170000_market_data_integrity`), preço, volume e negócios negativos e máxima abaixo da
-  mínima em `daily_bar`, posição menor que 1 em `universe_member` e semana fora de `AAAA-Www` (W01 a W53) em `universe_snapshot`. O
+- `daily_bar` guarda abertura, máxima, mínima, fechamento, volume e a origem (`BRAPI`, a única). **Barra gravada nunca é sobrescrita**
+  (seção 6).
+- O banco recusa, por `CHECK` (migration `20261101170000_market_data_integrity`; a de 04/11/2026 refez o de `daily_bar` sem a coluna
+  `trades`, que saiu), preço e volume negativos e máxima abaixo da mínima em `daily_bar`, posição menor que 1 em `universe_member` e
+  semana fora de `AAAA-Www` (W01 a W53) em `universe_snapshot`. O
   cliente da brapi já recusa esses casos antes (a barra com máxima abaixo da mínima, preço zero ou volume negativo é descartada e vira
   falta, para não derrubar o lote); o `CHECK` é a rede de segurança. Abertura e fechamento fora de [mínima, máxima] passam.
 - **Preço ajustado.** A doc da brapi diz que o OHLC diário "pode vir ajustado" (proventos, desdobramentos e grupamentos) e que os
@@ -199,11 +225,8 @@ registrado em `deferred`: quem precisar dele (um cruzamento com a CVM por ISIN, 
   dentro da janela carregada depois do evento** pode deixar a série ajustada, e o evento corporativo do admin (que multiplica a
   quantidade na data ex) aplicaria o fator duas vezes. O RUNBOOK diz para conferir a série antes de registrar o evento de um papel
   assim.
-- **Resíduo no banco de dev.** GOLL54 e AZUL53 (2 papéis, 98 barras) foram gravados de antes do arquivo da B3 ser descartado (preço
-  por lote de 1.000 e 1.000.000 ações). Ficam lá, com `instrument.quote_factor` 1000 e 1000000, e o filtro `quote_factor = 1` do
-  universo e o da carteira do usuário os ignoram. Tirar a coluna e os filtros é a limpeza em duas migrations (apagar os dois papéis e
-  as barras; depois remover a coluna), e espera a decisão do Artur, porque o dev não admite apagar dado. Banco novo (produção, CI) nunca
-  os recebe, porque a brapi não lista o papel por lote.
+- **Sem papel por lote.** O arquivo da B3 cotava GOLL54 e AZUL53 por lote (de 1.000 e 1.000.000 ações) e o código os filtrava por um fator
+  de cota. Os dois saíram com o dev recriado (seção 1), a brapi não lista papel por lote, e o filtro saiu do código e do schema.
 
 ### 5. Calendário de pregões (`trading_day`)
 
@@ -211,22 +234,21 @@ Um dia de pregão é dia útil que não está na lista de feriados da B3 (`b3-ho
 para o `dist` e a imagem da api o leva). **O arquivo é escrito à mão** a partir da página de feriados da B3 e atualizado uma vez por
 ano (RUNBOOK): datas de feriado são fato, nenhum job baixa nada da B3. O mesmo calendário em código (`TradingCalendar`) responde aos
 agendadores sem consultar banco: às 07:30 as barras do dia não existem, e o `sched-eod` só publica `eod` se for pregão. A tabela
-`trading_day` guarda os dias: **`BRAPI`** para os confirmados (o pregão tem barras gravadas), `COTAHIST` para os 208 confirmados pelo
-arquivo antigo no dev (legado) e `CALENDAR` para os previstos pela lista (os futuros). Cada `eod` e `universe` semeia os dias
-futuros até o fim da lista, sem rebaixar dia já confirmado (a carga manual não semeia: o `confirmTradingDays` insere o dia que ganhou barra).
+`trading_day` guarda os dias: **`BRAPI`** para os confirmados (o pregão tem barras gravadas) e `CALENDAR` para os previstos pela
+lista (os futuros). Cada `eod` e `universe` semeia os dias futuros até o fim da lista, sem rebaixar dia já confirmado (a carga manual
+não semeia: o `confirmTradingDays` insere o dia que ganhou barra).
 
 - **Só se confirma o dia que tem barra.** `MarketRepository.confirmTradingDays` confere no SQL (`WHERE EXISTS (SELECT 1 FROM
-  daily_bar ...)`): um dia sem nenhuma barra seria "confirmado" sem dado e o universo o contaria. Nunca reescreve dia já confirmado,
-  e o `cotahist_sha256` fica nulo nos dias novos. Quem lê `source` trata `CALENDAR` como previsão e qualquer outro valor como dado
-  confirmado (`UniverseRepository.confirmedDaysBetween`: `source <> CALENDAR`); nada exige COTAHIST para tratar o dia ou a barra como
-  definitivos.
+  daily_bar ...)`): um dia sem nenhuma barra seria "confirmado" sem dado e o universo o contaria. Nunca reescreve dia já confirmado.
+  Quem lê `source` trata `CALENDAR` como previsão e qualquer outro valor como dado confirmado (`UniverseRepository.confirmedDaysBetween`:
+  `source <> CALENDAR`).
 - **`CALENDAR` é previsão, não fonte de leitura.** A lista muda (2027 é provisório) e a linha não acompanha. Quem precisa saber se um
   dia é pregão pergunta ao `TradingCalendar`. Quando a B3 publicar a lista de 2027, trocar o JSON e apagar as linhas previstas
   (`DELETE FROM trading_day WHERE source = 'CALENDAR'`): o próximo `eod` ou `universe` as semeia de novo, agora certas.
 - **2026: oficial.** 14 dias sem sessão, copiados da página da B3: 01/01, 16 e 17/02 (Carnaval), 03/04, 21/04, 01/05, 04/06, 07/09,
   12/10, **02/11 (Finados, segunda-feira)**, 20/11, 24/12, 25/12 e 31/12. A Quarta-feira de Cinzas (18/02) abre às 13h e conta como
-  pregão. Conferido em 01/11/2026: o histórico de cotações traz 208 dias com cotação, de 02/01 a 30/10, exatamente os dias úteis fora
-  da lista (o teste `trading-calendar.spec.ts` trava 247 pregões em 2026, 208 até 30/10).
+  pregão. Conferido em 01/11/2026, contra o arquivo da B3 (então a fonte): 208 dias com cotação, de 02/01 a 30/10, exatamente os dias
+  úteis fora da lista (o teste `trading-calendar.spec.ts` trava 247 pregões em 2026, 208 até 30/10).
 - **2027: provisório.** Os 12 dias de 2027 são os feriados nacionais que caem em dia útil mais a véspera de Natal e o último dia do
   ano, que a B3 fechou em 2025 e 2026. A mesma regra reproduz as listas oficiais de 2024, 2025 e 2026. **Trocar pela lista da B3 quando
   ela sair.** Enquanto for provisória, um dia útil que a B3 abra e a lista marque como feriado passa em silêncio: o `sched-eod` não
@@ -238,8 +260,8 @@ futuros até o fim da lista, sem rebaixar dia já confirmado (a carga manual nã
 **O banco é o cache.** Cada barra é pedida uma vez e fica gravada; só a falta vai à brapi. A licença permite guardar e montar séries,
 e o plano gratuito (15 mil por mês) só dá conta assim. As regras:
 
-- **Só inserção.** `INSERT ... ON CONFLICT (instrument_id, date) DO NOTHING`. Barra existente nunca é sobrescrita (a do arquivo antigo
-  do dev também não). Se uma nova busca traz valor diferente do gravado para o mesmo papel e pregão, o `BarLoader` registra o sinal
+- **Só inserção.** `INSERT ... ON CONFLICT (instrument_id, date) DO NOTHING`. Barra existente nunca é sobrescrita. Se uma nova busca
+  traz valor diferente do gravado para o mesmo papel e pregão, o `BarLoader` registra o sinal
   **`barras-divergentes`** (papel, data e campos, os 20 primeiros) e não muda nada; correção de dado é pelo evento corporativo do
   admin. **Limite conhecido:** a divergência é achada por uma leitura antes do `INSERT`, então, com duas gravações **simultâneas** da
   mesma barra com valores diferentes (o `eod` da noite e um `market:backfill` à mão ao mesmo tempo), a que perde a corrida grava zero e
@@ -267,8 +289,8 @@ e o plano gratuito (15 mil por mês) só dá conta assim. As regras:
 | Carteiras dos usuários, o opcional | 21 × uns 20 papéis | 420 |
 | Domingos | 4 × (1 da lista + uns 100 candidatos fora do conjunto diário) | 404 |
 | **Um mês** | | **7.919** |
-| Carga inicial (uma vez) | a lista, os 375 papéis que ela semeia e o BOVA11 (377 num banco novo); no dev, 434 (433 papéis com barra faltando e a lista) mais um por papel novo da lista | de 377 a uns 480 |
-| **O primeiro mês** | | **de 8.296 a uns 8.400, de 15.000** |
+| Carga inicial (uma vez) | a lista, os 375 papéis que ela semeia e o BOVA11: 377 num banco novo (medidas na prova controlada); a do dev, em 04/11/2026, fez 373 (4 papéis já vinham da primeira passada) e gastou 369 de cota | 377 |
+| **O primeiro mês** | | **8.296, de 15.000** |
 
 O alvo do pedido era "umas 7.500 de 15.000": 310 × 21 = 6.510 mais uns 100 por semana × 4,3 = 430 dá 6.940, e a carga inicial leva a
 uns 7.320 (377 medidas na prova controlada; eram 420 estimadas). A janela é móvel de 30 dias (seção 2), e a conta de um mês vale para
@@ -277,7 +299,7 @@ de uma noite com a brapi fora do ar. O pior caso das carteiras é todo ticker fo
 ainda abaixo da cota.
 
 - **Carga inicial: `market:backfill`.** 3 meses de barras de todo papel da lista da brapi mais o BOVA11 (377 requisições num banco
-  novo; 434 mais um por papel novo no dev, no modo sem rede de 04/11/2026), **só inserção e retomável** (só a falta). Não publica
+  novo; a do dev, em 04/11/2026, fez 373), **só inserção e retomável** (só a falta). Não publica
   `settle`. Aceita `--papeis`, `--de` e `--ate` (a prova controlada e a recuperação de um papel). **Modo sem rede** por padrão: mostra o
   banco de destino (servidor e nome, sem credencial) e quantas requisições faria; só busca de verdade com `--confirmo-banco <nome do
   banco mostrado>`. No fim mostra as requisições feitas e a cota restante informada pela brapi (só o número). A janela padrão começa
@@ -290,7 +312,7 @@ ainda abaixo da cota.
   máximo 10%** dos papéis da carga sem resposta (`MISSING_ALERT_PERCENT`, a mesma conta do `eod`). A carga parcial grava as barras e avisa
   "Carga parcial: nenhum pregão foi confirmado"; a seguinte, que pede só a falta, confirma. O `eod` confirma por conta própria, ao concluir.
 - ponytail: o papel com pregão sem negócio dentro da janela (buraco legítimo) volta a ser pedido a cada passada da carga manual, porque
-  o banco não tem como saber que o buraco é legítimo. O teto é uma carga inteira (380 a 480 pedidos, 3% da cota).
+  o banco não tem como saber que o buraco é legítimo. O teto é uma carga inteira (uns 380 pedidos, 2,5% da cota).
 
 ### 7. Mensagem `eod {pregão}`
 
@@ -327,7 +349,7 @@ ainda abaixo da cota.
 Regra do plano, sobre a semana ISO da mensagem: os **60 pregões antes da segunda-feira da semana**, confirmados (precisam estar todos
 carregados, conferidos contra o calendário; senão a mensagem falha dizendo os dias que faltam e pedindo a carga inicial, e não congela
 universo torto). O banco é consultado no intervalo da janela: com um buraco, o dia anterior à janela não entra no lugar do que falta.
-Para cada ação (`kind = STOCK`, `quote_factor = 1`, barras de **qualquer origem**: a da brapi, com o volume estimado, ou a legada):
+Para cada ação (`kind = STOCK`, com as barras da brapi e o volume estimado):
 
 - presença = pregões da janela com negócio; passa com **≥ 90%** (54 de 60, em inteiros);
 - volume médio = soma do volume financeiro (estimado, seção 4) ÷ 60 (dia sem negócio conta zero);
@@ -356,21 +378,15 @@ presença); só o erro de configuração (401, 402, 403) sobe. O `sched-universe
 segunda-feira seguinte**. O comando `market:universe <semana>` escolhe sobre o que o banco já tem, **sem rede** e sem a atualização
 semanal.
 
-Resultado da semana **2026-W45** (a de 02/11/2026, que abre num feriado), calculado no banco de dev sobre as barras legadas, com a
-regra de então: janela de 60 pregões, de 06/08 a 30/10; **404 ações negociaram, 306 passaram na presença de 90%, 306 no universo**.
-As dez primeiras, por volume financeiro médio por pregão: PETR4 (R$ 2,50 bi), VALE3 (1,82 bi), ITUB4 (1,46 bi), BBDC4 (1,07 bi),
-BPAC11 (1,05 bi), BBAS3 (1,00 bi), B3SA3 (0,99 bi), AXIA3 (0,93 bi), PETR3 (0,73 bi) e SBSP3 (0,72 bi).
+**O dev ainda não tem universo sobre as barras da brapi** (`universe_snapshot` vazio desde que o dev foi recriado, seção 1): o
+`market:universe <semana>` o calcula, sem rede, quando os 60 pregões da janela estão confirmados (a carga de 04/11/2026 confirmou 60,
+de 07/08 a 03/11; a janela de uma semana nova precisa dos pregões até a sexta anterior).
 
-**O snapshot que está no banco de dev ainda é o da regra antiga** (382 negociaram, 289 no universo), congelado antes de as ações de
-regime especial entrarem. A semana congelada só é reconhecida (`already_done`), então nenhuma carga o muda. Para refazê-lo é preciso
-apagar o snapshot e a linha do job, o que o dev não admite sem decisão do Artur:
-
-```sql
--- só no dev, só com o OK do Artur: universo da W45 (derivado, refeito em 2 s a partir das barras)
-DELETE FROM universe_member WHERE snapshot_id = (SELECT id FROM universe_snapshot WHERE week = '2026-W45');
-DELETE FROM universe_snapshot WHERE week = '2026-W45';
-DELETE FROM job_run WHERE type = 'universe' AND idempotency_key = '2026-W45';
-```
+Os universos que existiam antes (W44 e W45) eram das barras do arquivo da B3, com a regra de então, e saíram com o dev recriado. A W45
+(a de 02/11/2026, que abre num feriado), calculada em 03/11/2026, deu: janela de 60 pregões, de 06/08 a 30/10; 404 ações negociaram,
+306 passaram na presença de 90%, 306 no universo. As dez primeiras, por volume financeiro médio por pregão: PETR4 (R$ 2,50 bi), VALE3
+(1,82 bi), ITUB4 (1,46 bi), BBDC4 (1,07 bi), BPAC11 (1,05 bi), BBAS3 (1,00 bi), B3SA3 (0,99 bi), AXIA3 (0,93 bi), PETR3 (0,73 bi) e
+SBSP3 (0,72 bi). Fica como ordem de grandeza (uns 300 papéis), não como resultado a reproduzir: o volume da brapi é estimado (seção 4).
 
 ### 9. Conferência com fonte independente
 
@@ -428,22 +444,45 @@ O que a prova decidiu, item a item (as suposições que o código fazia e que o 
 4. **A latência.** 101 a 538 ms (média de 265 ms nas respostas 200 do histórico): 310 papéis levam uns 82 s, e o orçamento de 4
    minutos tem folga de quase 3 vezes (seção 2).
 5. **A lista.** `limit=1000` aceito, uma página (`totalPages` 1, `totalCount` 785, `hasNextPage` falso), `subType` `stock` ou `unit`
-   e nunca nulo, 375 sementes. **Um erro do cliente apareceu aqui e foi corrigido:** a resposta da lista traz `RateLimit-Remaining` 20
-   (um limitador de 20 por minuto, fora da cota), e o cliente a lia como a cota, o que pararia a lista na 2ª página por "cota baixa"
-   (a reserva é 500); agora só a resposta do histórico alimenta a cota restante (teste novo em `brapi.client.spec.ts`). Trocar para o
-   `/api/v2/tickers` não foi avaliado, porque o v1 funcionou; a ADR 0032 mantém a escolha.
+   e nunca nulo, 375 sementes. **Um erro do cliente apareceu aqui:** a resposta da lista traz `RateLimit-Remaining` 20 (um limitador de
+   20 por minuto, fora da cota), e o cliente a lia como a cota, o que pararia a lista na 2ª página por "cota baixa" (a reserva é 500).
+   A primeira correção (só a resposta do histórico alimenta a cota restante) **não bastava**: a carga do dev, abaixo, mostrou que o
+   próprio histórico às vezes vem por esse limitador. A correção de agora lê só o `X-RateLimit-Remaining` (seção 2; testes novos em
+   `brapi.client.spec.ts`). Trocar para o `/api/v2/tickers` não foi avaliado, porque o v1 funcionou; a ADR 0032 mantém a escolha.
 6. **Papel sem negócio ou suspenso.** Não medido: todo papel da lista tinha volume no último pregão, e não havia um suspenso para
    pedir. O papel que a brapi não conhece é 404 `NOT_FOUND`, sem gastar cota. Segue em aberto se o 404 é comum no `eod` (seção 2) e se
    vale a saída "concluir quando só os sem negócio faltam" (seção 7, item 5).
 7. **Os cabeçalhos de cota.** `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, `X-RateLimit-Limit`,
    `X-RateLimit-Remaining` e `X-RateLimit-Window: rolling-30d`: a janela é **móvel de 30 dias**, e não o ciclo mensal que o FAQ
-   descrevia (seção 2). `symbol` igual ao pedido e `changed = false` nos três papéis.
+   descrevia (seção 2). O par sem `X` é "o limitador que serviu a resposta", e só o par com `X` é a cota: a carga do dev, abaixo,
+   mostrou a diferença. `symbol` igual ao pedido e `changed = false` nos três papéis.
 
 **Não visto:** 429, 5xx e timeout (o tratamento é o dos docs, coberto por teste com fake); o horário em que a barra do dia D passa a
 existir na brapi (a prova rodou depois da meia-noite, e a de 03/11 já estava lá à 01:08 do dia 04; `X-Plan-Data-Freshness: 1800s` diz
-que o dado tem até 30 minutos); papel suspenso; desdobramento e grupamento; o limite exato de 89 ou 90 dias; o `limit` máximo da
-lista; e a latência de 300 requisições seguidas. A primeira noite de produção é quem mede o horário. Os números acima são contagens e
-formas, não cotações: nada da resposta ficou no repositório.
+que o dado tem até 30 minutos); papel suspenso; desdobramento e grupamento; o limite exato de 89 ou 90 dias; e o `limit` máximo da
+lista. A primeira noite de produção é quem mede o horário. Os números acima são contagens e formas, não cotações: nada da resposta
+ficou no repositório.
+
+**Segunda prova real: a carga inicial do dev (04/11/2026).** O `market:backfill` de 3 meses, com `--confirmo-banco`, no `alvesting_dev`
+recém-recriado (seção 1), rodado pelo orquestrador da onda, com o token só no `Authorization` e nenhum valor da resposta guardado fora
+do banco. Foi a primeira carga completa contra a brapi de verdade (a prova controlada tinha 10 requisições):
+
+| O que | Resultado |
+|---|---|
+| Primeira passada, com o cliente que lia o `RateLimit-Remaining` | Gravou 240 barras de 4 papéis e **parou na 5ª requisição por "cota baixa"** (reserva de 500), com o sinal `brapi-cota-baixa` por engano |
+| A causa | Uma resposta 200 do histórico (PETR4) veio pelo **limitador de 20 por minuto**: `RateLimit-Limit 20`, `RateLimit-Remaining 20`, `RateLimit-Reset 60`, sem nenhum `X-RateLimit-*`, e **não gastou cota** (a cota foi de 14.989, na resposta do BOVA11, para 14.988, na do BBDC4 logo depois) |
+| A correção | Ler só o `X-RateLimit-Remaining` (seção 2). Teste novo em `brapi.client.spec.ts` com os cabeçalhos reais, fixtures do spec com `x-ratelimit-remaining` e a brapi falsa do ensaio mandando os dois pares. Mutação: com o cabeçalho antigo, 6 testes falham, o novo inclusive |
+| Carga com a correção | 372 papéis com barra faltando; **373 requisições** (a lista e 372 históricos); **19.789 barras** gravadas; **60 pregões** confirmados; 74,4 s |
+| Cota | De 14.988 para 14.619: **369 gastas** (372 históricos menos 3 que vieram pelo limitador de 20 por minuto e não gastaram) |
+| Fechamento diferente do ajustado | 114 avisos (papel e quantidade, nunca preço; seção 4) |
+| Estado final do dev | **20.029 barras `BRAPI`** (as 240 da primeira passada e as 19.789 da segunda) de **376 papéis** (375 ações e o BOVA11), de 2026-08-07 a 2026-11-03; 60 pregões confirmados; nenhum ISIN; 93 papéis com menos de 60 barras (não negociaram todo dia); `count(*)` 20.029 e `sum(close_cents)` 36.505.401 em `daily_bar` |
+
+O que ela decidiu: (1) o cabeçalho da cota, acima; (2) **a latência de requisições seguidas**, que a prova controlada não via: 74,4 s para
+373 pedidos (uns 0,2 s cada, contando a gravação), então uns 62 s para os 310 papéis de uma noite, contra o orçamento de 240 s; (3) a
+conta da cota se confirma: a carga gastou 369 dos 15.000 (seção 6); (4) o risco que a prova controlada deixou em aberto, os papéis do
+arquivo antigo fora da lista, que a brapi poderia recusar com 404 e deixar a carga "parcial" para sempre (acima de 10% dos papéis),
+**deixou de existir**: o dev recriado só tem papel que veio da lista. Continua sem medida a noite real (papéis sem negócio, novas
+tentativas e carteiras): os 7.919 pedidos por mês seguem sendo conta, não medida.
 
 ### 10. Termos de uso da B3 e por que o COTAHIST saiu
 
@@ -461,6 +500,8 @@ página). A lista de feriados é a única informação da B3 que o repositório 
 veda entregar os Dados a terceiros como feed, API ou base bruta (seção 2): a cotação bruta saiu da API pública e o site a lê por uma
 rota interna com segredo (ADR 0033; `docs/API.md`, seção 6). A conformidade com a licença da brapi (o que sobra: os registros da
 arena e a carteira privada, com o risco residual do ADR 0033) segue no checklist do plano (5.16), para o Artur e o orientador.
+Em 04/11/2026, por decisão do Artur, o que a B3 tinha deixado no disco e no banco foi apagado (seção 1): os arquivos, as barras, os
+universos e, do schema, o valor e as colunas que só existiam para o arquivo.
 
 ### 11. Decisões
 
@@ -469,7 +510,7 @@ arena e a carteira privada, com o risco residual do ADR 0033) segue no checklist
 | A brapi é a fonte única; o COTAHIST saiu (ADR 0032, supera a 0009) | Os termos da B3 vedam a coleta automatizada, inclusive por IA; a licença da brapi deixa guardar, persistir e montar séries |
 | O banco é o cache: cada barra é pedida uma vez | 15 mil requisições por mês, uma ação por requisição: só a falta vai à brapi |
 | A data da barra tem uma forma só (meia-noite de Brasília); o que difere é descartado com aviso | `daily_bar` é só inserção: um dia errado por um dia ficaria para sempre. A doc não diz a hora; a prova controlada de 04/11/2026 confirmou 03:00 UTC nas 77 barras |
-| A cota restante vem só da resposta do histórico | A lista tem outro limitador (20 por minuto) e não gasta cota; o "20" dela, lido como cota, pararia a lista por "cota baixa" (achado da prova controlada) |
+| A cota restante vem só do `X-RateLimit-Remaining` | O `RateLimit-Remaining` sem o `X` é do limitador que serviu a resposta: a lista e, às vezes, o próprio histórico vêm pelo de 20 por minuto, que não gasta cota. O "20" lido como cota parou a carga do dev na 5ª requisição por "cota baixa" (achados da prova controlada e da carga do dev, de 04/11/2026) |
 | A janela do pedido tem no máximo 90 dias (`historyStart`: 86 a 89) | A brapi recusa mais que isso com 400 `DATE_WINDOW_EXCEEDED` e não olha a idade do início (prova controlada) |
 | O orçamento de tempo vale dentro de um papel e para a lista | A trava da fila é de 5 minutos; passar dela deixa outra entrega refazer as requisições |
 | A carga manual só confirma o pregão quando é completa | Pregão confirmado com a barra de um papel deixaria o universo congelar-se com buraco |
@@ -484,10 +525,11 @@ arena e a carteira privada, com o risco residual do ADR 0033) segue no checklist
 | Reserva de 500 requisições | Não zerar a conta: sobra para a recuperação à mão |
 | Uma requisição por vez por trava consultiva do Postgres | O plano gratuito só aceita 1 simultânea na conta, e há réplicas do worker e a carga manual |
 | `trading_day.source = BRAPI` só com barra gravada | Dia "confirmado" sem dado seria contado pelo universo |
-| O universo conta barra de qualquer origem (volume estimado) | Há uma fonte só; o legado do dev entra com o volume financeiro |
+| O volume do universo é estimado (quantidade × fechamento) | A brapi informa a quantidade, não o volume em reais; menos de 1% de diferença nos cinco papéis conferidos (seção 9) |
+| O legado do COTAHIST saiu do schema e do código (04/11/2026) | Sem produção nem dado legado, e o dev recriado do zero: o valor dos enums, `cotahist_sha256`, `quote_factor` e `daily_bar.trades` saíram numa migration não aditiva, exceção registrada na ADR 0032, com guarda que recusa se sobrar dado |
 | A atualização semanal fica dentro do `universe` | O mínimo que funciona: lista, papel novo e a semana dos candidatos, antes de escolher |
 | `trading_day` `CALENDAR` é previsão, não fonte de leitura | A lista muda (2027 é provisório) e a linha não acompanha. Ver seção 5 |
-| `CHECK` no banco e índice na FK de `universe_member` | Rede de segurança para a brapi; migration só aditiva |
+| `CHECK` no banco e índice na FK de `universe_member` | Rede de segurança para a brapi; migration só aditiva (o `CHECK` de `daily_bar` foi refeito sem a coluna `trades` em 04/11/2026) |
 | Universo vazio ou janela incompleta falham | Universo é congelado por semana: um errado não tem como ser refeito |
 | `--skipApiVersionCheck` no Azurite do `docker-compose.yml` | O `@azure/storage-blob` 12.34.0 pede a API 2026-10-06 e o Azurite 3.37.0 a recusa |
 | O `yauzl` fica | A CVM também lê ZIP em fluxo (`infrastructure/zip/zip-reader.ts`) |
@@ -507,6 +549,11 @@ Código em `apps/api/src/modules/news` e `apps/api/src/modules/briefing` (`domai
 worker-data consome a fila `news` (mensagem `fetch {fonte, slot}`, **uma por fonte**) e a fila `briefing` (mensagem
 `freeze {pregão}`). O `sched-news` (a cada 30 minutos, todo dia) e o `sched-briefing` (07:30 de Brasília, só em pregão)
 apenas publicam, com `MessageId` determinístico (`fetch:infomoney:2026-11-01T17:30:00Z`, `freeze:2026-10-30`).
+
+> **Os resultados "no banco de dev" desta parte** (a ligação do CNPJ pelo FCA, o universo da semana 2026-W44, o briefing congelado de
+> 30/10) foram medidos em 01/11/2026 no dev de então. O dev foi **recriado do zero em 04/11/2026** (seção 1), e esses dados não estão
+> mais lá (`instrument.cnpj` vazio, sem universo, sem briefing): ficam como registro do que foi medido, não como o estado de hoje. Os
+> comandos "para refazer" valem para a semana do pregão em que se refaz, depois da carga e com os 60 pregões da janela confirmados.
 
 ### 13. Feeds RSS
 

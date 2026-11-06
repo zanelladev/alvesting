@@ -6,7 +6,6 @@ import {
   testDatabaseUrl,
 } from '../../../infrastructure/database/test-database.fixture.js';
 import type { PrismaService } from '../../../infrastructure/database/prisma.service.js';
-import { LEGACY_SHA, LEGACY_SOURCE } from '../testing/legacy-source.fixture.js';
 import type { InstrumentSeed } from '../domain/instruments.js';
 import type { BrapiBar } from './brapi.client.js';
 import { MarketRepository } from './market.repository.js';
@@ -65,7 +64,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
     });
 
   describe('insertInstruments', () => {
-    it('semeia o papel novo com ISIN nulo e fator 1, e devolve só os que criou', async () => {
+    it('semeia o papel novo com ISIN nulo, e devolve só os que criou', async () => {
       const created = await repo.insertInstruments(
         [seed('PETR4', { spec: 'PN' }), seed('TAEE11', { spec: 'UNT' })],
         '2026-10-30',
@@ -79,14 +78,13 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
           isin: null,
           spec: 'PN',
           kind: 'STOCK',
-          quoteFactor: 1,
         },
         { ticker: 'TAEE11', spec: 'UNT', isin: null },
       ]);
       expect(rows[0]!.lastSeen).toEqual(day('2026-10-30'));
     });
 
-    it('o papel que já existe fica como está (nome, ISIN e classe do dev não são tocados)', async () => {
+    it('o papel que já existe fica como está (nome, ISIN e classe gravados não são tocados)', async () => {
       await prisma.instrument.create({
         data: {
           id: newId(),
@@ -126,7 +124,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
       await repo.insertInstruments([seed('PETR4', { spec: 'PN' }), seed('VALE3')], '2026-10-01');
     });
 
-    it('grava a barra em centavos (bigint), de origem BRAPI, sem negócios, e avança o last_seen do papel', async () => {
+    it('grava a barra em centavos (bigint), de origem BRAPI, e avança o last_seen do papel', async () => {
       const result = await repo.insertBars([bar()]);
       expect(result).toEqual({ inserted: 1, divergent: [], unknown: [] });
       // o volume passa de 2^53 sem perder o último dígito (vai como texto e volta a bigint no SQL)
@@ -144,7 +142,6 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
         lowCents: 5236n,
         closeCents: 5271n,
         volumeCents: 61_743_200n * 5271n,
-        trades: null,
         source: 'BRAPI',
       });
       expect(row!.instrument.ticker).toBe('PETR4');
@@ -186,7 +183,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
       expect(row).toMatchObject({ highCents: 5366n, closeCents: 5271n, source: 'BRAPI' });
     });
 
-    it('a barra legada que o dev trouxe do arquivo da B3 também nunca é sobrescrita pela da brapi', async () => {
+    it('a barra gravada por fora do insertBars (uma correção à mão, por exemplo) também nunca é sobrescrita pela da brapi', async () => {
       const petr4 = await prisma.instrument.findUniqueOrThrow({ where: { ticker: 'PETR4' } });
       await prisma.dailyBar.create({
         data: {
@@ -198,20 +195,16 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
           lowCents: 5236n,
           closeCents: 5271n,
           volumeCents: 326_552_170_100n,
-          trades: 77_862,
-          source: LEGACY_SOURCE,
+          source: 'BRAPI',
         },
       });
       const result = await repo.insertBars([bar({ volumeCents: 61_743_200n * 5271n + 7n })]);
+      expect(result.inserted).toBe(0);
       expect(result.divergent).toEqual([
         { ticker: 'PETR4', date: '2026-10-30', fields: ['volume'] },
       ]);
       const [row] = await bars();
-      expect(row).toMatchObject({
-        source: LEGACY_SOURCE,
-        trades: 77_862,
-        volumeCents: 326_552_170_100n,
-      });
+      expect(row).toMatchObject({ source: 'BRAPI', volumeCents: 326_552_170_100n });
     });
 
     it('lote misto: grava o que falta, aponta o que diverge e ignora o que já está igual', async () => {
@@ -277,8 +270,12 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
 
     it('confirmedDays ignora o dia só previsto (CALENDAR)', async () => {
       await repo.seedCalendar(['2026-11-03', '2026-11-04']);
-      await prisma.tradingDay.create({ data: { date: day('2026-10-30'), source: LEGACY_SOURCE } });
-      await prisma.tradingDay.create({ data: { date: day('2026-10-29'), source: 'BRAPI' } });
+      await prisma.tradingDay.createMany({
+        data: [
+          { date: day('2026-10-29'), source: 'BRAPI' },
+          { date: day('2026-10-30'), source: 'BRAPI' },
+        ],
+      });
       expect(
         await repo.confirmedDays(['2026-10-29', '2026-10-30', '2026-11-03', '2026-11-04']),
       ).toEqual(new Set(['2026-10-29', '2026-10-30']));
@@ -291,14 +288,14 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
       await repo.insertInstruments([seed('PETR4')], '2026-10-01');
     });
 
-    it('confirma como BRAPI o dia que tem barra, sem SHA-256 do arquivo, e devolve os dias confirmados agora', async () => {
+    it('confirma como BRAPI o dia que tem barra, e devolve os dias confirmados agora', async () => {
       await repo.insertBars([bar({ date: '2026-10-29' }), bar({ date: '2026-10-30' })]);
       const confirmed = await repo.confirmTradingDays(['2026-10-30', '2026-10-29']);
       expect(confirmed).toEqual(['2026-10-29', '2026-10-30']);
       const rows = await prisma.tradingDay.findMany({ orderBy: { date: 'asc' } });
-      expect(rows).toMatchObject([
-        { date: day('2026-10-29'), source: 'BRAPI', [LEGACY_SHA]: null },
-        { date: day('2026-10-30'), source: 'BRAPI', [LEGACY_SHA]: null },
+      expect(rows).toEqual([
+        { date: day('2026-10-29'), source: 'BRAPI' },
+        { date: day('2026-10-30'), source: 'BRAPI' },
       ]);
     });
 
@@ -308,26 +305,30 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
       expect(await prisma.tradingDay.count()).toBe(1);
     });
 
-    it('promove o dia previsto (CALENDAR) e nunca reescreve o dia já confirmado, o legado do dev ou o da brapi', async () => {
+    it('promove o dia previsto (CALENDAR) e nunca reescreve o dia já confirmado: a linha dele nem é escrita de novo', async () => {
       await repo.insertBars([
         bar({ date: '2026-10-28' }),
         bar({ date: '2026-10-29' }),
         bar({ date: '2026-10-30' }),
       ]);
       await repo.seedCalendar(['2026-10-30']);
-      await prisma.tradingDay.create({
-        data: { date: day('2026-10-29'), source: LEGACY_SOURCE, [LEGACY_SHA]: 'a'.repeat(64) },
+      await prisma.tradingDay.createMany({
+        data: [
+          { date: day('2026-10-28'), source: 'BRAPI' },
+          { date: day('2026-10-29'), source: 'BRAPI' },
+        ],
       });
-      await prisma.tradingDay.create({ data: { date: day('2026-10-28'), source: 'BRAPI' } });
+      // o xmin muda quando a linha é escrita: o dia já confirmado tem de ficar com o mesmo
+      const stamp = (date: string) =>
+        prisma.$queryRaw<Array<{ xmin: string }>>`
+          SELECT xmin::text FROM trading_day WHERE date = ${date}::date`;
+      const before = await stamp('2026-10-29');
       expect(await repo.confirmTradingDays(['2026-10-28', '2026-10-29', '2026-10-30'])).toEqual([
         '2026-10-30',
       ]);
       const rows = await prisma.tradingDay.findMany({ orderBy: { date: 'asc' } });
-      expect(rows.map((r) => [r.source, r[LEGACY_SHA]])).toEqual([
-        ['BRAPI', null],
-        [LEGACY_SOURCE, 'a'.repeat(64)],
-        ['BRAPI', null],
-      ]);
+      expect(rows.map((r) => r.source)).toEqual(['BRAPI', 'BRAPI', 'BRAPI']);
+      expect(await stamp('2026-10-29')).toEqual(before);
     });
 
     it('repetir não confirma de novo nem muda a linha', async () => {
@@ -350,22 +351,11 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
   });
 
   describe('stockTickers, heldTickers e portfolioTickers', () => {
-    it('stockTickers: as ações cotadas por unidade, sem a referência e sem o resíduo de papel por lote', async () => {
+    it('stockTickers: as ações à vista em ordem de ticker, sem a referência', async () => {
       await repo.insertInstruments(
         [seed('VALE3'), seed('PETR4'), seed('BOVA11', { kind: 'REFERENCE', spec: 'CI' })],
         '2026-10-01',
       );
-      await prisma.instrument.create({
-        data: {
-          id: newId(),
-          ticker: 'GOLL54',
-          name: 'GOL',
-          spec: 'PN',
-          kind: 'STOCK',
-          quoteFactor: 1000,
-          lastSeen: day('2026-10-01'),
-        },
-      });
       expect(await repo.stockTickers()).toEqual(['PETR4', 'VALE3']);
     });
 

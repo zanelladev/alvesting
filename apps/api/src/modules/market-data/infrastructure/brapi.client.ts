@@ -11,7 +11,7 @@ import type { Listing } from '../domain/instruments.js';
 // de 04/11/2026 (docs/DADOS.md, seção 9).
 //  - /api/v2/stocks/historical?symbols=<papel>&startDate=&endDate=&interval=1d: as barras diárias de um papel;
 //  - /api/quote/list?type=stock&limit=&page=: a lista de ações (semeia papel novo, uma vez por semana). Fora da cota, com limitador próprio
-//    (20 por minuto): o RateLimit-Remaining dela não é o da cota e nunca entra na conta (HISTORICAL_PATH, em `once`).
+//    (20 por minuto). A cota só se lê do X-RateLimit-Remaining (`readRemaining`), que a lista não traz.
 // O token vem do ambiente (BRAPI_TOKEN) e viaja só no cabeçalho Authorization: query string vai parar em log. O corpo de uma resposta de erro
 // nunca é lido nem registrado, porque pode repetir o token.
 
@@ -81,6 +81,10 @@ const TRANSIENT_PAUSE_MS = 1_000;
 // 2 requisições por papel (310 papéis, 4 passadas por noite) para nada. Um papel ruim isolado nunca chega a 5 seguidos. O 400 e o 404 só
 // contam enquanto nenhum papel respondeu nesta passada (a janela recusada); depois de uma resposta boa são do papel (suspenso, sem histórico).
 const OUTAGE_AFTER_FAILURES = 5;
+// ponytail: 5 respostas 200 do histórico sem nenhum X-RateLimit-Remaining (a brapi renomeou o cabeçalho, o plano mudou, um proxy o cortou)
+// deixam a reserva de cota cega: `remaining` fica nulo e `quotaLow` nunca dispara. Só um aviso no log (fora do ALERT_LOG): um nulo isolado é
+// normal (3 de 372 respostas na carga do dev de 04/11/2026 vieram pelo limitador de 20 por minuto, sem o cabeçalho), 5 sem nenhum não.
+const BLIND_AFTER_RESPONSES = 5;
 const HISTORICAL_PATH = '/api/v2/stocks/historical';
 const LIST_PATH = '/api/quote/list';
 // limit=1000 é aceito (prova controlada: 785 ações em uma página, hasNextPage falso); mais de 3 páginas é lista que não cabe no teto.
@@ -157,6 +161,8 @@ type Exchange = { late: true } | { late: false; status: number; headers: Headers
 interface Run {
   requests: number;
   remaining: number | null;
+  // respostas 200 do histórico (só estas gastam cota e trazem o X-RateLimit-Remaining)
+  responses: number;
 }
 
 const isTimeout = (error: unknown): boolean =>
@@ -171,10 +177,12 @@ const describeError = (error: unknown): { error: string; code?: string } => {
   return { error: error instanceof Error ? error.name : 'desconhecido', ...(code ? { code } : {}) };
 };
 
-// `RateLimit-Remaining` da resposta do histórico (RateLimit-Limit, RateLimit-Reset e X-RateLimit-Window: rolling-30d vêm junto): as
-// requisições que restam na janela móvel de 30 dias. Só as respostas 200 do histórico gastam cota (o 400 e o 404 não gastaram na prova).
+// `X-RateLimit-Remaining` (com X-RateLimit-Window: rolling-30d): as requisições que restam na janela móvel de 30 dias. Só vem na
+// resposta que gastou cota. O `RateLimit-Remaining` sem o X não serve: na carga do dev de 04/11/2026, a resposta 200 do histórico do
+// PETR4 veio pelo limitador de 20 por minuto (RateLimit-Limit 20, Remaining 20, Reset 60, sem X-RateLimit-*, e não gastou cota), e o
+// "20" lido como a cota parou a carga na 5ª requisição por "cota baixa". A lista também só traz esse limitador.
 const readRemaining = (headers: Headers): number | undefined => {
-  const value = headers.get('ratelimit-remaining');
+  const value = headers.get('x-ratelimit-remaining');
   return value !== null && /^\d{1,9}$/.test(value.trim()) ? Number(value) : undefined;
 };
 
@@ -212,8 +220,8 @@ export class BrapiClient {
     onResult: OnResult,
     budgetMs: number = this.budgetMs,
   ): Promise<BrapiRun> {
-    const run: Run = { requests: 0, remaining: null };
-    if (requests.length === 0) return { ...run, stopped: null };
+    const run: Run = { requests: 0, remaining: null, responses: 0 };
+    if (requests.length === 0) return this.finish(run, null);
     this.requireToken();
     const deadline = this.clock() + budgetMs;
     let failuresInARow = 0;
@@ -231,6 +239,7 @@ export class BrapiClient {
       const reply = await this.send(url, run, deadline);
       if (reply.kind === 'quota') return this.finish(run, 'quota');
       if (reply.kind === 'time') return this.finish(run, 'time');
+      if (reply.kind === 'ok') run.responses += 1;
 
       const result = this.toResult(request, reply);
       if (result.status === 'ok') {
@@ -250,7 +259,7 @@ export class BrapiClient {
   async listStocks(
     budgetMs: number = this.budgetMs,
   ): Promise<{ listings: Listing[] | null } & BrapiRun> {
-    const run: Run = { requests: 0, remaining: null };
+    const run: Run = { requests: 0, remaining: null, responses: 0 };
     this.requireToken();
     const deadline = this.clock() + budgetMs;
     const listings: Listing[] = [];
@@ -295,6 +304,12 @@ export class BrapiClient {
   }
 
   private finish(run: Run, stopped: StopReason | null): BrapiRun {
+    if (run.responses >= BLIND_AFTER_RESPONSES && run.remaining === null) {
+      this.logger.warn(
+        { responses: run.responses },
+        'brapi: nenhuma resposta do histórico trouxe o X-RateLimit-Remaining; a reserva de cota ficou cega nesta passada',
+      );
+    }
     if (stopped === 'quota') {
       this.logger.warn(
         { remaining: run.remaining, reserve: this.reserve },
@@ -494,9 +509,8 @@ export class BrapiClient {
     if (exchange.late) return { kind: 'time' };
 
     const { status, headers, body } = exchange;
-    // A lista tem outro limitador (20 por minuto, RateLimit-Remaining 20 de 20 na prova controlada) e não gasta cota: o cabeçalho dela
-    // faria `quotaLow` parar a passada e a página seguinte da lista por um "20" que não é a cota.
-    const remaining = url.pathname === HISTORICAL_PATH ? readRemaining(headers) : undefined;
+    // Resposta sem o X-RateLimit-Remaining (a lista, e o histórico servido pelo limitador de 20 por minuto) não muda a cota conhecida.
+    const remaining = readRemaining(headers);
     if (remaining !== undefined) run.remaining = remaining;
     if (status === 401 || status === 402 || status === 403) {
       throw new BrapiConfigError(`brapi: HTTP ${status}, confira o BRAPI_TOKEN e o plano`);

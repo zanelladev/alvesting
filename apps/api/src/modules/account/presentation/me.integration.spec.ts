@@ -295,6 +295,62 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('As rotas /me'), () => {
       }
     });
 
+    // A política foi da 0.2 para a 0.3 em 04/11/2026 (o item 5 passou a prometer o pior caso da limpeza diária); os termos não mudaram e seguem na
+    // 0.2. Quem aceitou a 0.2 precisa aceitar a 0.3 antes de usar a carteira e o resto que pede aceite; só a política volta a ser pedida.
+    it('quem aceitou a política 0.2 (a anterior) precisa aceitar a 0.3: a rota protegida fecha, exportar não, só a política fica pendente, e o aceite reabre', async () => {
+      const privacy = account.docs.findIndex((d) => d.document === 'PRIVACY');
+      const current = account.docs[privacy]!;
+      expect(current.version).toBe('0.3');
+      // o usuário nasce quando a política vigente ainda era a 0.2 (o hash é o congelado em legal-documents.spec.ts)
+      account.docs[privacy] = {
+        ...current,
+        version: '0.2',
+        sha256: 'cef4099255991531928b40d9ec2afeeb628949f5cb14be31a5db51fdc717ef4c',
+      };
+      let user: Awaited<ReturnType<typeof createLoggedInUser>>;
+      try {
+        user = await createLoggedInUser(account, prisma);
+      } finally {
+        account.docs[privacy] = current;
+      }
+      const { agent, userId } = user;
+
+      const me = (await agent.get('/api/v1/me')).body as {
+        data: { consent: { upToDate: boolean; documents: Array<Record<string, unknown>> } };
+      };
+      expect(me.data.consent.upToDate).toBe(false);
+      expect(me.data.consent.documents).toMatchObject([
+        { document: 'TERMS', version: '0.2', acceptedAt: expect.any(String) as string },
+        { document: 'PRIVACY', version: '0.3', acceptedAt: null },
+      ]);
+      const blocked = await agent.get('/api/v1/sonda/recurso');
+      expect(blocked.status).toBe(403);
+      expect(blocked.body).toMatchObject({ success: false, error: { code: 'CONSENT_REQUIRED' } });
+      expect((await agent.get('/api/v1/me/export')).status).toBe(200);
+
+      // aceitar a 0.2 de novo não vale: é a anterior
+      const stale = await asSite(agent.post('/api/v1/me/consents')).send({
+        terms: '0.2',
+        privacy: '0.2',
+      });
+      expect(stale.status).toBe(409);
+      expect((await agent.get('/api/v1/sonda/recurso')).status).toBe(403);
+
+      const accepted = await asSite(agent.post('/api/v1/me/consents')).send(account.consent());
+      expect(accepted.status).toBe(200);
+      expect((await agent.get('/api/v1/sonda/recurso')).status).toBe(200);
+      // o histórico guarda a 0.2 e a 0.3 da política, cada uma com o hash do texto que a pessoa viu
+      const rows = await prisma.consent.findMany({
+        where: { userId, document: 'PRIVACY' },
+        orderBy: { acceptedAt: 'asc' },
+      });
+      expect(rows.map((r) => r.version)).toEqual(['0.2', '0.3']);
+      expect(rows.map((r) => r.sha256)).toEqual([
+        'cef4099255991531928b40d9ec2afeeb628949f5cb14be31a5db51fdc717ef4c',
+        current.sha256,
+      ]);
+    });
+
     it('aceitar de novo a mesma versão é inofensivo (não duplica a linha)', async () => {
       const { agent, userId } = await createLoggedInUser(account, prisma);
       for (let i = 0; i < 2; i += 1) {

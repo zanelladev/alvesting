@@ -20,9 +20,9 @@ export interface SnapshotInput {
 export class UniverseRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Os pregões confirmados (pela brapi, ou os legados que o banco de dev já traz) em [from, before) (before não entra), do mais antigo
-  // ao mais novo. Dia só previsto pela lista de feriados (CALENDAR) não conta: ainda não tem cotação. É um intervalo e não "os N mais
-  // recentes" porque, com um buraco na janela, os N mais recentes puxariam para dentro um dia mais velho.
+  // Os pregões confirmados em [from, before) (before não entra), do mais antigo ao mais novo. Dia só previsto pela lista de feriados
+  // (CALENDAR) não conta: ainda não tem cotação. É um intervalo e não "os N mais recentes" porque, com um buraco na janela, os N mais
+  // recentes puxariam para dentro um dia mais velho.
   async confirmedDaysBetween(from: IsoDate, before: IsoDate): Promise<IsoDate[]> {
     const rows = await this.prisma.tradingDay.findMany({
       where: { source: { not: 'CALENDAR' }, date: { gte: toDate(from), lt: toDate(before) } },
@@ -32,9 +32,8 @@ export class UniverseRepository {
     return rows.map((row) => toIso(row.date));
   }
 
-  // Volume somado e pregões com negócio de cada ação na janela. Só entram ações (a referência BOVA11 não) e só cotadas por unidade
-  // (quote_factor = 1: GOLL54 e AZUL53 ficaram no banco de dev, de antes da brapi, com preço truncado). Vale a barra de qualquer origem: o
-  // volume da brapi é estimado (quantidade x fechamento, docs/DADOS.md, seção 6) e o das barras legadas que o dev ainda traz é o financeiro.
+  // Volume somado e pregões com negócio de cada ação na janela. Só entram ações (a referência BOVA11 não). O volume da brapi é estimado
+  // (quantidade x fechamento, docs/DADOS.md, seção 4).
   async volumeStats(days: IsoDate[]): Promise<VolumeStat[]> {
     if (days.length === 0) return [];
     const rows = await this.prisma.$queryRaw<
@@ -45,7 +44,6 @@ export class UniverseRepository {
       JOIN instrument i ON i.id = b.instrument_id
       WHERE b.date = ANY(${days}::date[])
         AND i.kind = 'STOCK'
-        AND i.quote_factor = 1
       GROUP BY i.id, i.ticker`;
     return rows.map((row) => ({
       instrumentId: row.instrumentId,

@@ -77,7 +77,6 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('As rotas /me/portfolio'), ()
     ticker: string,
     kind: 'STOCK' | 'REFERENCE',
     bars: Array<[string, number]>,
-    quoteFactor = 1,
   ) {
     const id = newId();
     instrumentIds.push(id);
@@ -88,7 +87,6 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('As rotas /me/portfolio'), ()
         name: `EMPRESA ${ticker}`,
         spec: 'ON',
         kind,
-        quoteFactor,
         lastSeen: day('2026-11-03'),
       },
     });
@@ -127,9 +125,8 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('As rotas /me/portfolio'), ()
     ]);
     await seedInstrument('TCRC3', 'STOCK', []);
     await seedInstrument('TREF11', 'REFERENCE', [['2026-11-03', 12_000]]);
-    // TCRL3: papel por lote do banco de dev (quote_factor 1000, preço truncado em 1 centavo); TCRE3: barra absurda (10^15 centavos, dado ruim,
-    // o daily_bar só exige close_cents >= 0); TCRF3: fechamento de R$ 10.000,00, que com 1 centavo de custo tira o percentual do inteiro seguro
-    await seedInstrument('TCRL3', 'STOCK', [['2026-11-03', 1]], 1000);
+    // TCRE3: barra absurda (10^15 centavos, dado ruim, o daily_bar só exige close_cents >= 0); TCRF3: fechamento de R$ 10.000,00, que com
+    // 1 centavo de custo tira o percentual do inteiro seguro
     await seedInstrument('TCRE3', 'STOCK', [['2026-11-03', 10 ** 15]]);
     await seedInstrument('TCRF3', 'STOCK', [['2026-11-03', 1_000_000]]);
 
@@ -224,11 +221,11 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('As rotas /me/portfolio'), ()
       }
     });
 
-    // Quem aceitou a 0.1 (os textos da etapa 11) fica sem a carteira até aceitar a 0.2 (os que descrevem a carteira); as rotas dos direitos
-    // do titular (GET /me, exportar e excluir) não dependem do aceite novo.
-    it('quem aceitou os textos antigos recebe 403 CONSENT_REQUIRED em todas as rotas da carteira até aceitar os vigentes', async () => {
-      const vigentes = account.docs.map((doc) => ({ ...doc }));
-      const antigos = {
+    // Quem aceitou os textos de antes fica sem a carteira até aceitar os vigentes: a 0.1 (os da conta, etapa 11) e a 0.2 (os que descrevem a
+    // carteira, etapa 12; a política foi para a 0.3 em 04/11/2026, com o pior caso da limpeza diária, e os termos seguem na 0.2). As rotas dos
+    // direitos do titular (GET /me, exportar e excluir) não dependem do aceite novo. Os hashes são os congelados em legal-documents.spec.ts.
+    const OLD_TEXTS = {
+      '0.1 (a da conta)': {
         TERMS: {
           version: '0.1',
           sha256: '8b7dce70705a94a18cde089b1dbc241d0a1fd92b3d954eecb74db828a104b221',
@@ -237,45 +234,70 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('As rotas /me/portfolio'), ()
           version: '0.1',
           sha256: 'e1568adee4a666bd0bd0c68ab490ba59aeb721124b1b30315d7be9c09ecf93b4',
         },
-      };
-      // o usuário nasce quando a versão vigente ainda era a 0.1
-      account.docs.forEach((doc, index) => {
-        account.docs[index] = { ...doc, ...antigos[doc.document] };
-      });
-      let old: Awaited<ReturnType<typeof createLoggedInUser>>;
-      try {
-        old = await freshUser();
-      } finally {
-        vigentes.forEach((doc, index) => {
-          account.docs[index] = doc;
+      },
+      '0.2 (a da carteira)': {
+        TERMS: {
+          version: '0.2',
+          sha256: '54c7213262ea7215a922bbb000023240f09527a2f77640bd5f8dc0dd63622133',
+        },
+        PRIVACY: {
+          version: '0.2',
+          sha256: 'cef4099255991531928b40d9ec2afeeb628949f5cb14be31a5db51fdc717ef4c',
+        },
+      },
+    } as const;
+
+    it.each(Object.keys(OLD_TEXTS) as Array<keyof typeof OLD_TEXTS>)(
+      'quem aceitou os textos %s recebe 403 CONSENT_REQUIRED em todas as rotas da carteira até aceitar os vigentes',
+      async (which) => {
+        const vigentes = account.docs.map((doc) => ({ ...doc }));
+        const antigos = OLD_TEXTS[which];
+        // o usuário nasce quando as versões vigentes ainda eram aquelas
+        account.docs.forEach((doc, index) => {
+          account.docs[index] = { ...doc, ...antigos[doc.document] };
         });
-      }
-      expect(vigentes.map((doc) => doc.version)).not.toContain('0.1');
+        let old: Awaited<ReturnType<typeof createLoggedInUser>>;
+        try {
+          old = await freshUser();
+        } finally {
+          vigentes.forEach((doc, index) => {
+            account.docs[index] = doc;
+          });
+        }
+        // o teste só vale se ao menos um dos textos vigentes é outro (a política 0.3 ou, para a 0.1, os dois)
+        expect(vigentes.some((doc) => doc.version !== antigos[doc.document].version)).toBe(true);
 
-      const me = envelope(meSchema, (await old.agent.get('/api/v1/me')).body);
-      expect(me.consent.upToDate).toBe(false);
-      const blocked = [
-        await get(old),
-        await post(old, UNIT),
-        await patch(old, newId(), UNIT),
-        await del(old, newId()),
-      ];
-      for (const res of blocked) {
-        expect(res.status).toBe(403);
-        expect(res.body).toMatchObject({ success: false, error: { code: 'CONSENT_REQUIRED' } });
-        expect(res.headers['cache-control']).toBe('no-store');
-      }
-      expect(await lotsOf(old.userId)).toEqual([]);
-      // exportar e excluir seguem abertos
-      expect((await old.agent.get('/api/v1/me/export')).status).toBe(200);
+        const me = envelope(meSchema, (await old.agent.get('/api/v1/me')).body);
+        expect(me.consent.upToDate).toBe(false);
+        // quem aceitou a 0.2 só precisa aceitar de novo a política (a 0.3): os termos, que não mudaram, seguem aceitos
+        const accepted = (document: 'TERMS' | 'PRIVACY') =>
+          me.consent.documents.find((doc) => doc.document === document)!.acceptedAt !== null;
+        expect(accepted('PRIVACY')).toBe(false);
+        expect(accepted('TERMS')).toBe(which === '0.2 (a da carteira)');
 
-      // aceitar os textos vigentes reabre
-      expect(
-        (await asSite(old.agent.post('/api/v1/me/consents')).send(account.consent())).status,
-      ).toBe(200);
-      expect((await get(old)).status).toBe(200);
-      expect((await post(old, UNIT)).status).toBe(201);
-    });
+        const blocked = [
+          await get(old),
+          await post(old, UNIT),
+          await patch(old, newId(), UNIT),
+          await del(old, newId()),
+        ];
+        for (const res of blocked) {
+          expect(res.status).toBe(403);
+          expect(res.body).toMatchObject({ success: false, error: { code: 'CONSENT_REQUIRED' } });
+          expect(res.headers['cache-control']).toBe('no-store');
+        }
+        expect(await lotsOf(old.userId)).toEqual([]);
+        // exportar e excluir seguem abertos
+        expect((await old.agent.get('/api/v1/me/export')).status).toBe(200);
+
+        // aceitar os textos vigentes reabre
+        expect(
+          (await asSite(old.agent.post('/api/v1/me/consents')).send(account.consent())).status,
+        ).toBe(200);
+        expect((await get(old)).status).toBe(200);
+        expect((await post(old, UNIT)).status).toBe(201);
+      },
+    );
   });
 
   describe('GET /api/v1/me/portfolio', () => {
@@ -487,29 +509,6 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('As rotas /me/portfolio'), ()
         pnlBps: null,
       });
       expect(portfolio.totals).toMatchObject({ valueCents: 1_000_000_000_000, pnlBps: null });
-    });
-
-    // O papel por lote (FATCOT > 1) ficou no banco de dev com o preço truncado (GOLL54 e AZUL53, docs/DADOS.md, seção 4): quantidade × esse
-    // preço seria mil ou um milhão de vezes maior que o valor real.
-    it('um papel por lote do banco de dev (quote_factor diferente de 1) não vale: POST é 400 no ticker, e o lançamento que já existia sai sem fechamento', async () => {
-      const user = await freshUser();
-      const res = await post(user, { ...UNIT, ticker: 'TCRL3' });
-      expect(res.status).toBe(400);
-      expect(JSON.stringify(res.body)).toContain('ticker');
-      const portfolioId = newId();
-      await prisma.portfolio.create({ data: { id: portfolioId, userId: user.userId } });
-      await prisma.portfolioLot.create({
-        data: { id: newId(), portfolioId, ticker: 'TCRL3', quantity: 10, costCents: 1_000n },
-      });
-      const portfolio = await load(user);
-      expect(portfolio.positions[0]).toMatchObject({
-        ticker: 'TCRL3',
-        costCents: 1_000,
-        closeCents: null,
-        valueCents: null,
-        pnlCents: null,
-      });
-      expect(portfolio.totals).toMatchObject({ valueCents: null, unpriced: 1 });
     });
   });
 

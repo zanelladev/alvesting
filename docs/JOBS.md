@@ -31,7 +31,7 @@ versão do prompt (`PROMPT_ARENA_VERSION`) e o teto de custo do mês (`ARENA_MON
 | `job-sched-cycle` | `cycle` | `0 11 * * 1-5` | 08:00 seg–sex | `decisions` | uma `decide` por competidor MODEL, se o briefing existe e o teto de custo do mês permite |
 | `job-sched-eod` | `eod` | `30 0 * * 2-6` | 21:30 seg–sex | `market` | `eod {pregão}` (o reagendamento fica com o worker) |
 | `job-sched-universe` | `universe` | `0 12 * * 0` | domingo 09:00 | `market` | `universe {semana}` (a semana ISO da segunda-feira seguinte) |
-| `job-sched-retention` | `retention` | `0 13 * * 0` | domingo 10:00 | `maintenance` | `retention` |
+| `job-sched-retention` | `retention` | `0 13 * * *` | todo dia 10:00 | `maintenance` | `retention` |
 | `job-sched-backup` | `backup` | `0 6 1 * *` | dia 1, 03:00 | `maintenance` | `backup-verify {mês}` |
 
 O `job-migrate` não é agendador: é manual (`prisma migrate deploy`), disparado pelo CI antes de cada revisão nova.
@@ -62,8 +62,8 @@ O que cada agendador faz (o código está em `modules/<módulo>/application/*-sc
   (`MessageId` `decide:<ciclo>:<competidor>`). Idempotente: o ciclo é único por temporada e pregão, o pulado é reavaliado a cada
   execução e o fechado não republica. Se uma publicação falha, publica as outras e sai com erro no fim (o job tenta de novo). Variáveis
   e detalhes: `docs/ARENA.md`, seção 2.
-- **`retention` e `backup`** (etapa 10, onda 3d, `modules/maintenance/application/maintenance-schedulers.ts`): `retention {data}`, com a data de Brasília de agora (domingo 10:00), e
-  `backup-verify {mês}`, com o **mês de Brasília** (dia 1, 03:00; o 1º de dezembro às 02:59 UTC ainda é novembro lá). Só publicam, com `MessageId` determinístico (`retention:2026-11-08`,
+- **`retention` e `backup`** (etapa 10, onda 3d, `modules/maintenance/application/maintenance-schedulers.ts`): `retention {data}`, com a data de Brasília de agora (todo dia às 10:00, uma mensagem por dia), e
+  `backup-verify {mês}`, com o **mês de Brasília** (dia 1, 03:00; o 1º de dezembro às 02:59 UTC ainda é novembro lá). Só publicam, com `MessageId` determinístico (`retention:2026-11-04`,
   `backup-verify:2026-11`). Os sete nomes da tabela de agendadores têm código: um nome fora dela (e chaves herdadas como `toString`) sai com 1, com a lista dos que existem.
 
 ---
@@ -101,7 +101,7 @@ consumida pelo worker: quem a consome é o `job-worker-decisions`, com `Messagin
 | `freeze {pregão}` | `freeze` + pregão | monta o briefing das 07:30, grava os bytes no Blob (`briefings/<pregão>/<sha256>.json`) e a linha de `briefing` | seção 4; `docs/DADOS.md`, seção 18 |
 | `decide {ciclo, competidor}` | `decide` + `ciclo:competidor` | uma decisão de um modelo: prazo, prompt, briefing, gateway com 1 reparo, validação, IO bruto no Blob `llm-io` e a `decision`. É do `job-worker-decisions`, não do worker | seção 3.2; `docs/ARENA.md` |
 | `settle {temporada, pregão}` | `settle` + `temporada:pregão` | recalcula a temporada **do zero** até o pregão (ou até o último já liquidado, se for mais novo) e substitui as linhas derivadas: ordens, execuções, posições, patrimônio, métricas e Monte Carlo. O último pregão encerra a temporada | seção 4.1; `docs/METODOLOGIA.md` |
-| `retention {data}` | `retention` + data | apaga o que a política de privacidade promete (sessão vencida, pedido de uso único vencido, cadastro nunca confirmado com mais de 7 dias) e o `job_run` do `fetch` com mais de 30 dias, em lotes | seção 8.1 |
+| `retention {data}` | `retention` + data | apaga o que a política de privacidade promete (sessão vencida, pedido de uso único vencido, cadastro nunca confirmado com mais de 6 dias, que some em até 7 depois de criado) e o `job_run` do `fetch` com mais de 30 dias, em lotes | seção 8.1 |
 | `backup-verify {mês}` | `backup-verify` + mês | `pg_dump` do banco (sem os dados das tabelas pessoais) para o Blob `backups`, restauração num banco temporário e conferência das contagens; o banco temporário some | seção 8.2 |
 
 ---
@@ -499,25 +499,31 @@ A fila `maintenance` (3 entregas, concorrência 1, trava renovada por 25 min, es
 na terceira vai para a DLQ (`alvesting-dlq-qualquer-fila`). A espera de 10 e 20 minutos (e não 1 e 2) é para a última entrega cair depois da trava de 25 minutos: se a réplica morrer no meio do `backup-verify`, a linha fica `RUNNING`
 e é reassumida pela terceira entrega, e não mandada à DLQ (seção 5 e `messages.spec.ts`).
 
-### 8.1 `retention` (domingo, 10:00 em Brasília)
+### 8.1 `retention` (todo dia, 10:00 em Brasília)
 
 Apaga o que a política de privacidade promete (`legal/politica-de-privacidade.md`, item 5; `docs/CONTA.md`, seção 5) e o que o `fetch` deixa para trás. Os cortes saem do **relógio do handler** (injetado nos testes),
-e cada regra apaga **em lotes de 500** (`id IN (SELECT ... LIMIT n)`), do mais velho para o mais novo, até um lote vir incompleto (teto de 1.000 lotes por tabela: o resto fica para a semana seguinte).
+e cada regra apaga **em lotes de 500** (`id IN (SELECT ... LIMIT n)`), do mais velho para o mais novo, até um lote vir incompleto (teto de 1.000 lotes por tabela: o resto fica para o dia seguinte).
 
-**A limpeza é semanal, então a linha fica o corte MAIS até 7 dias de espera pela limpeza seguinte.** Uma conta criada logo depois de um domingo tem 6 dias e 23 horas no domingo seguinte, sobrevive a ele e só sai no outro: o
-cadastro não confirmado fica **até 14 dias**, e é isso que a política diz (item 5), e não "até 7". A sessão vencida sai na limpeza seguinte (até 7 dias depois de vencer, 14 desde o último uso). Voltar ao "até 7 dias" é mudar o
-`cron` do `job-sched-retention` para diário (`0 13 * * *`, plano §6; a mensagem já tem a data no `MessageId`) e o corte do `user` para 6 dias, e rever a política; ficou semanal porque é o plano.
+**A limpeza é diária (`0 13 * * *`, desde 04/11/2026), então a linha fica o corte MAIS até 1 dia de espera pela limpeza seguinte, e a política promete esse pior caso, item a item** (decisão do Artur: "Todo dia, prazo de 7 dias").
+O cadastro nunca confirmado tem corte de **6 dias**, então some em até **7 dias depois de criado**: a conta criada logo depois de uma limpeza tem menos de 6 dias nas 6 limpezas seguintes e é apagada
+pela 7ª (a criada na hora exata de uma limpeza também só sai na 7ª depois dela, porque o corte é "antes de", estrito: é o pior caso, 7 dias exatos). A sessão vencida e o pedido de uso único vencido (corte 0) somem em até **1 dia depois de vencer**; como a
+sessão vale até 7 dias desde o último uso (padrão do Better Auth: 7 dias, renovada no máximo uma vez por dia), o registro de uma sessão abandonada fica **no máximo 8 dias**. O `retention.handler.integration.spec.ts` roda o relógio de limpeza em
+limpeza e confere cada uma dessas promessas (inclusive que nenhum cadastro some antes dos 6 dias e que o pior caso é exatamente 7), e o `infra/tests/check.mjs` confere o cron diário e o corte de 6 dias juntos. A promessa conta com a limpeza
+rodando: uma execução que falha é reenviada pela fila (`job-falhou`, DLQ) e a do dia seguinte recolhe o que sobrou, mas um dia perdido adia o prazo em um dia até alguém corrigir (RUNBOOK, seção 3). **A política diz isso** (a ressalva no fim do
+item 5: se uma limpeza falhar ou não rodar, o prazo cresce pelos dias sem limpeza), porque o relógio real não é o perfeito do teste: a limpeza sai pelo agendador, pela fila e pelo KEDA com minutos de atraso que variam de um dia para o outro. Um agendador
+que não publica ou um worker que não acorda não escrevem linha nenhuma, e nenhum alerta vigia essa **ausência** (`docs/INFRA.md`, 5.3, limitações): só a conferência da segunda-feira vê um buraco de fim de semana.
+Mudar o cron ou o corte do `user` muda a promessa: o texto da política, a versão dela (aceite novo) e o teste andam juntos (o `legal-documents.spec.ts` exige que o "6 dias" do texto seja o `RETENTION_DAYS.user`).
 
 | Tabela | Regra | Por quê |
 |---|---|---|
-| `user` | `NOT email_verified` e criado há **mais de 7 dias** (guardado, portanto, até 14). A cascata leva `session`, `account` e `consent` (o gatilho do aceite deixa passar o `DELETE` em cascata e recusa o direto) | Cadastro nunca confirmado guarda nome e e-mail e pode ocupar o endereço de outra pessoa; o plano e a política dizem 7 dias de corte e limpeza semanal |
-| `session` | `expires_at` **já vencida** (sem folga depois do vencimento; a sessão vale 7 dias desde o último uso) | O Better Auth só apaga a sessão vencida quando alguém a apresenta de novo, e a linha guarda IP e user-agent; a política diz que a limpeza apaga "as sessões vencidas" |
-| `verification` | `expires_at` já vencida (o link de 60 e de 30 minutos não vale mais) | Cada `POST` anônimo em `/sign-in/social` grava uma linha |
-| `job_run` | `type = 'fetch'` e `started_at` há **mais de 30 dias** (qualquer estado) | A fila `news` grava uns 290 por dia; a chave é de janela de 30 minutos e não volta. Os outros tipos ficam (uma linha por pregão, semana ou decisão) |
+| `user` | `NOT email_verified` e criado há **mais de 6 dias** (some em até 7 depois de criado). A cascata leva `session`, `account` e `consent` (o gatilho do aceite deixa passar o `DELETE` em cascata e recusa o direto) | Cadastro nunca confirmado guarda nome e e-mail e pode ocupar o endereço de outra pessoa; o corte de 6 dias mais 1 dia de espera até a limpeza diária são os 7 dias que a política promete |
+| `session` | `expires_at` **já vencida** (sem folga depois do vencimento; a sessão vale 7 dias desde o último uso) | O Better Auth só apaga a sessão vencida quando alguém a apresenta de novo (a linha não guarda IP nem user-agent: o hook `session.create` os grava nulos); a política diz que a limpeza apaga as sessões vencidas em até 1 dia depois de vencerem |
+| `verification` | `expires_at` já vencida (o link de 60 e de 30 minutos não vale mais) | Cada `POST` anônimo em `/sign-in/social` grava uma linha; a política diz até 1 dia depois de vencer |
+| `job_run` | `type = 'fetch'` e `started_at` há **mais de 30 dias** (qualquer estado) | A fila `news` grava uns 290 por dia; a chave é de janela de 30 minutos e não volta. Os outros tipos ficam (uma linha por pregão, semana, dia ou decisão: a própria `retention`, que agora é diária, soma uma por dia, uns 365 por ano) |
 | `news_item` | **nenhuma retenção**, de propósito | É o histórico público e a reprodutibilidade da arena. Estimativa de uns 250 MB por ano no pior caso (700 itens por dia, trecho cheio) contra 32 GB; teto de 1 milhão de linhas (comentário `ponytail` em `retention.handler.ts`) |
 
 A ordem é `user`, `session`, `verification`, `job_run` (a cascata do usuário primeiro, para as contagens das outras tabelas ficarem só com o que sobrou). **Cada `DELETE` vai ao log** com a tabela, o número do lote,
-quantas linhas apagou e o corte (`retenção: linhas apagadas`), nunca com linha, e-mail, nome ou ULID de usuário. Rodar duas vezes não dá erro: a mesma mensagem repetida é barrada pelo `job_run`, e outro domingo não acha
+quantas linhas apagou e o corte (`retenção: linhas apagadas`), nunca com linha, e-mail, nome ou ULID de usuário. Rodar duas vezes não dá erro: a mesma mensagem repetida é barrada pelo `job_run`, e outro dia não acha
 nada além do que passou do corte. A retenção de 180 dias de `chat_thread` e `chat_message` entra com a etapa 13.
 
 **Dois cuidados do SQL** (`retention.repository.ts`; ambos têm teste de integração que falha sem eles). (1) A regra vem **repetida no `DELETE` de fora**: no `READ COMMITTED` a subconsulta escolhe as linhas num instante e o `DELETE` as

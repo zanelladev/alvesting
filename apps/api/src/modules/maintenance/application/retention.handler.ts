@@ -9,17 +9,19 @@ import {
 
 const DAY_MS = 86_400_000;
 
-// Há quantos dias a linha passa a ser apagada, contados do relógio injetado. A limpeza é SEMANAL (domingo, plano 6), então o tempo que a
-// linha de fato fica é o corte MAIS até 7 dias de espera pela limpeza seguinte; a política de privacidade (item 5) diz isso com todas as
-// letras ("até 14 dias" para o cadastro não confirmado) e o JOBS.md 8.1 e o CONTA.md 5 têm a conta:
-//  - user: cadastro NUNCA confirmado criado há mais de 7 dias (7 + até 7 = no máximo 14 dias guardado); o nome e o e-mail de um cadastro
-//    que ninguém confirmou podem ocupar o endereço de outra pessoa. A cascata do usuário leva session, account e consent.
-//  - session: já vencida (a política diz que a limpeza apaga "as sessões vencidas"; o Better Auth só apaga a vencida quando ela é
-//    apresentada de novo, e a linha guarda IP e user-agent). Sem folga depois do vencimento: a sessão vale 7 dias desde o último uso.
-//  - verification: vencida (o link de 60 e de 30 minutos já não vale).
+// Há quantos dias a linha passa a ser apagada, contados do relógio injetado. A limpeza é DIÁRIA (10:00 de Brasília, cron `0 13 * * *` do
+// sched-retention), então o tempo que a linha de fato fica é o corte MAIS até 1 dia de espera pela limpeza seguinte. A política de privacidade
+// (item 5) promete esse PIOR CASO, item a item, e o JOBS.md 8.1 e o CONTA.md 5 têm a conta (o teste de integração roda o relógio de limpeza
+// em limpeza e confere cada promessa). O pior caso é o de um relógio perfeito e de nenhuma limpeza perdida: o texto da política também diz que,
+// se uma limpeza falhar ou não rodar, o prazo cresce pelos dias sem limpeza (o legal-documents.spec.ts confere o "6 dias" do texto contra o
+// RETENTION_DAYS abaixo):
+//  - user: cadastro NUNCA confirmado criado há mais de 6 dias (6 + até 1 = some em até 7 dias depois de criado); o nome e o e-mail de um
+//    cadastro que ninguém confirmou podem ocupar o endereço de outra pessoa. A cascata do usuário leva session, account e consent.
+//  - session: já vencida, sem folga (some em até 1 dia depois de vencer). A sessão vale 7 dias desde o último uso (Better Auth), então o
+//    registro de uma que você deixou de usar fica até 8 dias. O Better Auth só apaga a vencida quando ela é apresentada de novo.
+//  - verification: vencida, sem folga (o link de 60 e de 30 minutos já não vale; some em até 1 dia depois de vencer).
 //  - job_run do tipo fetch: mais de 30 dias. A fila news grava um por fonte e por slot de 30 minutos (uns 290 por dia) e a chave não volta.
-// ponytail: voltar ao "até 7 dias" no cadastro não confirmado pede a limpeza DIÁRIA (cron `0 13 * * *` no lugar de `0 13 * * 0` no
-// sched-retention) e o corte de 6 dias: a mensagem já tem a data no MessageId, então nada mais muda. Fica semanal porque é o plano (seção 6).
+// Mudar o corte do `user` ou a cadência do cron muda a promessa: o texto da política, a versão dela e o teste andam juntos.
 // ponytail: news_item NÃO tem retenção, de propósito. É o histórico público (a lista de notícias e a página da ação) e o que mantém a arena
 // reprodutível (o briefing congelado cita as notícias). Tamanho: até uns 700 itens por dia (docs/API.md, seção 4), 255 mil por ano; medido
 // em 250 mil linhas sintéticas a tabela tem 58 MB e os índices uns 40 MB, e com o trecho de 300 caracteres de verdade chega a uns 250 MB
@@ -27,21 +29,21 @@ const DAY_MS = 86_400_000;
 // manda rever a consulta por ticker. Caminho: arquivar no Blob o que passar de N anos e apagar do banco, ou limitar a lista por janela.
 // A retenção de 180 dias de chat_thread e chat_message entra com a etapa 13.
 export const RETENTION_DAYS: Readonly<Record<RetentionTable, number>> = {
-  user: 7,
+  user: 6,
   session: 0,
   verification: 0,
   job_run: 30,
 };
 
 // Lote pequeno: o comando segura o lock por milissegundos. O teto de lotes por tabela (500 mil linhas) vem do mesmo cuidado: uma tabela
-// que cresceu absurdamente é terminada na semana seguinte, e não numa entrega de horas.
+// que cresceu absurdamente é terminada no dia seguinte, e não numa entrega de horas.
 const BATCH_SIZE = 500;
 const MAX_BATCHES = 1000;
 
 export type RetentionResult =
   { outcome: 'done'; deleted: Record<RetentionTable, number> } | { outcome: 'already_done' };
 
-// A mensagem `retention {data}` da fila `maintenance` (plano 5.5): a limpeza periódica de domingo. Idempotente pela linha de job_run
+// A mensagem `retention {data}` da fila `maintenance` (plano 5.5): a limpeza periódica, todo dia. Idempotente pela linha de job_run
 // (retention + data) e porque o que apaga é "o que passou do corte", que um segundo DELETE não acha. O relógio é injetado (o corte sai
 // dele, e não da máquina); cada DELETE vai ao log com a tabela, o lote, quantas linhas e o corte, e nunca com uma linha (dado pessoal).
 export class RetentionHandler {

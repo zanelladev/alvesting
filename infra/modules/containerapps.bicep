@@ -492,13 +492,15 @@ resource decisions 'Microsoft.App/jobs@2025-01-01' = {
 }
 
 // --- Agendadores: só publicam mensagens, em UTC (§6) ---------------------------------------------
+// A `retention` é DIÁRIA (10:00 de Brasília): a política de privacidade promete o pior caso do cadastro nunca confirmado (7 dias = o corte de
+// 6 dias, RETENTION_DAYS.user, mais 1 dia de espera até a limpeza seguinte). Semanal daria até 14. Mudar o cron muda a promessa.
 var schedulers = [
   { name: 'news', cron: '*/30 * * * *' }
   { name: 'briefing', cron: '30 10 * * 1-5' }
   { name: 'cycle', cron: '0 11 * * 1-5' }
   { name: 'eod', cron: '30 0 * * 2-6' }
   { name: 'universe', cron: '0 12 * * 0' }
-  { name: 'retention', cron: '0 13 * * 0' }
+  { name: 'retention', cron: '0 13 * * *' }
   { name: 'backup', cron: '0 6 1 * *' }
 ]
 

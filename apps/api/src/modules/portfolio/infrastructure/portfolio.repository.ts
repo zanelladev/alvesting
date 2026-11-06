@@ -69,9 +69,7 @@ export class PortfolioRepository {
 
   // O último fechamento (a barra mais recente) de cada ticker, numa consulta só para a carteira inteira. O LATERAL lê UMA entrada do índice
   // `daily_bar_instrument_id_date_key` por papel (de trás para a frente), então o custo é de uns 200 papéis no máximo, e não da tabela de barras
-  // (docs/API.md, seção 9, com o EXPLAIN). Ticker sem barra não aparece no resultado. Só papel cotado por unidade (`quote_factor = 1`): o papel
-  // por lote que o banco de dev ainda guarda (GOLL54, AZUL53) tem preço truncado, e quantidade × esse preço seria mil ou um milhão de vezes
-  // o valor real (docs/DADOS.md, seção 4); a posição dele sai sem fechamento.
+  // (docs/API.md, seção 9, com o EXPLAIN). Ticker sem barra não aparece no resultado.
   async closes(tickers: readonly string[]): Promise<CloseRow[]> {
     if (tickers.length === 0) return [];
     const rows = await this.prisma.$queryRaw<
@@ -84,7 +82,7 @@ export class PortfolioRepository {
         WHERE d.instrument_id = i.id
         ORDER BY d.date DESC LIMIT 1
       ) b
-      WHERE i.ticker IN (${Prisma.join(tickers)}) AND i.quote_factor = 1`;
+      WHERE i.ticker IN (${Prisma.join(tickers)})`;
     return rows.map((row) => ({
       ticker: row.ticker,
       date: day(row.date),
@@ -92,12 +90,11 @@ export class PortfolioRepository {
     }));
   }
 
-  // O ticker é uma ação que a api conhece: as que /stocks?q e /stocks/:ticker servem (kind STOCK), menos o papel por lote do banco de dev
-  // (`quote_factor` diferente de 1, ver `closes`). Sem chave estrangeira no banco (ADR 0031), é esta conferência, na escrita, que garante que
-  // o papel existe.
+  // O ticker é uma ação que a api conhece: as que /stocks?q e /stocks/:ticker servem (kind STOCK). Sem chave estrangeira no banco (ADR 0031),
+  // é esta conferência, na escrita, que garante que o papel existe.
   async isStock(ticker: string): Promise<boolean> {
     const found = await this.prisma.instrument.findFirst({
-      where: { ticker, kind: 'STOCK', quoteFactor: 1 },
+      where: { ticker, kind: 'STOCK' },
       select: { id: true },
     });
     return found !== null;

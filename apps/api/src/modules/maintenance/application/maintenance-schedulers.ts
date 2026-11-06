@@ -9,8 +9,9 @@ export class MaintenanceSchedulers {
 
   constructor(private readonly messaging: Pick<MessagingService, 'publish'>) {}
 
-  // sched-retention: 0 13 * * 0 UTC = domingo 10:00 em Brasília. A limpeza que a política de privacidade promete (sessões vencidas, pedidos
-  // de uso único vencidos, cadastros nunca confirmados) e a dos job_run do `fetch`: RetentionHandler.
+  // sched-retention: 0 13 * * * UTC = todo dia às 10:00 em Brasília. A limpeza que a política de privacidade promete (sessões vencidas,
+  // pedidos de uso único vencidos, cadastros nunca confirmados) e a dos job_run do `fetch`: RetentionHandler. A cadência faz parte da
+  // promessa (o corte do cadastro, 6 dias, mais a espera de 1 dia até a limpeza seguinte): mudar o cron é mudar a política.
   async retention(now: Date): Promise<void> {
     const date = brasiliaDate(now);
     await this.messaging.publish({ type: 'retention', date });

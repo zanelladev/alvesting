@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { legalDocumentSchema } from '@alvesting/contracts';
 import { describe, expect, it } from 'vitest';
+import { RETENTION_DAYS } from '../../maintenance/application/retention.handler.js';
 import { LEGAL_FILES, loadLegalDocuments, parseLegalDocument } from './legal-documents.js';
 
 // Os termos de uso e a política de privacidade (etapa 11, plano §12): arquivos .md versionados no repositório, em português, cada um
@@ -49,21 +50,25 @@ describe('os documentos carregados', () => {
   it('nenhum endereço de e-mail escrito no repositório: o contato vem da configuração', () => {
     for (const doc of docs) {
       expect(doc.text, doc.document).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.-]+/);
-      expect(doc.text, doc.document).not.toMatch(/TODO|XXX|lorem/i);
+      // marcador de rascunho esquecido; a palavra comum "todo" (minúscula) é texto, e não o marcador
+      expect(doc.text, doc.document).not.toMatch(/\bTODO\b|XXX|[Ll]orem/);
     }
   });
 });
 
 // Uma versão que alguém já aceitou não muda. Editar o texto sem subir a versão reprova aqui: o aceite guarda o SHA-256 do que o
 // usuário viu, e dois textos diferentes sob o mesmo número de versão desfariam a prova. A 0.1 foi a da conta (etapa 11) e a 0.2 é a da
-// carteira (etapa 12): quem aceitou a 0.1 recebe 403 CONSENT_REQUIRED nas rotas da carteira até aceitar a 0.2. Ambas ainda são rascunho
-// (ninguém aceitou em produção): enquanto a vigente for rascunho, atualize o hash dela abaixo ao editar o texto; depois de publicada, suba a
-// versão e acrescente a linha. A linha da versão anterior fica, como registro do que foi aceito.
+// carteira (etapa 12): quem aceitou a 0.1 recebe 403 CONSENT_REQUIRED nas rotas da carteira até aceitar a 0.2. A política subiu para a 0.3
+// em 04/11/2026 (o item 5 passou a prometer o pior caso da limpeza diária): quem aceitou a 0.2 recebe 403 CONSENT_REQUIRED até aceitar a
+// 0.3 (portfolio.integration.spec.ts), e os termos, cujo texto não mudou, seguem na 0.2. Todas ainda são rascunho (ninguém aceitou em
+// produção): enquanto a vigente for rascunho, atualize o hash dela abaixo ao editar o texto; depois de publicada, suba a versão e
+// acrescente a linha. A linha da versão anterior fica, como registro do que foi aceito.
 const FROZEN: Record<string, string> = {
   'TERMS@0.1': '8b7dce70705a94a18cde089b1dbc241d0a1fd92b3d954eecb74db828a104b221',
   'PRIVACY@0.1': 'e1568adee4a666bd0bd0c68ab490ba59aeb721124b1b30315d7be9c09ecf93b4',
   'TERMS@0.2': '54c7213262ea7215a922bbb000023240f09527a2f77640bd5f8dc0dd63622133',
   'PRIVACY@0.2': 'cef4099255991531928b40d9ec2afeeb628949f5cb14be31a5db51fdc717ef4c',
+  'PRIVACY@0.3': 'a781b6ce221109bc8252723bf4eafce6673002405e7018a6296fb966dd21e44d',
 };
 
 describe('versões congeladas', () => {
@@ -127,9 +132,49 @@ describe('o que cada documento precisa dizer (plano §12)', () => {
     expect(privacy).toMatch(/endereço IP/i);
   });
 
-  it('a versão vigente é a 0.2, a que descreve a carteira (etapa 12)', () => {
+  // Cada documento tem a sua versão (a chave do aceite é usuário, documento e versão): os termos seguem na 0.2, a da carteira (etapa 12), porque o
+  // texto deles não mudou; a política foi para a 0.3 porque o item 5 passou a prometer o pior caso da limpeza diária (04/11/2026).
+  it('as versões vigentes: os termos na 0.2 (a da carteira, etapa 12) e a política na 0.3 (a da limpeza diária)', () => {
     expect(byId('TERMS').version).toBe('0.2');
-    expect(byId('PRIVACY').version).toBe('0.2');
+    expect(byId('PRIVACY').version).toBe('0.3');
+  });
+
+  // A política promete o PIOR CASO de cada item da retenção, em português simples: o corte mais a espera até a próxima limpeza, que roda todo
+  // dia (docs/CONTA.md, seção 5; o teste do pior caso está em retention.handler.integration.spec.ts). Ela não fala mais de limpeza semanal.
+  it('a privacidade promete o pior caso de cada limpeza: cadastro não confirmado em até 7 dias, sessão guardada até 8, pedido de uso único em até 1 dia depois de vencer', () => {
+    const retention = privacy.slice(
+      privacy.search(/## 5\. Por quanto tempo/),
+      privacy.search(/## 6\./),
+    );
+    expect(retention).toMatch(
+      /\*\*Cadastro não confirmado\*\*[^\n]*apagados em até 7 dias depois de criados/,
+    );
+    expect(retention).toMatch(
+      /\*\*Sessão\*\*: até 7 dias[^\n]*em até 1 dia depois de vencerem[^\n]*no máximo 8 dias/,
+    );
+    expect(retention).toMatch(
+      /\*\*Links por e-mail\*\*[^\n]*60 minutos[^\n]*30 minutos[^\n]*em até 1 dia depois de vencerem/,
+    );
+    // a promessa de antes (limpeza semanal, 14 dias) não sobra no texto
+    expect(privacy).not.toMatch(/semanal|14 dias/i);
+  });
+
+  // O "6 dias" do texto é o corte do código: quem muda o corte (retention.handler.ts) sem mudar o texto reprova aqui, em vez de deixar a política
+  // prometendo outro número. A conta do "7 dias" (corte mais 1 dia de espera pela limpeza seguinte) está no teste do pior caso.
+  it('a privacidade cita o corte do código (RETENTION_DAYS.user) e a ressalva de que a promessa conta com a limpeza rodando', () => {
+    const retention = privacy.slice(
+      privacy.search(/## 5\. Por quanto tempo/),
+      privacy.search(/## 6\./),
+    );
+    expect(retention).toContain(`cadastros que já passaram de ${RETENTION_DAYS.user} dias`);
+    expect(RETENTION_DAYS.user + 1).toBe(7); // o corte mais o dia de espera é o "7 dias" prometido
+    expect(retention).toMatch(
+      /contam com a limpeza diária rodando\. Se uma limpeza falhar ou não rodar[^\n]*na próxima que rodar[^\n]*pelos dias sem limpeza/,
+    );
+    // o cadastro apagado ainda existe no ponto de restauração do banco, por até 7 dias
+    expect(retention).toMatch(
+      /\*\*Cadastro não confirmado\*\*[^\n]*cópias de segurança[^\n]*até 7 dias a mais/,
+    );
   });
 
   // A carteira é dado pessoal novo (etapa 12): a política diz o que se guarda, para quê, por quanto tempo e como sai (exportar e excluir).

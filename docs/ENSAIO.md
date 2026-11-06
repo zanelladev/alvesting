@@ -71,8 +71,9 @@ Antes de tudo, a carga histórica: os 60 pregões da janela do universo (06/08 a
 quatro com nome de enredo) e o BOVA11. Preços, volumes e negócios saem do SHA-256 de `semente:ticker:pregão`, só com inteiros; o
 retorno de cada ação é o movimento do mercado no dia (até 1,2%) mais o dela (até 2,5%). A **brapi falsa** (`src/ensaio/fake-brapi.ts`) serve
 essas barras no formato dos docs da brapi, e o `BrapiClient` de verdade a lê: `Authorization` obrigatório, uma ação por requisição,
-no máximo 90 dias entre `startDate` e `endDate` (acima, 400 `DATE_WINDOW_EXCEEDED`, como a brapi de verdade na prova de 04/11/2026), `RateLimit-*` em toda
-resposta (a da lista com o limitador próprio dela, 20 de 20) e **quantidade** em vez de volume financeiro (quantidade =
+no máximo 90 dias entre `startDate` e `endDate` (acima, 400 `DATE_WINDOW_EXCEEDED`, como a brapi de verdade na prova de 04/11/2026), os dois pares de cabeçalho de
+limite na resposta do histórico (`RateLimit-*` e `X-RateLimit-*` com `rolling-30d`; o cliente lê só o `X-RateLimit-Remaining`) e, na da lista, só o limitador
+próprio dela (`RateLimit-*`, 20 de 20 por minuto), como a brapi de verdade na prova e na carga do dev de 04/11/2026, e **quantidade** em vez de volume financeiro (quantidade =
 round(volume ÷ fechamento), então quantidade × fechamento volta ao volume sintético com erro de menos de meio fechamento). A barra de um
 pregão só aparece a partir da hora em que "sai" (20:45; a do 2º pregão, 22:10), pelo relógio simulado. O calendário é o real de 2026 (`b3-holidays.json`): o 1º
 pregão é terça 03/11/2026, depois do Finados, o mesmo da Temporada 0 em produção, e a semana 46 começa na segunda 09/11.

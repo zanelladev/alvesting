@@ -27,9 +27,11 @@ import { RETENTION_DAYS, RetentionHandler } from './retention.handler.js';
 // A retenção que a política de privacidade promete (legal/politica-de-privacidade.md, item 5; docs/CONTA.md, seção 5) e a dos job_run do
 // `fetch`, de verdade, no Postgres: o que é apagado e o que NÃO é, com linhas de cada lado de cada limite, o relógio injetado, lotes
 // pequenos e a contagem de cada DELETE no log, sem dado pessoal. Todo dado é sintético (@example.test). Mais dois cuidados do SQL: a
-// linha que muda no meio do lote não é apagada, e o corte não depende do fuso horário da sessão do banco.
+// linha que muda no meio do lote não é apagada, e o corte não depende do fuso horário da sessão do banco. E a promessa em si: o pior caso
+// de cada item (o corte MAIS a espera até a próxima limpeza, que roda todo dia), provado com o relógio andando de limpeza em limpeza.
 const DAY = 86_400_000;
-const NOW = new Date('2026-11-08T13:00:00Z'); // domingo 10:00 em Brasília: o horário do sched-retention
+const HOUR = 3_600_000;
+const NOW = new Date('2026-11-04T13:00:00Z'); // 10:00 em Brasília, o horário do sched-retention; o dia da semana não importa (a limpeza é diária)
 const ago = (ms: number) => new Date(NOW.getTime() - ms);
 
 describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção)'), () => {
@@ -108,46 +110,50 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
     await prisma.onModuleDestroy();
   });
 
-  it('as janelas são as da política de privacidade (cadastro de 7 dias, sessão e pedido vencidos) e a do job_run do fetch (30 dias)', () => {
-    expect(RETENTION_DAYS).toEqual({ user: 7, session: 0, verification: 0, job_run: 30 });
+  // 6 de corte + 1 dia até a próxima limpeza diária = os 7 dias que a política promete para o cadastro nunca confirmado
+  it('os cortes são os da política de privacidade (cadastro de 6 dias, sessão e pedido vencidos) e o do job_run do fetch (30 dias)', () => {
+    expect(RETENTION_DAYS).toEqual({ user: 6, session: 0, verification: 0, job_run: 30 });
   });
 
   describe('sessão vencida', () => {
-    it('apaga a vencida (há muito ou há um segundo) e guarda a que vence agora e a que ainda vale', async () => {
+    it('apaga a vencida (há muito ou há 1 ms) e guarda a que vence agora, a que vence daqui a 1 ms e a que ainda vale', async () => {
       const owner = await user(true, ago(60 * DAY));
       const old = await session(owner.id, ago(30 * DAY));
-      const justExpired = await session(owner.id, ago(1000));
+      const justExpired = await session(owner.id, ago(1));
       const edge = await session(owner.id, NOW);
+      const justValid = await session(owner.id, new Date(NOW.getTime() + 1));
       const valid = await session(owner.id, new Date(NOW.getTime() + DAY));
 
-      const result = await handler.execute('2026-11-08');
+      const result = await handler.execute('2026-11-04');
 
       expect(result).toMatchObject({ outcome: 'done', deleted: { session: 2 } });
-      expect(await ids('session')).toEqual([edge.id, valid.id].sort());
+      expect(await ids('session')).toEqual([edge.id, justValid.id, valid.id].sort());
       expect(await ids('session')).not.toContain(old.id);
       expect(await ids('session')).not.toContain(justExpired.id);
     });
   });
 
   describe('pedido de uso único (verification) vencido', () => {
-    it('apaga o vencido e guarda o que vence agora e o que ainda vale', async () => {
-      const expired = await verification(ago(1000));
+    it('apaga o vencido (há 1 ms) e guarda o que vence agora, o que vence daqui a 1 ms e o que ainda vale', async () => {
+      const expired = await verification(ago(1));
       const now = await verification(NOW);
-      const valid = await verification(new Date(NOW.getTime() + 1000));
+      const justValid = await verification(new Date(NOW.getTime() + 1));
+      const valid = await verification(new Date(NOW.getTime() + 3_600_000));
 
-      const result = await handler.execute('2026-11-08');
+      const result = await handler.execute('2026-11-04');
 
       expect(result).toMatchObject({ deleted: { verification: 1 } });
-      expect(await ids('verification')).toEqual([now.id, valid.id].sort());
+      expect(await ids('verification')).toEqual([now.id, justValid.id, valid.id].sort());
       expect(await ids('verification')).not.toContain(expired.id);
     });
   });
 
-  describe('cadastro nunca confirmado há mais de 7 dias', () => {
-    it('apaga o não verificado criado há mais de 7 dias, com a sessão, a conta e o aceite em cascata, e guarda o resto', async () => {
-      const stale = await user(false, ago(7 * DAY + 1000), 'velho');
-      const edge = await user(false, ago(7 * DAY), 'borda');
-      const fresh = await user(false, ago(7 * DAY - 1000), 'novo');
+  describe('cadastro nunca confirmado há mais de 6 dias', () => {
+    it('apaga o não verificado criado há mais de 6 dias, com a sessão, a conta e o aceite em cascata, e guarda o resto', async () => {
+      // um milissegundo de cada lado do corte (a coluna é timestamptz(3)): passou, está exatamente nele, ainda não chegou
+      const stale = await user(false, ago(6 * DAY + 1), 'velho');
+      const edge = await user(false, ago(6 * DAY), 'borda');
+      const fresh = await user(false, ago(6 * DAY - 1), 'novo');
       const verified = await user(true, ago(90 * DAY), 'confirmado');
       for (const owner of [stale, verified]) {
         await session(owner.id, new Date(NOW.getTime() + DAY));
@@ -165,7 +171,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
         });
       }
 
-      const result = await handler.execute('2026-11-08');
+      const result = await handler.execute('2026-11-04');
 
       expect(result).toMatchObject({ deleted: { user: 1 } });
       expect(await ids('user')).toEqual([edge.id, fresh.id, verified.id].sort());
@@ -187,7 +193,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
       const recent = await fetchJob(ago(30 * DAY - 1000));
       const eod = await fetchJob(ago(400 * DAY), 'eod');
 
-      const result = await handler.execute('2026-11-08');
+      const result = await handler.execute('2026-11-04');
 
       expect(result).toMatchObject({ deleted: { job_run: 2 } });
       const left = await ids('jobRun');
@@ -215,8 +221,96 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
         firstSeenAt: ago(400 * DAY),
       },
     });
-    await handler.execute('2026-11-08');
+    await handler.execute('2026-11-04');
     expect(await prisma.newsItem.count()).toBe(1);
+  });
+
+  // A PROMESSA da política (item 5 de legal/politica-de-privacidade.md) é o PIOR CASO de cada item: o corte MAIS a espera até a próxima
+  // limpeza. O sched-retention roda todo dia às 13:00 UTC (`0 13 * * *`, infra/modules/containerapps.bicep), então o relógio injetado anda de
+  // limpeza em limpeza (a 0 é 01/11/2026 13:00:00.000Z) e o teste lê, de cada linha, em qual delas ela sumiu. Cada linha nasce (ou vence) num
+  // instante diferente em torno da limpeza 0: 1 ms antes, EXATAMENTE nela (o pior caso de verdade, porque o corte é "antes de", estrito), 1 ms
+  // depois ("logo depois de uma limpeza"), 6, 12 e 18 horas depois, e 1 ms antes da limpeza seguinte.
+  describe('a promessa da política: o pior caso da limpeza diária', () => {
+    const FIRST = new Date('2026-11-01T13:00:00Z');
+    const runAt = (k: number) => new Date(FIRST.getTime() + k * DAY);
+    const OFFSETS = [-1, 0, 1, 6 * HOUR, 12 * HOUR, 18 * HOUR, DAY - 1];
+    const RUNS = 9; // as limpezas 0 a 8 cobrem os 7 dias do cadastro com folga
+    const at = (offset: number) => new Date(FIRST.getTime() + offset);
+
+    // Roda as limpezas e devolve, de cada linha, o tempo que ela esperou até sumir: entre o instante dela e a limpeza que a apagou.
+    async function waited(
+      table: 'user' | 'session' | 'verification',
+      rows: Array<{ id: string; at: Date }>,
+    ): Promise<number[]> {
+      const gone = new Map<string, number>();
+      for (let k = 0; k < RUNS; k += 1) {
+        const now = runAt(k);
+        await new RetentionHandler(jobs, new RetentionRepository(prisma), () => now).execute(
+          now.toISOString().slice(0, 10),
+        );
+        const left = new Set(await ids(table));
+        for (const row of rows) if (!left.has(row.id) && !gone.has(row.id)) gone.set(row.id, k);
+      }
+      return rows.map((row) => {
+        const k = gone.get(row.id);
+        expect(k, `a linha de ${row.at.toISOString()} nunca foi apagada`).toBeDefined();
+        return runAt(k!).getTime() - row.at.getTime();
+      });
+    }
+
+    it('o cadastro nunca confirmado criado logo depois de uma limpeza é apagado por uma limpeza em até 7 dias, e nenhum fica mais que isso', async () => {
+      const rows = [];
+      for (const [i, offset] of OFFSETS.entries()) {
+        rows.push({ id: (await user(false, at(offset), `pior${i}`)).id, at: at(offset) });
+      }
+
+      const ages = await waited('user', rows);
+
+      // nenhum fica mais de 7 dias depois de criado (a promessa), e nenhum some antes de passar dos 6 (o corte)
+      for (const age of ages) {
+        expect(age).toBeLessThanOrEqual(7 * DAY);
+        expect(age).toBeGreaterThan(6 * DAY);
+      }
+      // o pior caso é exatamente 7 dias: a conta criada na hora da limpeza só sai na limpeza de 7 dias depois
+      expect(Math.max(...ages)).toBe(7 * DAY);
+      // a criada 1 ms depois de uma limpeza sai na limpeza de 7 dias depois dela: 1 ms antes de completar os 7
+      expect(ages[OFFSETS.indexOf(1)]).toBe(7 * DAY - 1);
+      expect(await ids('user')).toEqual([]);
+    });
+
+    it('a sessão vencida logo depois de uma limpeza é apagada pela seguinte: até 1 dia depois de vencer, e nenhuma fica mais que isso', async () => {
+      const owner = await user(true, ago(60 * DAY));
+      const rows = [];
+      for (const offset of OFFSETS) {
+        rows.push({ id: (await session(owner.id, at(offset))).id, at: at(offset) });
+      }
+
+      const ages = await waited('session', rows);
+
+      for (const age of ages) {
+        expect(age).toBeLessThanOrEqual(DAY);
+        expect(age).toBeGreaterThan(0);
+      }
+      // a que vence exatamente na hora da limpeza só sai na seguinte (o corte é "antes de"): 1 dia exato
+      expect(Math.max(...ages)).toBe(DAY);
+      expect(await ids('session')).toEqual([]);
+    });
+
+    it('o pedido de uso único vencido logo depois de uma limpeza é apagado pela seguinte: até 1 dia depois de vencer', async () => {
+      const rows = [];
+      for (const offset of OFFSETS) {
+        rows.push({ id: (await verification(at(offset))).id, at: at(offset) });
+      }
+
+      const ages = await waited('verification', rows);
+
+      for (const age of ages) {
+        expect(age).toBeLessThanOrEqual(DAY);
+        expect(age).toBeGreaterThan(0);
+      }
+      expect(Math.max(...ages)).toBe(DAY);
+      expect(await ids('verification')).toEqual([]);
+    });
   });
 
   describe('lotes pequenos, contagem no log, repetição', () => {
@@ -227,7 +321,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
         batchSize: 2,
       });
 
-      const result = await handler.execute('2026-11-08');
+      const result = await handler.execute('2026-11-04');
 
       expect(result).toMatchObject({ deleted: { session: 5 } });
       expect(await prisma.session.count()).toBe(0);
@@ -243,7 +337,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
       handler = new RetentionHandler(jobs, new RetentionRepository(prisma), () => NOW, {
         batchSize: 2,
       });
-      await handler.execute('2026-11-08');
+      await handler.execute('2026-11-04');
       const batches = log.mock.calls
         .map((call) => call[0] as { table?: string; deleted?: number })
         .filter((line) => line.table === 'session');
@@ -252,11 +346,11 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
 
     it('o log leva tabela, quantas linhas e o corte, e nenhum dado pessoal (nem e-mail, nem nome, nem ULID de usuário)', async () => {
       const stale = await user(false, ago(8 * DAY), 'pessoaprivada');
-      await handler.execute('2026-11-08');
+      await handler.execute('2026-11-04');
       const text = JSON.stringify(log.mock.calls);
       expect(text).toContain('"table":"user"');
       expect(text).toContain('"deleted":1');
-      expect(text).toContain('2026-11-01T13:00:00.000Z'); // o corte de 7 dias: 08/11 menos 7 dias
+      expect(text).toContain('2026-10-29T13:00:00.000Z'); // o corte de 6 dias: 04/11 menos 6 dias
       for (const personal of ['pessoaprivada', '@example.test', 'Pessoa ', stale.id]) {
         expect(text, personal).not.toContain(personal);
       }
@@ -266,16 +360,16 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
       const owner = await user(true, ago(60 * DAY));
       await session(owner.id, ago(8 * DAY));
 
-      const first = await handler.execute('2026-11-08');
+      const first = await handler.execute('2026-11-04');
       expect(first).toMatchObject({ outcome: 'done', deleted: { session: 1 } });
 
       // mensagem repetida (a mesma data): a linha de job_run já está concluída, e nada é consultado de novo
       log.mockClear();
-      await expect(handler.execute('2026-11-08')).resolves.toEqual({ outcome: 'already_done' });
+      await expect(handler.execute('2026-11-04')).resolves.toEqual({ outcome: 'already_done' });
       expect(log).not.toHaveBeenCalled();
 
-      // outro domingo: roda, e não acha nada para apagar
-      await expect(handler.execute('2026-11-15')).resolves.toMatchObject({
+      // outro dia: roda, e não acha nada para apagar
+      await expect(handler.execute('2026-11-05')).resolves.toMatchObject({
         outcome: 'done',
         deleted: { user: 0, session: 0, verification: 0, job_run: 0 },
       });
@@ -290,9 +384,9 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
         new RetentionRepository(prisma),
         () => new Date(NOW.getTime() - 60_000),
       );
-      await early.execute('2026-11-01');
+      await early.execute('2026-11-03');
       expect(await ids('session')).toEqual([old.id]);
-      await handler.handle({ type: 'retention', date: '2026-11-08' });
+      await handler.handle({ type: 'retention', date: '2026-11-04' });
       expect(await ids('session')).toEqual([]);
     });
   });
@@ -346,7 +440,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
     }
 
     it('o cadastro que confirmou o e-mail durante o lote fica, com a conta, a sessão e o aceite', async () => {
-      const racing = await user(false, ago(8 * DAY), 'confirmou');
+      const racing = await user(false, ago(7 * DAY), 'confirmou');
       await session(racing.id, new Date(NOW.getTime() + DAY));
       await prisma.consent.create({
         data: {
@@ -358,7 +452,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
         },
       });
 
-      const deleted = await deleteWhileLocked('user', ago(7 * DAY), {
+      const deleted = await deleteWhileLocked('user', ago(6 * DAY), {
         sql: 'UPDATE "user" SET email_verified = true WHERE id = $1',
         params: [racing.id],
       });
@@ -422,7 +516,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
         () => NOW,
       );
 
-      await expect(broken.execute('2026-11-08')).rejects.toThrow(/banco fora/);
+      await expect(broken.execute('2026-11-04')).rejects.toThrow(/banco fora/);
 
       const row = await prisma.jobRun.findFirstOrThrow({ where: { type: 'retention' } });
       expect(row.status).toBe('FAILED');
@@ -430,7 +524,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('RetentionHandler (retenção
       const alert = error.mock.calls.find((call) => call[1] === ALERT_LOG.jobFailed);
       expect(alert?.[0]).toMatchObject({ queue: 'maintenance', type: 'retention' });
       // a próxima entrega reassume a linha FAILED e conclui
-      await expect(handler.execute('2026-11-08')).resolves.toMatchObject({ outcome: 'done' });
+      await expect(handler.execute('2026-11-04')).resolves.toMatchObject({ outcome: 'done' });
     });
   });
 });

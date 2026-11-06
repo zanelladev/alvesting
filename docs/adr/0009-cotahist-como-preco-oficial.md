@@ -1,6 +1,6 @@
 # ADR 0009: COTAHIST como preço oficial de execução
 
-- **Status:** superada pela [ADR 0032](0032-brapi-fonte-unica-das-cotacoes-e-banco-como-cache.md) em 03/11/2026 (os termos da B3 vedam a coleta automatizada, inclusive por IA; a brapi virou a fonte única e o COTAHIST saiu). O texto abaixo é o histórico.
+- **Status:** superada pela [ADR 0032](0032-brapi-fonte-unica-das-cotacoes-e-banco-como-cache.md) em 03/11/2026 (os termos da B3 vedam a coleta automatizada, inclusive por IA; a brapi virou a fonte única e o COTAHIST saiu; em 04/11/2026 o que sobrava dele no banco, no schema e no código também saiu, nota no fim da ADR 0032). O texto abaixo é o histórico.
 - **Data:** 31/10/2026
 - **Origem:** `docs/PLANO.md`, §5.14 (decisão deliberada)
 

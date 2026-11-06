@@ -18,7 +18,7 @@ const toIso = (date: Date): IsoDate => date.toISOString().slice(0, 10);
 // Os bigint vão como texto e voltam a bigint no SQL: o volume passa de 2^53.
 const text = (values: bigint[]): string[] => values.map(String);
 
-// Os campos de uma barra que a comparação confere (os da brapi; `trades` e `source` não entram).
+// Os campos de uma barra que a comparação confere (`source` não entra).
 const FIELDS = [
   ['open', 'openCents'],
   ['high', 'highCents'],
@@ -45,13 +45,13 @@ export interface InsertResult {
 export class MarketRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Os papéis novos da lista da brapi (ISIN nulo, fator 1). Quem já existe fica como está: o nome, o ISIN e a classe que o dev já tinha
-  // (de antes da brapi) não são tocados. Devolve os tickers que de fato foram criados.
+  // Os papéis novos da lista da brapi (ISIN nulo). Quem já existe fica como está: o nome, o ISIN e a classe gravados não são tocados.
+  // Devolve os tickers que de fato foram criados.
   async insertInstruments(seeds: readonly InstrumentSeed[], lastSeen: IsoDate): Promise<string[]> {
     if (seeds.length === 0) return [];
     const rows = await this.prisma.$queryRaw<Array<{ ticker: string }>>`
-      INSERT INTO instrument (id, ticker, name, isin, spec, kind, quote_factor, last_seen)
-      SELECT t.id, t.ticker, t.name, NULL, t.spec, t.kind::instrument_kind, 1, ${lastSeen}::date
+      INSERT INTO instrument (id, ticker, name, isin, spec, kind, last_seen)
+      SELECT t.id, t.ticker, t.name, NULL, t.spec, t.kind::instrument_kind, ${lastSeen}::date
       FROM unnest(
         ${seeds.map(() => newId())}::text[],
         ${seeds.map((s) => s.ticker)}::text[],
@@ -64,10 +64,10 @@ export class MarketRepository {
     return rows.map((row) => row.ticker);
   }
 
-  // Os tickers das ações à vista cotadas por unidade (o fator 1 deixa de fora o resíduo do dev, docs/DADOS.md, seção 4).
+  // Os tickers das ações à vista (kind STOCK; o BOVA11 é referência e fica de fora).
   async stockTickers(): Promise<string[]> {
     const rows = await this.prisma.instrument.findMany({
-      where: { kind: 'STOCK', quoteFactor: 1 },
+      where: { kind: 'STOCK' },
       orderBy: { ticker: 'asc' },
       select: { ticker: true },
     });
@@ -169,9 +169,9 @@ export class MarketRepository {
   ): Promise<number> {
     if (rows.length === 0) return 0;
     return tx.$executeRaw`
-      INSERT INTO daily_bar (id, instrument_id, date, open_cents, high_cents, low_cents, close_cents, volume_cents, trades, source)
+      INSERT INTO daily_bar (id, instrument_id, date, open_cents, high_cents, low_cents, close_cents, volume_cents, source)
       SELECT t.id, t.instrument_id, t.date, t.open_cents::bigint, t.high_cents::bigint, t.low_cents::bigint,
-        t.close_cents::bigint, t.volume_cents::bigint, NULL, 'BRAPI'::bar_source
+        t.close_cents::bigint, t.volume_cents::bigint, 'BRAPI'::bar_source
       FROM unnest(
         ${rows.map(() => newId())}::text[],
         ${rows.map((r) => r.instrumentId)}::text[],
@@ -202,7 +202,7 @@ export class MarketRepository {
       WHERE instrument.id = t.id AND instrument.last_seen < t.day`;
   }
 
-  // Os pregões que já estão confirmados (pela brapi, ou no dev, de antes dela). O CALENDAR é só previsão.
+  // Os pregões que já estão confirmados. O CALENDAR é só previsão.
   async confirmedDays(days: readonly IsoDate[]): Promise<Set<IsoDate>> {
     if (days.length === 0) return new Set();
     const rows = await this.prisma.tradingDay.findMany({
@@ -213,8 +213,8 @@ export class MarketRepository {
   }
 
   // Confirma os dias como pregão visto pela brapi. Só vale dia com barra gravada (o banco confere aqui: um dia sem nenhuma barra seria
-  // "confirmado" sem dado e o universo o contaria), e nunca rebaixa nem reescreve dia já confirmado, o legado do dev ou o da brapi. Devolve os dias
-  // que foram confirmados agora.
+  // "confirmado" sem dado e o universo o contaria), e nunca rebaixa nem reescreve dia já confirmado. Devolve os dias que foram confirmados
+  // agora.
   async confirmTradingDays(days: readonly IsoDate[]): Promise<IsoDate[]> {
     if (days.length === 0) return [];
     const rows = await this.prisma.$queryRaw<Array<{ date: Date }>>`

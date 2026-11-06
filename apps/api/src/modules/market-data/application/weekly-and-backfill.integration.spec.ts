@@ -16,7 +16,6 @@ import { BrapiConfigError } from '../infrastructure/brapi.client.js';
 import { MarketRepository } from '../infrastructure/market.repository.js';
 import { UniverseRepository } from '../infrastructure/universe.repository.js';
 import { at, brapiWorld, marketOf, type BrapiTestWorld } from '../testing/brapi-market.fixture.js';
-import { LEGACY_SHA, LEGACY_SOURCE } from '../testing/legacy-source.fixture.js';
 import { BrapiBackfill } from './backfill.js';
 import { BarLoader } from './bar-loader.js';
 import { UniverseHandler } from './universe.handler.js';
@@ -141,10 +140,10 @@ describe.skipIf(!testDatabaseUrl)(
           ['TAEE11', 'UNT', 'STOCK', null],
           ['VALE3', 'ON', 'STOCK', null],
         ]);
-        const confirmed = await prisma.tradingDay.findMany({ where: { source: 'BRAPI' } });
-        expect(confirmed).toHaveLength(DAYS.length);
-        expect(confirmed.every((c) => c[LEGACY_SHA] === null)).toBe(true);
-        expect(await prisma.dailyBar.count({ where: { source: LEGACY_SOURCE } })).toBe(0);
+        // todo pregão confirmado e toda barra gravada são da brapi, a única origem
+        expect(await prisma.tradingDay.count({ where: { source: 'BRAPI' } })).toBe(DAYS.length);
+        expect(await prisma.tradingDay.count()).toBe(DAYS.length);
+        expect(await prisma.dailyBar.count({ where: { source: 'BRAPI' } })).toBe(DAYS.length * 4);
       });
 
       it('é retomável: a segunda passada pede só a falta, e uma terceira não pede nada', async () => {
@@ -322,9 +321,9 @@ describe.skipIf(!testDatabaseUrl)(
           where: { ticker: { in: ['NEWW3', 'UNIT11'] } },
           orderBy: { ticker: 'asc' },
         });
-        expect(created.map((c) => [c.ticker, c.spec, c.isin, c.kind, c.quoteFactor])).toEqual([
-          ['NEWW3', 'ON', null, 'STOCK', 1],
-          ['UNIT11', 'UNT', null, 'STOCK', 1],
+        expect(created.map((c) => [c.ticker, c.spec, c.isin, c.kind])).toEqual([
+          ['NEWW3', 'ON', null, 'STOCK'],
+          ['UNIT11', 'UNT', null, 'STOCK'],
         ]);
         expect(await prisma.dailyBar.count({ where: { instrument: { ticker: 'NEWW3' } } })).toBe(
           DAYS.length,
