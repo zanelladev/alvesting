@@ -254,7 +254,10 @@ async function dataTables(
   const feeding = settle(pipeline(createReadStream(file), child.stdin!));
   const [exit, feedError] = await Promise.all([collect(child, { stdout: false }), feeding]);
   if (exit.code !== 0) throw failed('pg_restore --list', exit);
-  if (feedError) throw feedError;
+  // o --list lê só o índice, no começo do arquivo, e sai com 0 sem esperar o resto: o que ele não leu volta como EPIPE (ou como o fim
+  // antes da hora do fluxo), e não é erro. Sem isso, todo dump maior que o buffer do pipe (64 KB no Linux) virava "write EPIPE", o
+  // bom e o ruim (o primeiro CI no GitHub pegou, com o pg_restore nativo; o do contêiner, no Mac, lê o stdin inteiro)
+  if (feedError && !LEFTOVER.has((feedError as NodeJS.ErrnoException).code ?? '')) throw feedError;
 
   const tables: string[] = [];
   const personal: string[] = [];
@@ -325,6 +328,9 @@ function rowCounter() {
 }
 
 const quoted = (table: string) => `public."${table.replaceAll('"', '""')}"`;
+
+// O que sobra no fluxo para um processo que já saiu de propósito (o pg_restore --list depois do índice).
+const LEFTOVER = new Set(['EPIPE', 'ERR_STREAM_PREMATURE_CLOSE']);
 
 // O fim de um fluxo (pipeline) sem rejeição: o erro, se houver, para ser lido DEPOIS do código de saída do processo (o que explica a falha).
 const settle = (flow: Promise<unknown>): Promise<Error | undefined> =>

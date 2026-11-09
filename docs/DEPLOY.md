@@ -7,7 +7,7 @@ pelo Front Door verde, e só então recebe 100% do tráfego. Qualquer passo que 
 
 | Arquivo | Para quê |
 |---|---|
-| `.github/workflows/ci.yml` | PR e push na `main`: lint, tipos, unidade, integração (Postgres e emulador do Service Bus), a cobertura contra o mínimo do Playbook (e o SonarCloud, com o segredo `SONAR_TOKEN`; `docs/QUALIDADE.md`), Playwright nos três projetos, Lighthouse mobile, `docs:check`, build, check da infra, imagens Docker e what-if do Bicep |
+| `.github/workflows/ci.yml` | PR e push na `main`: lint, tipos, unidade, integração (Postgres e emulador do Service Bus), a cobertura contra o mínimo do Playbook (e o SonarCloud, com o segredo `SONAR_TOKEN`; `docs/QUALIDADE.md`), Playwright nos três projetos, Lighthouse mobile, `docs:check`, build, check da infra, imagens Docker e, só em PR, o what-if do Bicep |
 | `.github/workflows/deploy.yml` | Push na `main` (e execução manual): imagens no ACR e o rollout descrito abaixo |
 | `scripts/deploy.mjs` | Os passos que falam com o Container Apps (`pin`, `migrate`, `create api\|web`, `smoke-green api\|web`, `promote api\|web`, `smoke-edge`, `cleanup`, `roll-roles`, `rollback`, `current-tags`, o `revert <revisão>` da seção 6 e, no econômico, `probe-green api` e `green-url web`), com testes em `scripts/deploy.test.mjs` (que executa o `deploy.yml` de verdade contra um Container Apps falso, nos dois perfis) |
 | `scripts/sse-probe.mjs` | Mede se o SSE chega aos poucos ou bufferizado (ADR 0017) |

@@ -777,28 +777,29 @@ test.describe('o modal de lançar', () => {
     const f = fields(form);
     await expect(f.quantity).toHaveValue('1');
     await expect(f.less).toBeDisabled();
-    // o algarismo que gira: a opacidade fora de 0 e 1 em algum quadro depois do toque no +
-    const rolling = f.quantity.evaluate(
-      (input) =>
-        new Promise<number>((resolve) => {
-          const control = input.closest('div[class*="control"]')!;
-          const start = performance.now();
-          let moving = 0;
-          const tick = () => {
-            const glyphs = [...control.querySelectorAll<HTMLElement>('[class*="glyph"]')];
-            moving = Math.max(
-              moving,
-              glyphs.filter((g) => !['', '0', '1'].includes(g.style.opacity)).length,
-            );
-            if (performance.now() - start > 1_500) resolve(moving);
-            else requestAnimationFrame(tick);
-          };
-          tick();
-        }),
-    );
+    // o algarismo que gira: alguma opacidade fora de 0 e 1 depois do toque no +. A mola do motion escreve a opacidade no style a cada
+    // quadro, e o observador, ligado ANTES do toque, vê cada escrita (a amostra por requestAnimationFrame, num evaluate sem esperar,
+    // às vezes começava depois do giro no WebKit do CI e via 0)
+    await f.quantity.evaluate((input) => {
+      const seen = window as unknown as { rolling: number };
+      seen.rolling = 0;
+      new MutationObserver((records) => {
+        for (const { target } of records) {
+          const glyph = target as HTMLElement;
+          if (glyph.matches('[class*="glyph"]') && !['', '0', '1'].includes(glyph.style.opacity))
+            seen.rolling++;
+        }
+      }).observe(input.closest('div[class*="control"]')!, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style'],
+      });
+    });
     await f.more.click();
     await expect(f.quantity).toHaveValue('2');
-    expect(await rolling).toBeGreaterThan(0);
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { rolling: number }).rolling))
+      .toBeGreaterThan(0);
     await f.more.click();
     await expect(f.quantity).toHaveValue('3');
     await f.less.click();

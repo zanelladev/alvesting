@@ -465,9 +465,11 @@ jobs:
         run: docker logs app
 
   whatif:
-    # Só com as variáveis de OIDC do repositório (docs/DEPLOY.md) e nunca em PR de fork: o fork não recebe o
-    # token de OIDC, e o job quebraria. Sem as variáveis o job é pulado.
-    if: ${{ vars.AZURE_CLIENT_ID != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    # Só em PR do próprio repositório e com as variáveis de OIDC (docs/DEPLOY.md, seção 2): a credencial dele é a `pull_request`. No
+    # push da main o token sai com `ref:refs/heads/main`, que nenhuma credencial aceita (dar uma a ele poria o Contributor em todo job
+    # da main sem o environment), e quem mostra a infra no ar ali é o próprio deploy. O fork não recebe o token de OIDC. Sem as
+    # variáveis o job é pulado.
+    if: ${{ vars.AZURE_CLIENT_ID != '' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
