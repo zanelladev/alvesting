@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  O operador local da Temporada 1 (arena:operar; ADR 0038; docs/RUNBOOK.md, "Operador local"): o Mac roda a arena ao vivo nos horários de
+  produção até a Azure existir. É um MODELO: troque __REPO__ (a pasta do repositório), __NODE__ (o node 26 do nvm: `nvm which 26`) e
+  __ENV_FILE__ (o arquivo de ambiente, fora do git: o modelo é infra/local/operador.env.example) antes de copiar para
+  ~/Library/LaunchAgents/. Nenhum segredo aqui: eles ficam só no arquivo de ambiente.
+
+  - caffeinate -i: o Mac não dorme por inatividade enquanto o operador roda (a tampa fechada sem energia externa ainda dorme; RUNBOOK);
+  - KeepAlive: o launchd reinicia o processo que sair (ThrottleInterval: no máximo um reinício por minuto);
+  - para o modo só de coleta, acrescente <string>- -so-dados</string> (sem o espaço) depois de "operar".
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>br.alvesting.operador</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/bin/caffeinate</string>
+      <string>-i</string>
+      <string>__NODE__</string>
+      <string>--enable-source-maps</string>
+      <string>--env-file=__ENV_FILE__</string>
+      <string>__REPO__/apps/api/dist/temporada-cli.js</string>
+      <string>operar</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__REPO__/apps/api</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+    <key>StandardOutPath</key>
+    <string>__REPO__/.data/operador/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO__/.data/operador/launchd.err.log</string>
+  </dict>
+</plist>

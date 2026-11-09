@@ -66,6 +66,8 @@ export class CycleViewRepository {
         decisionAt: true,
         deadlineAt: true,
         closedAt: true,
+        mode: true,
+        executedAt: true,
         briefing: { select: { sha256: true } },
         promptVersion: { select: { version: true, sha256: true } },
         decisions: {
@@ -108,6 +110,8 @@ export class CycleViewRepository {
       decisionAt: row.decisionAt.toISOString(),
       deadlineAt: row.deadlineAt.toISOString(),
       closedAt: row.closedAt?.toISOString() ?? null,
+      mode: row.mode,
+      executedAt: row.executedAt.toISOString(),
       prompt: row.promptVersion
         ? { version: row.promptVersion.version, sha256: row.promptVersion.sha256 }
         : null,

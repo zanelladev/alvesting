@@ -63,20 +63,26 @@ export interface Mail {
 }
 
 // O e-mail mais novo para o endereço (e, se vier, com o assunto pedido). O e-mail sai em segundo plano (a resposta do cadastro não
-// espera o envio), então espera a mensagem aparecer na pasta.
-export async function mailTo(address: string, subject?: RegExp): Promise<Mail> {
+// espera o envio), então espera a mensagem aparecer na pasta (a da api da conta; a do perfil econômico é outra, e2e/economico.spec.ts).
+export async function mailTo(
+  address: string,
+  subject?: RegExp,
+  outbox: string = ACCOUNT_OUTBOX_DIR,
+): Promise<Mail> {
   let found: Mail | undefined;
   await expect
     .poll(
       async () => {
-        const files = await readdir(ACCOUNT_OUTBOX_DIR).catch(() => [] as string[]);
+        const files = await readdir(outbox).catch(() => [] as string[]);
         for (const file of files
           .filter((f) => f.endsWith('.json'))
           .sort()
           .reverse()) {
-          const message = JSON.parse(
-            await readFile(path.join(ACCOUNT_OUTBOX_DIR, file), 'utf8'),
-          ) as { to: string; subject: string; plainText: string };
+          const message = JSON.parse(await readFile(path.join(outbox, file), 'utf8')) as {
+            to: string;
+            subject: string;
+            plainText: string;
+          };
           const link = /https?:\/\/\S+/.exec(message.plainText)?.[0];
           if (message.to === address && link && (subject?.test(message.subject) ?? true)) {
             found = { subject: message.subject, plainText: message.plainText, link };

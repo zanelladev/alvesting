@@ -672,3 +672,66 @@ describe('CvmFetcher', () => {
     await expect(new CvmFetcher(memoryNews().repo, fakeCvm(f).fetchFn).run(NOW)).rejects.toThrow();
   });
 });
+
+// O arena:retroativo (ADR 0038): lê o ano sem condição, uma vez, e grava cada documento da janela com a hora em que o pipeline ao vivo o
+// teria visto, só os vistos até o horizonte. Os validadores ficam como estão: são da busca ao vivo (a do operador local).
+describe('CvmFetcher.backfill: a CVM do retroativo', () => {
+  // a regra de visibilidade (src/temporada/visibility.ts, cvmSeenAt): o arquivo de X+1, visto às 07:30:45 de X+1
+  const seenAt = (deliveredOn: string) =>
+    new Date(new Date(`${deliveredOn}T10:30:45Z`).getTime() + 86_400_000);
+
+  it('grava os documentos da janela, um lote por dia de entrega com a hora da regra, e só os vistos até o horizonte', async () => {
+    const cvm = fakeCvm(files());
+    const db = memoryNews();
+    // validadores de uma busca ao vivo anterior: o retroativo não os manda nem os troca
+    db.state.set('cvm-ipe:2026', { etag: '"ipe-1"' });
+    db.state.set('cvm-fca:2026', { etag: '"fca-1"' });
+    const fetcher = new CvmFetcher(db.repo, cvm.fetchFn);
+    const result = await fetcher.backfill(
+      { from: '2026-10-20', to: '2026-11-01', horizon: seenAt('2026-10-28'), seenAt },
+      NOW,
+    );
+    // 1004 (20/10), 1007 (27/10, o BTG pela lacuna) e 1001 (28/10, visto em 29/10 às 07:30:45, no horizonte). Ficam de fora: 1002 (30/10,
+    // visto depois do horizonte), 1005 (05/11, fora da janela), 1003 (assembleia) e 1006 (sem ticker)
+    expect(result).toMatchObject({ documents: 3, mapped: 3, created: 3 });
+    const batches = db.repo.saveNews.mock.calls.map(([drafts, at]) => [
+      drafts.map((d) => d.title),
+      at.toISOString(),
+    ]);
+    expect(batches).toEqual([
+      [[expect.stringContaining('Fato antigo')], '2026-10-21T10:30:45.000Z'],
+      [[expect.stringContaining('Reorganização societária')], '2026-10-28T10:30:45.000Z'],
+      [
+        [expect.stringContaining('Relatório de Produção e Vendas 3T26')],
+        '2026-10-29T10:30:45.000Z',
+      ],
+    ]);
+    // sem condição e sem guardar validador nenhum
+    expect(cvm.calls.every((call) => call.ifNoneMatch === null)).toBe(true);
+    expect(db.repo.saveFetchState).not.toHaveBeenCalled();
+    expect(db.repo.touchFetchState).not.toHaveBeenCalled();
+  });
+
+  it('o horizonte é inclusive na hora exata, e um segundo antes deixa o documento para a próxima execução', async () => {
+    const run = async (horizon: Date) => {
+      const db = memoryNews();
+      await new CvmFetcher(db.repo, fakeCvm(files()).fetchFn).backfill(
+        { from: '2026-10-28', to: '2026-10-28', horizon, seenAt },
+        NOW,
+      );
+      return db.saved.size;
+    };
+    expect(await run(seenAt('2026-10-28'))).toBe(1);
+    expect(await run(new Date(seenAt('2026-10-28').getTime() - 1000))).toBe(0);
+  });
+
+  it('sem nenhum instrumento conhecido falha: o banco da temporada não foi preparado', async () => {
+    const db = memoryNews([]);
+    await expect(
+      new CvmFetcher(db.repo, fakeCvm(files()).fetchFn).backfill(
+        { from: '2026-10-20', to: '2026-11-01', horizon: NOW, seenAt },
+        NOW,
+      ),
+    ).rejects.toThrow(/prepare o banco/);
+  });
+});

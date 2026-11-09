@@ -11,9 +11,9 @@ import {
   useState,
   useSyncExternalStore,
   type FormEvent,
-  type ReactElement,
   type ReactNode,
 } from 'react';
+import styles from './form-kit.module.css';
 import { Icone } from './icones';
 import { NativeSelect, NativeSelectOption } from './reui/native-select';
 import { BUTTON, CAIXA_ERRO, INPUT } from './ui';
@@ -179,7 +179,11 @@ export function AccountForm({
       ) : null}
       <fieldset disabled={!hydrated || busy} className="min-w-0 space-y-4">
         <Errors.Provider value={{ errors, clear }}>{children}</Errors.Provider>
-        <div className={largo ? 'flex flex-col gap-3 *:w-full' : 'flex flex-wrap gap-3'}>
+        {/* `data-acoes`: quem embrulha o formulário num corpo que rola (o modal da carteira) prende os botões no pé por ele */}
+        <div
+          data-acoes=""
+          className={largo ? 'flex flex-col gap-3 *:w-full' : 'flex flex-wrap gap-3'}
+        >
           <button type="submit" className={primary ? `${BUTTON} btn-primary` : BUTTON}>
             {busy ? (
               <>
@@ -220,11 +224,23 @@ export function AccountForm({
   );
 }
 
+// O que todo campo do formulário lê do envio: o id (o rótulo aponta para ele), o erro dele, os ids da dica e do erro, o aria-describedby que
+// os junta e o `clear`, que tira o erro quando a pessoa mexe no campo. Os campos de fora deste arquivo (os do lançamento da carteira, sobre as
+// peças da Arc) o usam com a `FieldError`, para o erro deles sair igual ao dos campos daqui.
+export function useCampo(name: string, hint?: string) {
+  const id = useId();
+  const { errors, clear } = useContext(Errors);
+  const error = errors[name];
+  const hintId = `${id}-dica`;
+  const errorId = `${id}-erro`;
+  const describedBy =
+    [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
+  return { id, error, hintId, errorId, describedBy, clear: () => clear(name) };
+}
+
 // Campo de texto com rótulo. A dica e o erro ficam ligados ao campo por aria-describedby; o erro marca o campo como inválido.
-// `defaultValue`, `capitalize` e `maxLength` e o tipo `date` são do painel de admin (etapa 10, parte 2): a conta não os usa. `inputMode` (o teclado
-// do celular: números para a quantidade, números com vírgula para o valor) e `max` (o último dia que o seletor de data deixa escolher) são da
-// carteira (etapa 12, parte 2); `max` é só dica do seletor, a api é quem confere a data. Em caixa alta (`capitalize`) o texto também SAI em caixa
-// alta na tela, e não só no teclado do celular: o ticker aparece como o código que ele é.
+// `defaultValue`, `capitalize` e `maxLength` e o tipo `date` são do painel de admin (etapa 10, parte 2): a conta não os usa. Em caixa alta
+// (`capitalize`) o texto também SAI em caixa alta na tela, e não só no teclado do celular: o ticker da carteira aparece como o código que ele é.
 export function TextField({
   name,
   label,
@@ -234,8 +250,6 @@ export function TextField({
   defaultValue,
   capitalize,
   maxLength,
-  inputMode,
-  max,
 }: {
   name: string;
   label: string;
@@ -245,15 +259,8 @@ export function TextField({
   defaultValue?: string;
   capitalize?: 'characters';
   maxLength?: number;
-  inputMode?: 'numeric' | 'decimal';
-  max?: string;
 }) {
-  const id = useId();
-  const { errors, clear } = useContext(Errors);
-  const error = errors[name];
-  const hintId = `${id}-dica`;
-  const errorId = `${id}-erro`;
-  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ');
+  const { id, error, hintId, errorId, describedBy, clear } = useCampo(name, hint);
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-sm font-medium text-ink">
@@ -271,15 +278,13 @@ export function TextField({
         autoComplete={autoComplete}
         defaultValue={defaultValue}
         maxLength={maxLength}
-        inputMode={inputMode}
-        max={max}
         // e-mail, senha e o resto vão em minúsculas como o teclado do celular os digitou; só o nome ganha a inicial maiúscula
         autoCapitalize={capitalize ?? (autoComplete === 'name' ? 'words' : 'none')}
         autoCorrect="off"
         spellCheck={false}
         aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy || undefined}
-        onChange={() => clear(name)}
+        aria-describedby={describedBy}
+        onChange={clear}
         className={`${INPUT} w-full${capitalize ? ' uppercase' : ''}`}
       />
       {error ? <FieldError id={errorId}>{error}</FieldError> : null}
@@ -302,12 +307,7 @@ export function TextAreaField({
   rows?: number;
   defaultValue?: string;
 }) {
-  const id = useId();
-  const { errors, clear } = useContext(Errors);
-  const error = errors[name];
-  const hintId = `${id}-dica`;
-  const errorId = `${id}-erro`;
-  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ');
+  const { id, error, hintId, errorId, describedBy, clear } = useCampo(name, hint);
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-sm font-medium text-ink">
@@ -328,8 +328,8 @@ export function TextAreaField({
         autoComplete="off"
         spellCheck={false}
         aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy || undefined}
-        onChange={() => clear(name)}
+        aria-describedby={describedBy}
+        onChange={clear}
         className={`${INPUT} w-full py-2 font-mono`}
       />
       {error ? <FieldError id={errorId}>{error}</FieldError> : null}
@@ -377,12 +377,16 @@ export function SelectField({
   );
 }
 
-// Escolha de uma opção entre poucas (o modo de preço da carteira), com radios nativos de 44 por 44 px e o texto no rótulo, num grupo com legenda
-// (o leitor de tela diz o nome do grupo e a opção). Controlado de fora: quem renderiza guarda a escolha, porque ela muda o rótulo e a dica de outro
-// campo. Mudar a escolha apaga o erro do campo `clears`, se houver (o valor digitado quer dizer outra coisa no outro modo). A `hint` fica ligada ao
-// grupo por aria-describedby: o leitor de tela a lê ao entrar nele, que é onde a troca de opção avisa o que vai acontecer. `describe` dá a uma
-// opção a explicação que o leitor de tela ouve com ela (a descrição do radio), e `wrap` envolve o rótulo dela (o tooltip da Arc, que mostra a
-// mesma explicação no hover e no foco: o foco do radio sobe até o rótulo).
+// Escolha de uma entre duas opções (o modo de preço da carteira, o único uso): o controle segmentado, no desenho do `.segmentado` do site (a
+// trilha cinza em pílula e a pílula do canvas na escolhida), com as duas metades iguais e a pílula que desliza para a opção escolhida (só CSS,
+// `:has(:checked)`, 250 ms; parada com movimento reduzido; form-kit.module.css). Continuam radios nativos num grupo com legenda (o leitor de tela
+// diz o nome do grupo e a opção, e as setas trocam a opção): escondidos à vista, não do teclado nem do leitor de tela, com o anel de foco na
+// metade. Cada metade tem 44 px de altura e é o alvo inteiro (o toque no texto marca o radio). Controlado de fora: quem renderiza guarda a
+// escolha, porque ela muda o rótulo e a dica de outro campo. Mudar a escolha apaga o erro do campo `clears`, se houver (o valor digitado quer
+// dizer outra coisa no outro modo). A `hint` fica ligada ao grupo por aria-describedby: o leitor de tela a lê ao entrar nele, que é onde a troca
+// de opção avisa o que vai acontecer. `describe` dá a uma opção a explicação que o leitor de tela ouve com ela (a descrição do radio); quem vê a
+// lê na dica do campo que a opção muda (o balão do tooltip numa metade de segmentado não abre no toque).
+// ponytail: duas metades (a pílula anda 100% da largura dela); três opções pedem a pílula em terços.
 export function RadioField({
   name,
   legend,
@@ -392,17 +396,18 @@ export function RadioField({
   onChange,
   clears,
   describe = {},
-  wrap = (_value, option) => option,
 }: {
   name: string;
   legend: string;
   hint?: string;
   value: string;
-  options: ReadonlyArray<readonly [value: string, label: string]>;
+  options: readonly [
+    readonly [value: string, label: string],
+    readonly [value: string, label: string],
+  ];
   onChange: (value: string) => void;
   clears?: string;
   describe?: Readonly<Record<string, string>>;
-  wrap?: (value: string, option: ReactElement) => ReactNode;
 }) {
   const { clear } = useContext(Errors);
   const baseId = useId();
@@ -415,45 +420,40 @@ export function RadioField({
           {hint}
         </p>
       ) : null}
-      {options.map(([optionValue, label]) => {
-        const description = describe[optionValue];
-        const descriptionId = `${baseId}-${optionValue}`;
-        return (
-          <div key={optionValue}>
-            {wrap(
-              optionValue,
-              // o alvo de 44 px é o rótulo inteiro (o radio de 20 px e o texto): o toque no texto marca o radio
-              <label className="flex min-h-11 w-fit max-w-full cursor-pointer items-center gap-3">
-                <input
-                  type="radio"
-                  name={name}
-                  value={optionValue}
-                  checked={value === optionValue}
-                  aria-describedby={description ? descriptionId : undefined}
-                  onChange={() => {
-                    if (clears) clear(clears);
-                    onChange(optionValue);
-                  }}
-                  className="radio"
-                />
-                <span className={description ? 'termo min-w-0' : 'min-w-0'}>{label}</span>
-              </label>,
-            )}
-            {description ? (
-              <span id={descriptionId} className="sr-only">
-                {description}
-              </span>
-            ) : null}
-          </div>
-        );
-      })}
+      <div className={styles.segmentado}>
+        {options.map(([optionValue, label]) => (
+          <label key={optionValue} className={styles.opcao}>
+            <input
+              type="radio"
+              name={name}
+              value={optionValue}
+              checked={value === optionValue}
+              aria-describedby={describe[optionValue] ? `${baseId}-${optionValue}` : undefined}
+              onChange={() => {
+                if (clears) clear(clears);
+                onChange(optionValue);
+              }}
+            />
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
+      {options.map(([optionValue]) =>
+        describe[optionValue] ? (
+          <span key={optionValue} id={`${baseId}-${optionValue}`} className="sr-only">
+            {describe[optionValue]}
+          </span>
+        ) : null,
+      )}
     </fieldset>
   );
 }
 
-// Caixa de marcar de 44 por 44 px (o alvo de toque do projeto), com o texto no rótulo. Nunca vem marcada. O texto leva `min-w-0`: é item
-// de um rótulo flex, e o tamanho mínimo de um item flex é o da maior palavra sem espaço (o `overflow-wrap` do html não entra nessa conta),
-// então um MessageId (`decide:<ULID>:<ULID>`, 60 caracteres) ou um slug de 64 alargaria a PÁGINA em 360 px.
+// Caixa de marcar nativa de 20 px (globals.css, `.check`), com o texto no rótulo. Nunca vem marcada. O alvo de 44 px é o <label> inteiro
+// (a caixa e o texto: o toque no texto a marca), como o do radio: a altura mínima de 44 px e o respiro de 10 px em cima e embaixo da linha
+// de 24 px; a caixa fica na altura da primeira linha (o texto pode quebrar). O texto leva `min-w-0`: é item de um rótulo flex, e o tamanho
+// mínimo de um item flex é o da maior palavra sem espaço (o `overflow-wrap` do html não entra nessa conta), então um MessageId
+// (`decide:<ULID>:<ULID>`, 60 caracteres) ou um slug de 64 alargaria a PÁGINA em 360 px.
 export function CheckField({ name, children }: { name: string; children: ReactNode }) {
   const id = useId();
   const { errors, clear } = useContext(Errors);
@@ -461,7 +461,7 @@ export function CheckField({ name, children }: { name: string; children: ReactNo
   const errorId = `${id}-erro`;
   return (
     <div className="space-y-1">
-      <label htmlFor={id} className="flex items-start gap-3">
+      <label htmlFor={id} className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5">
         <input
           id={id}
           name={name}
@@ -469,9 +469,9 @@ export function CheckField({ name, children }: { name: string; children: ReactNo
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
           onChange={() => clear(name)}
-          className="check"
+          className="check mt-0.5"
         />
-        <span className="min-w-0 pt-2.5">{children}</span>
+        <span className="min-w-0">{children}</span>
       </label>
       {error ? <FieldError id={errorId}>{error}</FieldError> : null}
     </div>
@@ -482,7 +482,7 @@ export function CheckField({ name, children }: { name: string; children: ReactNo
 // tela lê o erro dele pelo aria-describedby); sem isso, quem usa leitor de tela acharia os outros andando campo a campo. O sinal do erro é o fio
 // do campo no vermelho (`aria-invalid`) e o ícone ao lado da frase, que fica na tinta: nada de faixa colorida ao lado (docs/DESIGN.md), e a cor
 // nunca anda sozinha (o ícone e a frase dizem o mesmo).
-function FieldError({ id, children }: { id: string; children: ReactNode }) {
+export function FieldError({ id, children }: { id: string; children: ReactNode }) {
   return (
     <p id={id} role="alert" className="flex gap-1.5 text-sm text-ink">
       <span aria-hidden="true" className="mt-0.5 shrink-0 text-semantic-error">

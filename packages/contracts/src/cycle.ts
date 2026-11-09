@@ -12,6 +12,14 @@ export type CycleStatus = z.infer<typeof cycleStatusSchema>;
 // Por que o ciclo inteiro foi pulado (nenhum modelo é chamado).
 export const SKIP_REASONS = ['sem_briefing', 'orcamento'] as const;
 
+// Como o ciclo foi rodado (docs/METODOLOGIA.md, "Temporada 1"; ADR 0038). AO_VIVO: na janela das 08:00 às 09:30 do próprio pregão.
+// RETROATIVO: depois dela, pelo arena:retroativo, com o relógio do pregão simulado e só com o que o pipeline ao vivo teria visto às 07:30.
+// Num ciclo retroativo a hora da decisão, o prazo e o fechamento são os do pregão simulado; a hora REAL em que ele rodou é `executedAt`.
+// Quem mostra o ciclo mostra o modo: nada do retroativo pode parecer coletado ou decidido na hora.
+export const CYCLE_MODES = ['RETROATIVO', 'AO_VIVO'] as const;
+export const cycleModeSchema = z.enum(CYCLE_MODES);
+export type CycleMode = z.infer<typeof cycleModeSchema>;
+
 // Por que a decisão de um modelo virou HOLD forçado (docs/ARENA.md):
 // prazo: depois das 09:30 de Brasília; prompt_divergente: a versão ou o hash do prompt não é o do ciclo;
 // resposta_invalida: JSON inválido mesmo depois do reparo; falha: o handler esgotou as tentativas (a mensagem iria
@@ -111,6 +119,9 @@ export const cycleViewSchema = z.strictObject({
   decisionAt: z.iso.datetime(),
   deadlineAt: z.iso.datetime(),
   closedAt: z.iso.datetime().nullable(),
+  mode: cycleModeSchema,
+  // a hora real em que o ciclo foi rodado (no retroativo, dias depois do pregão)
+  executedAt: z.iso.datetime(),
   prompt: z.strictObject({ version: z.string(), sha256: sha256.nullable() }).nullable(),
   briefing: z.strictObject({ sha256 }).nullable(),
   decisions: z.array(decisionView),

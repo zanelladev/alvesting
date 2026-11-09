@@ -8,6 +8,8 @@
 //   migrate            atualiza a imagem do job-migrate (migrate deploy e db:roles), dispara e espera terminar com sucesso
 //   create <api|web>   cria a revisão nova do app (nasce com 0% de tráfego), espera ficar saudável e dá a ela o label green
 //   smoke-green <api|web>  /health (e /api/v1/health na api) no endereço do label green do app
+//   probe-green <api|web>  perfil econômico: a revisão do label, pronta e saudável pelas sondas da plataforma (a api é interna)
+//   green-url <api|web>    perfil econômico: imprime GREEN_URL=<endereço do label> (vai para o GITHUB_ENV do Playwright do web)
 //   promote <api|web>  100% do tráfego do app para a revisão nova
 //   smoke-edge         /health do site e /api/v1/health da api, pelo Front Door de produção
 //   cleanup            confirma o deploy e desativa as revisões antigas
@@ -25,8 +27,15 @@
 //  4. `rollback` (passo `if: failure() || cancelled()`) devolve 100% à antiga, tira o label e desativa a nova, nos dois apps.
 //  5. Depois de `cleanup` (deploy confirmado) o rollback não faz mais nada: a antiga já foi desativada. Voltar de lá é `revert`.
 //
+// O PERFIL ECONÔMICO (ADR 0039; docs/DEPLOY.md, seção 1): sem Front Door, a api tem ingress INTERNO e o endereço do label dela
+// (<app>---green.internal.<domínio>) só responde dentro do ambiente (fora, o proxy do ambiente dá 404: Learn, "Communicate between container
+// apps"). Então a api verde é provada só pelas sondas da plataforma (`probe-green api`: o label na revisão nova, Provisioned, Healthy e
+// ativa), um portão mais fraco que o do padrão; o web verde (ingress externo) leva o smoke no label e o Playwright no endereço do label
+// (`green-url web`), e o web novo já fala com a api nova pelo repasse do site. A mesma garantia de tráfego vale: só `promote` vira.
+//
 // O estado entre passos fica num arquivo JSON (DEPLOY_STATE). As entradas vêm do ambiente, que o workflow
-// declara: RESOURCE_GROUP, REGISTRY (servidor do ACR), IMAGE_TAG, REVISION_SUFFIX, SITE_URL e DEPLOY_STATE.
+// declara: RESOURCE_GROUP, REGISTRY (servidor do ACR, ou ghcr.io/<dono> no econômico), IMAGE_TAG, REVISION_SUFFIX, SITE_URL e
+// DEPLOY_STATE.
 // Saída: 0 passo ok · 1 o passo falhou · 2 uso errado ou variável de ambiente faltando.
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -48,6 +57,9 @@ const LABEL = 'green';
 
 // Esperas: tentativas × intervalo, para o teste não depender de relógio.
 const READY = { attempts: 120, intervalMs: 5_000 }; // 10 min: a primeira puxada da imagem de ~900 MB é a parte lenta
+// O portão do econômico (`probe-green`): saudável em 3 leituras seguidas, 10 s entre elas, o período da sonda de liveness
+// (infra/modules/containerapps.bicep): uma revisão que sobe e cai em seguida não passa.
+const STABLE = { checks: 3, intervalMs: 10_000 };
 const SMOKE = { attempts: 12, intervalMs: 5_000 }; // 1 min por URL (a borda leva um instante para enxergar)
 const MIGRATE = { attempts: 90, intervalMs: 10_000 }; // 15 min, o timeout do job
 
@@ -57,6 +69,8 @@ const NEEDS = {
   migrate: ['RESOURCE_GROUP', 'REGISTRY', 'IMAGE_TAG'],
   create: ['RESOURCE_GROUP', 'REGISTRY', 'IMAGE_TAG', 'REVISION_SUFFIX', 'DEPLOY_STATE'],
   'smoke-green': ['RESOURCE_GROUP', 'DEPLOY_STATE'],
+  'probe-green': ['RESOURCE_GROUP', 'DEPLOY_STATE'],
+  'green-url': ['RESOURCE_GROUP', 'DEPLOY_STATE'],
   'smoke-edge': ['SITE_URL'],
   promote: ['RESOURCE_GROUP', 'DEPLOY_STATE'],
   cleanup: ['RESOURCE_GROUP', 'DEPLOY_STATE'],
@@ -177,20 +191,30 @@ async function labelHolder(ctx, app) {
   return entry?.revisionName ?? (entry?.latestRevision ? 'latest' : undefined);
 }
 
-// O endereço do app, pela ingress dele (<app>.<domínio do ambiente>).
-async function appFqdn(ctx, app) {
+// O endereço do app, pela ingress dele: <app>.<domínio do ambiente>, ou <app>.internal.<domínio> quando o ingress é interno (a api do
+// perfil econômico), que só responde dentro do ambiente (Learn, "Communicate between container apps": de fora, o proxy do ambiente dá 404).
+async function ingressOf(ctx, app) {
   const shown = await ctx.az(['containerapp', 'show', ...group(ctx), '-n', app]);
-  const fqdn = shown?.properties?.configuration?.ingress?.fqdn;
+  const ingress = shown?.properties?.configuration?.ingress;
+  const fqdn = ingress?.fqdn;
   if (typeof fqdn !== 'string' || !fqdn.startsWith(`${app}.`)) {
     throw new Error(`${app}: não consegui descobrir o endereço do app (ingress desligado?)`);
   }
-  return fqdn;
+  return { fqdn, internal: ingress.external === false };
 }
 
-// O endereço do label: <app>---green.<domínio do ambiente>, três hífens (Learn, "Blue-green deployment in Azure Container Apps").
-async function labelUrl(ctx, app) {
-  const fqdn = await appFqdn(ctx, app);
-  return `https://${app}---${LABEL}.${fqdn.slice(app.length + 1)}`;
+// O endereço do label: <app>---green.<domínio do ambiente> (ou .internal.<domínio>), três hífens (Learn, "Blue-green deployment in Azure
+// Container Apps" e "Communicate between container apps", "Revision label FQDNs").
+const labelUrlOf = (app, fqdn) => `https://${app}---${LABEL}.${fqdn.slice(app.length + 1)}`;
+
+// O label tem de estar na revisão nova: senão a prova seria de outra revisão.
+async function assertLabel(ctx, app, revision) {
+  const holder = await labelHolder(ctx, app);
+  if (holder !== revision) {
+    throw new Error(
+      `${app}: o label ${LABEL} não está na revisão ${revision} (está em ${holder ?? 'nenhuma'}); o smoke provaria outra revisão`,
+    );
+  }
 }
 
 // --- passos ----------------------------------------------------------------------------------------
@@ -388,16 +412,57 @@ async function expectHealthy(ctx, label, url, service) {
 export async function smokeGreen(ctx, app) {
   const state = await needState(ctx);
   const revision = newRevisionOf(state, app);
-  const holder = await labelHolder(ctx, app);
-  if (holder !== revision) {
+  await assertLabel(ctx, app, revision);
+  const { fqdn, internal } = await ingressOf(ctx, app);
+  if (internal) {
     throw new Error(
-      `${app}: o label ${LABEL} não está na revisão ${revision} (está em ${holder ?? 'nenhuma'}); o smoke provaria outra revisão`,
+      `${app}: o ingress é interno (perfil econômico) e o endereço do label só responde dentro do ambiente; a prova dele é o probe-green`,
     );
   }
-  const base = await labelUrl(ctx, app);
+  const base = labelUrlOf(app, fqdn);
   for (const route of SMOKE_PATHS[app]) {
     await expectHealthy(ctx, app, `${base}${route}`, SERVICE[app]);
   }
+}
+
+// O portão do perfil econômico para a revisão que o runner não alcança (a api, de ingress interno): o label green na revisão nova, e ela
+// Provisioned, Healthy e ativa em STABLE.checks leituras seguidas, que é o que as sondas de startup, readiness e liveness da plataforma dizem
+// (GET /health no contêiner, infra/modules/containerapps.bicep). É mais fraco que o smoke do padrão: não prova rota nenhuma além do /health,
+// nem a borda, nem o caminho do site até ela. Quem prova o par é o Playwright do web verde, que fala com a api nova pelo repasse do site,
+// depois da virada da api (docs/DEPLOY.md, seção 1). A revisão segue sem tráfego: a conferência de `create` vale de novo aqui.
+export async function probeGreen(ctx, app) {
+  const state = await needState(ctx);
+  const revision = newRevisionOf(state, app);
+  await assertLabel(ctx, app, revision);
+  let healthy = 0;
+  for (let i = 0; i < READY.attempts && healthy < STABLE.checks; i++) {
+    const { properties: p } = await showRevision(ctx, app, revision);
+    if (p.provisioningState === 'Failed') throw new Error(`${revision} falhou ao provisionar`);
+    healthy =
+      p.provisioningState === 'Provisioned' && p.healthState === 'Healthy' && p.active
+        ? healthy + 1
+        : 0;
+    if (healthy < STABLE.checks) await ctx.sleep(STABLE.intervalMs);
+  }
+  if (healthy < STABLE.checks) {
+    throw new Error(`${revision} não ficou saudável por ${STABLE.checks} leituras seguidas`);
+  }
+  await keepTraffic(ctx, app, state.apps[app].old, 'na espera pelas sondas');
+  ctx.log(
+    `${app}: revisão ${revision} pronta e saudável pelas sondas da plataforma (o portão do perfil econômico, sem smoke no label)`,
+  );
+}
+
+// O endereço do label green do app (o web do perfil econômico, de ingress externo), para o Playwright: o workflow junta a linha
+// `GREEN_URL=<endereço>` ao GITHUB_ENV. Confere antes que o label está na revisão nova e recusa o app de ingress interno.
+export async function greenUrl(ctx, app) {
+  const state = await needState(ctx);
+  await assertLabel(ctx, app, newRevisionOf(state, app));
+  const { fqdn, internal } = await ingressOf(ctx, app);
+  if (internal) {
+    throw new Error(`${app}: o ingress é interno; o endereço do label não responde ao runner`);
+  }
+  return labelUrlOf(app, fqdn);
 }
 
 export async function smokeEdge(ctx) {
@@ -573,9 +638,18 @@ export async function revert(ctx, revision) {
   ctx.log(`${app}: 100% do tráfego em ${revision}`);
   await deactivate(ctx, app, current);
   ctx.log(`${app}: revisão ${current} desativada`);
-  const base = `https://${await appFqdn(ctx, app)}`;
-  for (const route of SMOKE_PATHS[app]) {
-    await expectHealthy(ctx, app, `${base}${route}`, SERVICE[app]);
+  const { fqdn, internal } = await ingressOf(ctx, app);
+  if (!internal) {
+    for (const route of SMOKE_PATHS[app]) {
+      await expectHealthy(ctx, app, `https://${fqdn}${route}`, SERVICE[app]);
+    }
+  } else if (ctx.env.SITE_URL) {
+    // a api de ingress interno (perfil econômico) se confere pelo repasse do site, que a alcança
+    await expectHealthy(ctx, app, `${ctx.env.SITE_URL.replace(/\/+$/, '')}/api/v1/health`, 'api');
+  } else {
+    ctx.warn?.(
+      `${app}: o ingress é interno; conferido só pelas sondas (com SITE_URL, a conferência passa pelo site)`,
+    );
   }
 }
 
@@ -590,6 +664,9 @@ const STEPS = {
   migrate,
   create,
   'smoke-green': smokeGreen,
+  'probe-green': probeGreen,
+  // só a linha nome=valor no stdout: ela vai direto para o GITHUB_ENV
+  'green-url': async (ctx, app) => ctx.log(`GREEN_URL=${await greenUrl(ctx, app)}`),
   'smoke-edge': smokeEdge,
   promote,
   cleanup,
@@ -599,9 +676,9 @@ const STEPS = {
 };
 
 // Os passos que cuidam de UM app pedem `api` ou `web`; o `revert`, o nome da revisão.
-const PER_APP = new Set(['create', 'smoke-green', 'promote']);
+const PER_APP = new Set(['create', 'smoke-green', 'probe-green', 'green-url', 'promote']);
 
-const USAGE = `Uso: node scripts/deploy.mjs <current-tags | pin | migrate | create api|web | smoke-green api|web | smoke-edge | promote api|web | cleanup | roll-roles | rollback | revert <revisão>>`;
+const USAGE = `Uso: node scripts/deploy.mjs <current-tags | pin | migrate | create api|web | smoke-green api|web | probe-green api|web | green-url api|web | smoke-edge | promote api|web | cleanup | roll-roles | rollback | revert <revisão>>`;
 
 /** @returns {Promise<number>} código de saída */
 export async function main(argv, env = process.env, io = console, deps = {}) {

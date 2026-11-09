@@ -5,6 +5,8 @@ name: CI
 #
 #   check   lint, tipos, unidade e integração (Postgres, Azurite e emulador do Service Bus), o ensaio da Temporada 0, docs:check e o
 #           check da infra
+#   coverage  a cobertura dos três pacotes contra o mínimo do Playbook (75% backend, 25% frontend), o lcov e o HTML como artefato e,
+#           com o segredo SONAR_TOKEN, a análise do SonarCloud (docs/QUALIDADE.md)
 #   web     build, Playwright (pixel-7, iphone-15 e desktop, com a api sobre um banco semeado com uma temporada sintética) e
 #           Lighthouse CI mobile na home
 #   images  as duas imagens Docker constroem e sobem respondendo /health, sem segredo e sem root
@@ -131,6 +133,107 @@ jobs:
           az bicep install --version v0.48.1
           node infra/tests/check.mjs
 
+  # Cobertura (docs/QUALIDADE.md): o `pnpm coverage`, com o Postgres e o Azurite como no job check, para os testes de integração da
+  # api entrarem na conta (sem eles o backend sai com um número menor que o real; o script recusa rodar sem as duas variáveis). O
+  # Vitest reprova abaixo do mínimo do Playbook da Católica SC (linha Web Apps: 75% no backend e 25% no frontend). Sem o emulador do
+  # Service Bus, como na linha de base de 06/11/2026: os poucos testes dele rodam no job check.
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_USER: alvesting
+          POSTGRES_PASSWORD: alvesting
+          POSTGRES_DB: alvesting_dev
+        ports:
+          - 25432:5432
+        options: >-
+          --health-cmd "pg_isready -U alvesting -d alvesting_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://alvesting:alvesting@localhost:25432/alvesting_test
+      STORAGE_CONNECTION_STRING: UseDevelopmentStorage=true;DevelopmentStorageProxyUri=http://127.0.0.1:25100
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # o histórico inteiro: o SonarCloud lê o blame para separar o código novo, e o clone raso o perde
+          fetch-depth: 0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # O mesmo Azurite do job check (o compose, com --skipApiVersionCheck).
+      - name: Azurite (Blob)
+        run: |
+          docker compose up -d azurite
+          for _ in $(seq 1 30); do
+            curl -s -o /dev/null http://127.0.0.1:25100/ && exit 0
+            sleep 1
+          done
+          docker compose logs azurite
+          exit 1
+
+      # O mesmo cliente do PostgreSQL 17 do job check (o porquê está lá): sem ele o teste de integração do backup-verify falha no CI
+      # (apps/api/src/modules/maintenance/testing/pg-tools.fixture.ts).
+      - name: Cliente do PostgreSQL 17 (pg_dump e pg_restore do backup-verify)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
+          pg_dump --version | grep -q '(PostgreSQL) 17\.'
+          pg_restore --version | grep -q '(PostgreSQL) 17\.'
+
+      # Os testes dos três pacotes com --coverage (scripts/coverage.mjs). No fim do log: backend, contratos e frontend lado a lado.
+      - name: Cobertura (pnpm coverage)
+        run: pnpm coverage
+
+      # O lcov.info (que o SonarCloud lê) e o HTML de cada pacote: o relatório que a prova de autoria pede, baixável do run.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: coverage
+          path: |
+            apps/api/coverage
+            apps/web/coverage
+            packages/contracts/coverage
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # O SonarCloud só roda quando o repositório tem o segredo SONAR_TOKEN (docs/QUALIDADE.md: o projeto nasce depois que o
+      # repositório for público). O GitHub não deixa ler `secrets` no `if` de um passo: este confere, e o seguinte lê a saída. PR de
+      # fork não recebe segredo, e ali a análise é pulada sem derrubar o job.
+      - name: SonarCloud configurado?
+        id: sonar
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Sem o segredo SONAR_TOKEN: a análise do SonarCloud foi pulada (docs/QUALIDADE.md)"
+          fi
+
+      # Análise estática e de segurança, com a cobertura dos três lcov.info (escopo e exclusões no sonar-project.properties da raiz).
+      - name: SonarCloud
+        if: ${{ steps.sonar.outputs.enabled == 'true' }}
+        uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65 # v8.4.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -180,6 +283,25 @@ jobs:
 
       - name: Navegadores do Playwright (Chromium e WebKit)
         run: pnpm --filter @alvesting/web exec playwright install --with-deps chromium webkit
+
+      # A fonte do sistema do e2e e do Lighthouse é a Roboto, a do Android, e não a DejaVu Sans do Ubuntu. O site usa a do sistema
+      # (`system-ui`), e a DejaVu, que nenhum aparelho dos projetos tem, é 6% mais larga que a SF do Mac (a Roboto, 9% mais estreita,
+      # medido no Chromium e no WebKit da imagem do Playwright 1.64.1): com ela, as tabelas que cabem no celular estouravam no primeiro
+      # CI no GitHub (09/11/2026). Os dois motores leem o fontconfig. O apt-get update é o do passo de cima (--with-deps).
+      - name: Fonte do sistema (Roboto, a do Android)
+        run: |
+          sudo apt-get install -y --no-install-recommends fonts-roboto
+          mkdir -p ~/.config/fontconfig
+          cat > ~/.config/fontconfig/fonts.conf <<'EOF'
+          <?xml version="1.0"?>
+          <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+          <fontconfig>
+            <alias binding="strong"><family>sans-serif</family><prefer><family>Roboto</family></prefer></alias>
+            <alias binding="strong"><family>system-ui</family><prefer><family>Roboto</family></prefer></alias>
+          </fontconfig>
+          EOF
+          fc-cache -f
+          test "$(fc-match -f '%{family}' system-ui)" = Roboto
 
       # pixel-7 (Chromium), iphone-15 (WebKit) e desktop. Mobile é gate de merge. A api do e2e semeia o banco ao subir.
       - name: Playwright

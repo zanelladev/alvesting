@@ -4,6 +4,21 @@
 @source not '../**/*.spec.tsx';
 @source not '../../e2e';
 
+/* A Exo 2 da marca (a tipografia da logo, a escolha do Artur em 06/11/2026; o `font-marca`): o peso 600 só com as nove letras de "Alvesting",
+   o subconjunto que o próprio Google Fonts gera pelo `text=` (1.688 B, `exo2/v26`; o SHA-256 está no docs/DEPENDENCIAS.md e o tokens.spec.ts o
+   confere). Vai em linha, no CSS que a página já baixa: nenhuma requisição a mais no caminho do LCP da landing (o arquivo de 17 KB, mesmo sem
+   preload, entrava na conta do Lighthouse). Outra letra no nome da marca pede um subconjunto novo (o mesmo `text=`); sem ele, a letra que
+   falta sai na sans de reserva. Copyright 2013 The Exo 2 Project Authors, SIL Open Font License 1.1 (o texto em app/fonts/OFL.txt; a fonte
+   não tem nome reservado, então o subconjunto pode ter outro nome de família). */
+@font-face {
+  font-family: 'Exo 2 Marca';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(data:font/woff2;base64,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)
+    format('woff2');
+}
+
 /* O sistema visual (ADR 0035 e ADR 0037; docs/DESIGN.md): a linguagem do Rallies AI, a primária do logo (#14144C) e os dois temas, com o
    seletor (claro, escuro e sistema). Os tokens moram aqui e só aqui; o nome vira utilitário do Tailwind (bg-canvas, text-ink,
    border-hairline). Cada cor leva os dois temas no mesmo lugar, `light-dark(claro, escuro)`: o navegador escolhe pelo `color-scheme` do
@@ -78,10 +93,12 @@
 
   /* Uma sans só, a do sistema (SF, Roboto, Segoe), com os pesos de verdade dela (400, 500 e 600) e os algarismos tabulares em todo número
      (body, abaixo): é a fonte que o Rallies usa no lugar dele, e nenhuma fonte baixada entra no caminho do LCP da landing. O `display` é a
-     mesma sans (o nome fica para os títulos que já o usam). A mono é só para hash e código (`.hash`). */
+     mesma sans (o nome fica para os títulos que já o usam). A mono é só para hash e código (`.hash`). A `marca` é a Exo 2 600 do nome
+     "Alvesting" (a tipografia da logo; o `@font-face` em linha no topo deste arquivo), e nada mais a usa. */
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-display: var(--font-sans);
+  --font-marca: 'Exo 2 Marca', var(--font-sans);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
   /* as curvas do movimento: saída forte, sem quique (o MOTION de lib/motion.ts tem as mesmas; motion.spec.ts) */
@@ -277,25 +294,21 @@
   input[type='date']::-webkit-calendar-picker-indicator {
     outline: none;
   }
-  /* A caixa de marcar: 44 por 44 px, o alvo de toque do projeto. Desmarcada, o contorno é o `muted` (5,29:1 e 7,14:1: a WCAG 1.4.11 pede 3:1
-     para o que identifica o controle); inválida, o vermelho do erro, como o campo de texto. Marcada, o fundo é a tinta e o glifo ✕ é texto: não
-     depende da cor, e o glifo sobrevive ao alto contraste do sistema. */
+  /* A caixa de marcar: a nativa, de 20 px, como o radio (desde 06/11/2026; antes era um quadrado de 44 px, grande demais), dentro do alvo de
+     44 px, que é o <label> inteiro (a caixa e o texto: o toque no texto a marca; form-kit.tsx). O navegador desenha a marca, na tinta do tema
+     pelo `accent-color`, e escolhe a cor do ✓ que contrasta com ela (conferido no Chromium e no WebKit, nos dois temas); o desenho nativo
+     sobrevive às cores forçadas do sistema, e o ✕ de antes, um `::before` no <input>, o Firefox não desenhava. Inválida, o contorno no
+     vermelho do erro: a borda não pinta a caixa nativa. */
   .check {
-    @apply size-11 shrink-0 cursor-pointer appearance-none rounded-md border border-muted bg-canvas checked:border-ink checked:bg-ink disabled:cursor-not-allowed disabled:border-hairline;
+    @apply size-5 shrink-0 cursor-pointer disabled:cursor-not-allowed;
+    accent-color: var(--color-ink);
   }
-  .check:checked::before {
-    @apply flex size-full items-center justify-center font-mono text-xl text-canvas;
-    content: '✕';
+  /* fora do foco: com o foco, vale o anel do projeto, que precisa mudar algo na caixa para ser visto (WCAG 2.4.7) */
+  .check[aria-invalid='true']:not(:focus-visible) {
+    outline: 2px solid var(--color-semantic-error);
+    outline-offset: 2px;
   }
-  /* O radio: o desenho do radio nativo, de 20 px (a decisão que a T2b deixou, tomada no fechamento da onda), dentro do alvo de 44 px, que é o
-     <label> inteiro da opção (o radio e o texto: o toque no texto o marca; form-kit.tsx). O estado é a espessura da borda, sem `::before` nem
-     fundo: desmarcado, 2 px no fio de controle (3:1); marcado, 6 px na tinta, com o miolo no canvas. A borda sobrevive às cores forçadas do
-     sistema em todo navegador, o Firefox inclusive (a cor vira a do sistema, a espessura fica); o glifo num `::before` de <input>, que havia, o
-     Firefox não desenha. O anel de foco fica no radio. */
-  .radio {
-    @apply size-5 shrink-0 cursor-pointer appearance-none rounded-full border-2 border-control bg-canvas outline-offset-2 checked:border-[6px] checked:border-ink disabled:cursor-not-allowed disabled:border-hairline;
-  }
-  /* o campo, a caixa de marcar e o radio inválidos: a borda do erro (uma regra só para os três) */
+  /* o campo e a caixa de marcar inválidos: a borda do erro (uma regra só para os dois) */
   [aria-invalid='true'] {
     border-color: var(--color-semantic-error);
   }
@@ -441,22 +454,33 @@
   }
 
   /* O logo do laboratório (components/competidor.tsx; os arquivos em public/laboratorios, com a procedência em docs/DEPENDENCIAS.md): o
-     desenho monocromático por máscara, pintado com a cor do texto (o tema pinta), num círculo cinza com fio. Sem laboratório, a inicial
-     (o Sorteio e as referências), pelo atributo e não por texto: fica fora do textContent e do innerText que os testes leem. A máscara é uma
-     imagem de prioridade baixa, pedida só quando um logo aparece. O tamanho é o da caixa (size-6, size-8, size-10). */
+     desenho colorido da marca, como imagem de fundo, num círculo branco nos dois temas com o contorno de 1 px, o mesmo do logo das ações
+     (components/logo-do-papel.tsx, os tokens `logo-fundo` e `logo-contorno`). A OpenAI e a xAI só têm o desenho em preto (a marca é
+     monocromática): a máscara pintada de preto, no mesmo círculo. O Sorteio e as referências têm ícones nossos, desenhados à mão
+     (public/referencias, desde 06/11/2026: o dado, o "%" do CDI, o gráfico do BOVA11 e a balança do igual-peso), na mesma máscara preta. Sem
+     nenhum dos dois (um modelo de laboratório sem logo), a inicial, pelo atributo e não por texto: fica fora do textContent e do innerText que
+     os testes leem. O desenho é uma imagem de prioridade baixa, pedida só quando um logo aparece. O tamanho é o da caixa (size-6, size-8,
+     size-10). */
   .logo {
-    @apply inline-grid size-6 shrink-0 place-items-center rounded-full border border-hairline bg-surface-card align-middle text-ink;
+    @apply inline-grid size-6 shrink-0 place-items-center rounded-full bg-logo-fundo align-middle outline -outline-offset-1 outline-logo-contorno;
     container-type: size;
   }
   .logo::before {
-    @apply size-[62%] bg-current content-[''];
+    @apply size-[62%] content-[''];
+    background: var(--logo) center / contain no-repeat;
+  }
+  .logo[data-lab='openai']::before,
+  .logo[data-lab='xai']::before,
+  .logo[data-ref]::before {
+    background: #000000;
     mask: var(--logo) center / contain no-repeat;
   }
   .logo[data-inicial] {
-    @apply bg-surface-strong text-muted;
+    @apply border border-hairline bg-surface-strong text-muted outline-none;
   }
   .logo[data-inicial]::before {
-    @apply size-auto bg-transparent font-sans leading-none font-semibold;
+    @apply size-auto font-sans leading-none font-semibold;
+    background: none;
     font-size: 46cqh;
     content: attr(data-inicial);
     mask: none;
@@ -478,6 +502,18 @@
   }
   .logo[data-lab='qwen'] {
     --logo: url(/laboratorios/qwen.svg);
+  }
+  .logo[data-ref='sorteio'] {
+    --logo: url(/referencias/sorteio.svg);
+  }
+  .logo[data-ref='cdi'] {
+    --logo: url(/referencias/cdi.svg);
+  }
+  .logo[data-ref='bova11'] {
+    --logo: url(/referencias/bova11.svg);
+  }
+  .logo[data-ref='igual-peso'] {
+    --logo: url(/referencias/igual-peso.svg);
   }
 
   /* A faixa dos modelos (components/competidor.tsx, FaixaDeModelos). Na casca do app ela vai de uma borda à outra do principal, como a do
@@ -883,9 +919,10 @@
 
 /* A fundação do design premium (ADR 0037; docs/DESIGN.md): a marca, a mono do hash e o seletor de tema, com a revelação da troca. */
 @layer components {
-  /* A marca: o desenho do logo é o arquivo public/marca.svg, usado como máscara (o que é opaco nele vira a primária, o vazado mostra o
-     fundo), e o tema pinta: o azul do logo no claro, o tom claro dele no escuro. Trocar o logo é trocar o arquivo (e o app/icon.svg, o do
-     navegador). */
+  /* A marca: o desenho do logo é o arquivo public/marca.svg (o touro do Artur, o Group.svg de 06/11/2026 sem nenhuma mudança: os caminhos
+     brancos dele são o que é opaco), usado como máscara (o que é opaco nele vira a primária, o vazado mostra o fundo), e o tema pinta: o
+     azul do logo no claro, o tom claro dele no escuro. Ele não é quadrado (98 por 110): o `contain` o põe inteiro na caixa, pela altura.
+     Trocar o logo é trocar o arquivo (e o app/icon.svg, o do navegador: o touro branco no ladrilho azul). */
   .marca {
     @apply inline-block shrink-0 bg-primary;
     mask: url(/marca.svg) center / contain no-repeat;
@@ -1005,7 +1042,7 @@ html[data-tema-revelar]::view-transition-new(root) {
   }
 }
 
-/* landing (T2a): as classes que se repetem na landing e no rodapé do site (docs/redesign-rallies/plano.md, seção d). Moram aqui, e não em cada
+/* landing (T2a): as classes que se repetem na landing e no rodapé do site (ADR 0035). Moram aqui, e não em cada
    elemento, pelo peso do documento: o mesmo texto iria duas vezes por página, no HTML e no payload do React. */
 @layer components {
   /* o ladrilho da faixa dos laboratórios (d.4): o cinza do painel, raio 6, o logo de 32 px e o nome embaixo dele (o "simulado" vai uma vez,
@@ -1044,10 +1081,10 @@ html[data-tema-revelar]::view-transition-new(root) {
   .mapa-marca {
     @apply max-md:hidden;
   }
-  /* o nome gigante, cortado no pé: a sans 600 na tinta a 6%, decorativo. O texto mora aqui, fora do que o leitor de tela e o axe leem (o
-     contraste dele é o de enfeite: a WCAG 1.4.3 o deixa de fora, e o nome está no cabeçalho). Em 360 px ele cabe na largura. */
+  /* o nome gigante, cortado no pé: a Exo 2 600 da marca na tinta a 6%, decorativo. O texto mora aqui, fora do que o leitor de tela e o axe
+     leem (o contraste dele é o de enfeite: a WCAG 1.4.3 o deixa de fora, e o nome está no cabeçalho). Em 360 px ele cabe na largura. */
   .nome-gigante {
-    @apply pointer-events-none mt-12 block h-[0.72em] overflow-hidden text-center font-display text-gigante font-semibold select-none;
+    @apply pointer-events-none mt-12 block h-[0.72em] overflow-hidden text-center font-marca text-gigante font-semibold select-none;
   }
   .nome-gigante::before {
     content: 'Alvesting';
@@ -1114,6 +1151,49 @@ html[data-tema-revelar]::view-transition-new(root) {
   .mc-amostra {
     @apply inline-block h-2.5 w-5 shrink-0 rounded-sm border border-hairline-strong;
     background: color-mix(in oklab, var(--color-ink) 3%, transparent);
+  }
+  /* O "i" que explica a faixa do Monte Carlo (line-chart.tsx; o pedido do Artur em 06/11/2026): abre a explicação no clique, no toque e pelo
+     teclado, e o Esc e o toque fora fecham. É o popover nativo, como o menu "Mais", sem JavaScript: o tooltip da Arc (o `Termo` da carteira)
+     não abre no toque. A caixa do botão tem os 44 px do alvo de toque e o círculo à vista, 16 px; as margens negativas o deixam junto do
+     texto. O balão é o do tooltip da Arc (a tinta, o texto no canvas, raio 8, 13 px), posto pela âncora acima do "i" (abaixo, sem espaço em
+     cima); no celular ele vai de uma borda à outra, menos o respiro. A âncora tem nome fixo: um gráfico com a faixa por página (a arena e a
+     página do modelo). Ele aparece subindo 4 px em 150 ms; com movimento reduzido, a regra global troca na hora. */
+  .info {
+    anchor-name: --info;
+    @apply -mr-3 -ml-1 inline-grid size-11 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
+  }
+  .info-balao {
+    @apply max-w-80 rounded-lg border-0 bg-ink px-3 py-2 text-left text-13 text-canvas;
+    margin: 0 0 0.375rem;
+    position-anchor: --info;
+    position-area: top;
+    position-try-fallbacks:
+      top span-left,
+      top span-right,
+      flip-block;
+    transition:
+      opacity var(--duration-fast) var(--ease-out-quart),
+      translate var(--duration-fast) var(--ease-out-quart),
+      overlay var(--duration-fast) allow-discrete,
+      display var(--duration-fast) allow-discrete;
+  }
+  .info-balao:not(:popover-open) {
+    opacity: 0;
+    translate: 0 0.25rem;
+  }
+  @starting-style {
+    .info-balao:popover-open {
+      opacity: 0;
+      translate: 0 0.25rem;
+    }
+  }
+  @media (width < 40rem) {
+    .info-balao {
+      max-width: calc(100vw - 2rem);
+      justify-self: center;
+      position-area: top span-all;
+      position-try-fallbacks: flip-block;
+    }
   }
   /* os nomes e os tickers nas tabelas e nas carteiras sem o sublinhado em repouso, como os do Rallies (o sublinhado acende no hover); fora delas
      o link segue com o sublinhado discreto */

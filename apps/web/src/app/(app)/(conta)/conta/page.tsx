@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import type { ReactNode } from 'react';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { LegalDocumentId } from '@alvesting/contracts';
@@ -10,7 +11,7 @@ import {
 } from '../../../../components/account-forms';
 import { Avisos, PilhaDeAvisos } from '../../../../components/avisos';
 import { SecaoCartao } from '../../../../components/cartao';
-import { Aviso, Fact, Facts, LINK, NavLink, PageHead } from '../../../../components/ui';
+import { Aviso, LINK, NavLink, PageHead } from '../../../../components/ui';
 import { authCookieHeader, readMe } from '../../../../lib/account';
 import { formatDateTime } from '../../../../lib/format';
 import { withApiDown } from '../../../../lib/with-api-down';
@@ -29,6 +30,15 @@ const DOCUMENTS: Record<LegalDocumentId, { title: string; href: string }> = {
   TERMS: { title: 'Termos de uso', href: '/termos' },
   PRIVACY: { title: 'Política de privacidade', href: '/privacidade' },
 };
+
+// uma informação da conta, numa célula do grid dos dados (o termo em cima, o valor embaixo); `min-w-0`: o nome de 100 letras sem espaço
+// quebra dentro da célula em vez de alargar a coluna
+const Dado = ({ term, children }: { term: string; children: ReactNode }) => (
+  <div className="min-w-0">
+    <dt className="text-sm text-muted">{term}</dt>
+    <dd className="mt-1 text-ink">{children}</dd>
+  </div>
+);
 
 export default withApiDown(async function AccountPage() {
   const me = await readMe(authCookieHeader((await headers()).get('cookie')));
@@ -94,30 +104,24 @@ export default withApiDown(async function AccountPage() {
       </PageHead>
       <PilhaDeAvisos />
 
-      {/* Na casca do app, sem barra secundária: o principal até 720 px e cada seção num cartão (docs/redesign-rallies/plano.md, f.4) */}
-      <div className="max-w-[720px] space-y-4">
+      {/* O grid da conta (a pedido do Artur, 06/11/2026: as informações lado a lado, e não uma coluna de cartões de até 720 px). Os dados num
+          cartão da largura toda, cada informação numa célula do grid (quantas couberem por linha, de 14 rem; no celular, uma por linha).
+          Embaixo, os aceites, a saída e a cópia lado a lado: cada cartão cresce até encher a linha, então nenhum buraco sobra quando a linha
+          quebra ou quando os aceites sobem para o topo (o aceite pendente). A exclusão, na largura toda, no fim. */}
+      <div className="space-y-4">
         {pending ? consents : null}
 
         <SecaoCartao id="dados" title="Dados">
-          {/* o último par não leva o fio de baixo: a borda do cartão já fecha a lista */}
-          <div className="[&_dl>div:last-child]:border-b-0">
-            <Facts>
-              <Fact term="Nome" prose>
-                <span className="break-words">{me.name}</span>
-              </Fact>
-              <Fact term="E-mail" prose>
-                <span className="break-all">{me.email}</span>
-              </Fact>
-              <Fact term="E-mail confirmado" prose>
-                {me.emailVerified ? 'sim' : 'não'}
-              </Fact>
-              {me.role === 'ADMIN' ? (
-                <Fact term="Papel" prose>
-                  admin
-                </Fact>
-              ) : null}
-            </Facts>
-          </div>
+          <dl className="grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-x-8 gap-y-4">
+            <Dado term="Nome">
+              <span className="break-words">{me.name}</span>
+            </Dado>
+            <Dado term="E-mail">
+              <span className="break-all">{me.email}</span>
+            </Dado>
+            <Dado term="E-mail confirmado">{me.emailVerified ? 'sim' : 'não'}</Dado>
+            {me.role === 'ADMIN' ? <Dado term="Papel">admin</Dado> : null}
+          </dl>
           {/* o painel não tem link no cabeçalho (as páginas públicas não leem a sessão); a conta já a lê, então é daqui que o admin chega */}
           {me.role === 'ADMIN' ? (
             <p>
@@ -128,22 +132,26 @@ export default withApiDown(async function AccountPage() {
           ) : null}
         </SecaoCartao>
 
-        {pending ? null : consents}
+        {/* `flex-[1_1_18rem]`: três por linha a partir de uns 900 px de coluna, dois abaixo disso (o terceiro enche a linha de baixo), um no
+            celular; na mesma linha, a mesma altura */}
+        <div className="flex flex-wrap gap-4 *:min-w-0 *:flex-[1_1_18rem]">
+          {pending ? null : consents}
 
-        <SecaoCartao id="sair" title="Sair">
-          <p className="max-w-prose">Encerra a sessão neste aparelho.</p>
-          <SignOutForm labelledBy="sair-titulo" />
-        </SecaoCartao>
+          <SecaoCartao id="sair" title="Sair">
+            <p className="max-w-prose">Encerra a sessão neste aparelho.</p>
+            <SignOutForm labelledBy="sair-titulo" />
+          </SecaoCartao>
 
-        <SecaoCartao id="meus-dados" title="Meus dados">
-          <p className="max-w-prose">
-            Baixe uma cópia de tudo o que a Alvesting guarda de você: o cadastro, as contas
-            vinculadas, as sessões, os aceites e a carteira com os lançamentos, em um arquivo JSON.
-            Sem a senha nem as chaves.
-          </p>
-          {/* um link comum, sem JavaScript: a api responde com Content-Disposition: attachment e o navegador baixa o arquivo; com ele, o aviso */}
-          <ExportLink />
-        </SecaoCartao>
+          <SecaoCartao id="meus-dados" title="Meus dados">
+            <p className="max-w-prose">
+              Baixe uma cópia de tudo o que a Alvesting guarda de você: o cadastro, as contas
+              vinculadas, as sessões, os aceites e a carteira com os lançamentos, em um arquivo
+              JSON. Sem a senha nem as chaves.
+            </p>
+            {/* um link comum, sem JavaScript: a api responde com Content-Disposition: attachment e o navegador baixa o arquivo; com ele, o aviso */}
+            <ExportLink />
+          </SecaoCartao>
+        </div>
 
         {/* o cartão da exclusão leva o fio vermelho, e o botão fica na pílula cinza, e não na primária: não é a ação que a tela convida a fazer */}
         <SecaoCartao id="excluir" title="Excluir a conta" perigo>

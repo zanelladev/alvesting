@@ -252,15 +252,15 @@ test.describe('casca do app', () => {
       'href',
       '/',
     );
-    // cada área marca o seu item
+    // cada área marca o seu item; entrar e criar conta moram na área da conta (o grupo (auth), na casca do app, desde 06/11/2026)
     for (const [route, area] of [
       ['/acoes', 'Explorar'],
       ['/chat', 'Chat'],
-      ['/entrar?proximo=%2Fconta', null],
+      ['/entrar?proximo=%2Fconta', 'Conta'],
+      ['/cadastro', 'Conta'],
     ] as const) {
       await page.goto(route);
-      if (area) await expect(nav.locator('[aria-current="page"]')).toHaveText([area]);
-      else await expect(page.locator('[aria-current="page"]')).toHaveCount(0);
+      await expect(nav.locator('[aria-current="page"]')).toHaveText([area]);
     }
   });
 
@@ -434,8 +434,7 @@ test.describe('casca do app', () => {
 
   // Nenhuma barra de rolagem à vista (o pedido do Artur): o macOS dele mostra as barras clássicas, e o Playwright sem janela as esconde (o
   // --hide-scrollbars que ele passa ao Chromium), então o teste lê o que o CSS manda: o `scrollbar-width` calculado é `none` na raiz (a
-  // página), na barra das carteiras e na faixa. A captura de antes e de depois com as barras à vista está no relatório da T2
-  // (docs/redesign-rallies/relatorios/linhas-barras.md).
+  // página), na barra das carteiras e na faixa.
   test('o scrollbar-width é none na página, na barra das carteiras e na faixa', async ({
     page,
   }) => {

@@ -53,7 +53,7 @@ Os prazos de sessão, de cadastro não confirmado e de links por e-mail contam c
 
 ## 6. Transferência internacional de dados (LGPD, art. 33)
 
-Os dados ficam em servidores da Microsoft nos Estados Unidos, na região East US 2 do Azure. Isso vale para os dados descritos no item 2, inclusive a carteira. Quem entra com o Google também tem dados tratados pelo Google, que opera nos Estados Unidos e em outros países. Isso é uma transferência internacional de dados pessoais.
+Os dados ficam em servidores da Microsoft no Chile, na região Chile Central do Azure. Isso vale para os dados descritos no item 2, inclusive a carteira. Os e-mails que a Alvesting manda saem pelo serviço de e-mail da Microsoft (Azure Communication Services), que guarda os dados do envio nos Estados Unidos. Quem entra com o Google também tem dados tratados pelo Google, que opera nos Estados Unidos e em outros países. Isso é uma transferência internacional de dados pessoais.
 
 Ao aceitar esta política, você dá o consentimento específico e em destaque para essa transferência (art. 33, VIII), depois de ser informado aqui de que ela é internacional. Os operadores também oferecem garantias contratuais de proteção (art. 33, II). Se não concordar, não crie conta: a arena pública pode ser lida sem conta.
 

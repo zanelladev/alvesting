@@ -14,6 +14,7 @@
     "lint": "turbo run lint && prettier --check .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test && node --test \"scripts/*.test.mjs\"",
+    "coverage": "node scripts/coverage.mjs",
     "test:e2e": "turbo run test:e2e",
     "lighthouse": "node scripts/lighthouse.mjs",
     "docs:check": "node scripts/docs-check.mjs",

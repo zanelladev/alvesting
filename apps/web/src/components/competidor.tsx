@@ -5,11 +5,19 @@ import { labOf } from '../lib/laboratorio';
 import { LINK, NavLink, NotaSimulada, SimulatedTag, direction, isSimulated } from './ui';
 
 // O competidor como o Rallies mostra um modelo (ADR 0035; plano, g.4): o logo do laboratório num círculo, o nome e a etiqueta "simulado"
-// do modelo da arena simulada. O logo é decorativo (aria-hidden), monocromático por máscara (globals.css, `.logo`); sem laboratório (o
-// Sorteio, as referências, um laboratório sem logo), a inicial, pelo atributo e não por texto: o textContent e o innerText do nome, que o
-// e2e lê, continuam "Nome" e "Nome simulado". Nada aqui é flex: o logo e o nome correm em linha (um item flex quebraria o innerText em
-// linhas).
+// do modelo da arena simulada. O logo é decorativo (aria-hidden), por atributo (globals.css, `.logo`): o do laboratório; o ícone nosso do
+// Sorteio e de cada referência (o dado, o "%" do CDI, o gráfico do BOVA11, a balança do igual-peso); e, sem nenhum dos dois (um modelo de
+// laboratório sem logo), a inicial. Nada vira texto: o textContent e o innerText do nome, que o e2e lê, continuam "Nome" e "Nome simulado".
+// Nada aqui é flex: o logo e o nome correm em linha (um item flex quebraria o innerText em linhas).
 type CompetidorData = Pick<PublicCompetitor, 'slug' | 'name' | 'type' | 'provider' | 'modelId'>;
+
+// o ícone de quem não é modelo, pelo tipo (os arquivos em public/referencias)
+const ICONE_DA_REFERENCIA: Readonly<Record<string, string>> = {
+  RANDOM: 'sorteio',
+  CDI: 'cdi',
+  BOVA11: 'bova11',
+  EQUAL_WEIGHT: 'igual-peso',
+};
 
 export function Logo({
   competitor,
@@ -23,10 +31,11 @@ export function Logo({
   style?: CSSProperties;
 }) {
   const lab = labOf(competitor);
+  const icone = ICONE_DA_REFERENCIA[competitor.type];
   const classes = className ? `logo ${className}` : 'logo';
-  return lab ? (
-    <span aria-hidden="true" data-lab={lab} className={classes} style={style} />
-  ) : (
+  if (lab) return <span aria-hidden="true" data-lab={lab} className={classes} style={style} />;
+  if (icone) return <span aria-hidden="true" data-ref={icone} className={classes} style={style} />;
+  return (
     <span
       aria-hidden="true"
       data-inicial={competitor.name.trim().charAt(0).toUpperCase()}

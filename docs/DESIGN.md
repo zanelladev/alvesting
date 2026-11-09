@@ -262,9 +262,12 @@ JavaScript, o tema segue o sistema e o seletor não aparece. A cor da barra do n
 **Display Font:** a sans do sistema (`ui-sans-serif, system-ui`: SF, Roboto, Segoe), a mesma do texto.
 **Body Font:** a mesma.
 **Label/Mono Font:** a mono do sistema (`ui-monospace`), só para hash e código.
+**Brand Font:** a Exo 2 600 (a tipografia da logo, desde 06/11/2026), só no nome "Alvesting" ao lado do touro e no nome gigante do rodapé
+(`font-marca`).
 
 **Character:** uma grotesca só, nos pesos de verdade dela (400, 500 e 600), com algarismos tabulares em todo número: o dado alinha na
-coluna e não pula quando muda. Nenhuma fonte é baixada (o caminho do LCP da landing fica só com o HTML e o CSS). O `font-display` dos
+coluna e não pula quando muda. A única fonte de fora é a Exo 2 do nome da marca, só com as nove letras de "Alvesting" (1,7 KB em linha
+no CSS, sem requisição): o caminho do LCP da landing fica só com o HTML e o CSS. O `font-display` dos
 títulos traz o 600 com ele (a Geist que saiu só tinha essa face, e o navegador a usava em qualquer peso; a do sistema respeita o peso
 pedido), e um peso explícito (`font-medium`) ainda ganha.
 
@@ -355,7 +358,9 @@ adaptada do Theme Toggle da beUI); o teclado e o movimento reduzido trocam na ho
 - **Radio:** o desenho do radio nativo, de 20 px, dentro do alvo de 44 px do rótulo da opção (o radio e o texto); o estado é a espessura da
   borda, 2 px no fio de controle desmarcado e 6 px na tinta marcado, com o miolo no canvas (sobrevive às cores forçadas do sistema).
 - **Termo com explicação:** o sublinhado pontilhado no fio de controle (`.termo`), num botão de 44 px com o tooltip da Arc; a mesma
-  explicação fica em texto na tela, para o toque.
+  explicação fica em texto na tela, para o toque. Quando a explicação não cabe em texto na tela (a faixa do Monte Carlo do gráfico, desde
+  06/11/2026), o "i" num círculo (`.info`, 16 px numa caixa de 44) abre o balão (`.info-balao`) no clique, no toque e pelo teclado: o
+  popover nativo, que o Esc e o toque fora fecham.
 
 ### Navigation
 

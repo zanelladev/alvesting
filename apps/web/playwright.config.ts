@@ -12,6 +12,14 @@ import {
   API_URL,
   E2E_API_DATABASE_URL,
   E2E_DATABASE_URL,
+  ECO_API_PORT,
+  ECO_API_URL,
+  ECO_BUS_DIR,
+  ECO_INGRESS_PORT,
+  ECO_OUTBOX_DIR,
+  ECO_SITE_URL,
+  ECO_WEB_PORT,
+  ECO_WEB_URL,
   FIXTURE_API_PORT,
   FIXTURE_API_URL,
   FIXTURE_WEB_PORT,
@@ -91,7 +99,7 @@ export default defineConfig({
   // login de menor privilégio da api (NODE_ENV=development também: a senha de dev que ele cria a produção recusa): é o dado que as
   // telas e e2e/public-api.spec.ts leem. Precisa do Postgres e do Azurite do docker compose (no CI, do job). O ensaio recusa banco
   // que não termine em _test ou _ensaio.
-  // Nenhum dos oito reaproveita um servidor que já esteja de pé (reuseExistingServer: false): ele pode ser de outro build, de outro
+  // Nenhum dos onze reaproveita um servidor que já esteja de pé (reuseExistingServer: false): ele pode ser de outro build, de outro
   // banco ou de outra execução, e então o recriar e semear do banco (parte do command da api) seria pulado em silêncio e o e2e
   // rodaria sobre dado e código velhos, com falhas sem relação com a mudança. Porta ocupada é erro claro.
   webServer: remote
@@ -231,6 +239,56 @@ export default defineConfig({
             FRONT_DOOR_ID,
           },
           url: `${FRONT_DOOR_URL}/health`,
+          ignoreHTTPSErrors: true,
+          reuseExistingServer: false,
+          timeout: 30_000,
+        },
+        // Do nono ao décimo primeiro, o perfil econômico (e2e/economico.spec.ts; ADR 0039): a api SEM a trava de origem (o IP do limite vem do
+        // X-Forwarded-For), o site com o repasse de /api/* ligado (API_PROXY=on) e o ingress imitado do Container Apps (e2e/ingress.ts), em
+        // https, o único endereço que o navegador desses testes conhece. Portas 4312 a 4314.
+        {
+          command: `rm -rf "${ECO_OUTBOX_DIR}" "${ECO_BUS_DIR}" && node --enable-source-maps dist/main.js`,
+          cwd: '../api',
+          env: {
+            NODE_ENV: 'test',
+            API_PORT: String(ECO_API_PORT),
+            API_HOST: '127.0.0.1',
+            DATABASE_URL: E2E_DATABASE_URL,
+            API_DATABASE_URL: E2E_API_DATABASE_URL,
+            STORAGE_CONNECTION_STRING,
+            QUOTES_SECRET,
+            PUBLIC_URL: ECO_SITE_URL,
+            EMAIL_OUTBOX_DIR: ECO_OUTBOX_DIR,
+            EMAIL_SENDER_ADDRESS: 'naoresponda@example.test',
+            LEGAL_CONTROLLER_NAME: PRODUCTION_ACCOUNT_ENV.LEGAL_CONTROLLER_NAME,
+            LEGAL_CONTACT_EMAIL: PRODUCTION_ACCOUNT_ENV.LEGAL_CONTACT_EMAIL,
+            SERVICEBUS_FAKE_DIR: ECO_BUS_DIR,
+            ...ADMIN_API_ENV,
+          },
+          url: `${ECO_API_URL}/api/v1/health`,
+          reuseExistingServer: false,
+          timeout: 60_000,
+        },
+        {
+          command: `${CLEAN_CACHE} && node .next/standalone/apps/web/server.js`,
+          env: {
+            PORT: String(ECO_WEB_PORT),
+            HOSTNAME: '127.0.0.1',
+            QUOTES_SECRET,
+            API_INTERNAL_URL: ECO_API_URL,
+            API_PROXY: 'on',
+          },
+          url: `${ECO_WEB_URL}/health`,
+          reuseExistingServer: false,
+          timeout: 120_000,
+        },
+        {
+          command: 'node e2e/ingress.ts',
+          env: {
+            INGRESS_PORT: String(ECO_INGRESS_PORT),
+            INGRESS_UPSTREAM_PORT: String(ECO_WEB_PORT),
+          },
+          url: `${ECO_SITE_URL}/health`,
           ignoreHTTPSErrors: true,
           reuseExistingServer: false,
           timeout: 30_000,

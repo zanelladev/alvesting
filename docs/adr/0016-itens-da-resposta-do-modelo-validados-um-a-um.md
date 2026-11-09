@@ -41,3 +41,10 @@ A revisão de segurança e a de TypeScript da etapa 6 acrescentaram duas regras,
 - **Manter o estrito e ajustar o plano.** Reabriria uma decisão aprovada do plano e puniria o modelo inteiro por um item.
 - **Tratar a 6ª ordem como resposta inválida e pedir reparo.** Gasta uma segunda chamada paga por um excesso que o corte determinístico resolve, e o reparo mudaria a resposta que o modelo deu no horário.
 - **Cortar as ordens excedentes por maior `confidence` ou menor percentual.** Mais "justo" na aparência, mas inventa um critério que o modelo não conhece e que `confidence` (opcional e informativa) não sustenta.
+
+## Nota de 06/11/2026
+
+O schema pedido aos provedores deixou de ser o `z.toJSONSchema` do `llmDecisionSchema`: na primeira chamada real, a Anthropic recusou o
+`oneOf` e o Google respondeu `INVALID_ARGUMENT` (HTTP 400 nos dois; docs/ARENA.md, seção 5). Ele passou a ser o dialeto comum, escrito à
+mão em `llm-messages.ts` e conferido contra o contrato por teste. O `llmDecisionSchema` estrito continua sendo o que valida a resposta
+(`parseLlmDecision`), e nada mais nesta decisão mudou.

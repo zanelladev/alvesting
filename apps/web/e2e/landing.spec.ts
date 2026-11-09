@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { arenaCurrentSchema, decisionsPageSchema, leaderboardSchema } from '@alvesting/contracts';
 import { SEASON, SIMULATED, dmy, fetchApi, pct, pctl } from './data';
 
-// A landing (ADR 0035; docs/redesign-rallies/plano.md, d.3 a d.8) sobre o banco sintético: a faixa dos seis laboratórios, o cartão "Arena
+// A landing (ADR 0035) sobre o banco sintético: a faixa dos seis laboratórios, o cartão "Arena
 // agora" por cima da moldura, os quatro painéis com recortes de UI de verdade (conferidos contra a api, nunca um número inventado), o FAQ, o
 // CTA e o rodapé grande do site. O hero, a arte e a fita estão em hero.spec.ts; a rolagem, os alvos de toque e o axe nos dois temas, em
 // layout.spec.ts. Roda em pixel-7, iphone-15 e desktop; o que leva `@tema` roda também nos projetos `-escuro`.
@@ -324,10 +324,11 @@ test('o rodapé grande: as colunas de links, o aviso, o © e o nome gigante deco
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
 });
 
-// O tema segue o sistema (ADR 0035): a moldura da arte é escura nos dois, e o cartão, os ladrilhos e o logo (a máscara pintada na tinta)
-// seguem o da página.
+// O tema segue o sistema (ADR 0035): a moldura da arte é escura nos dois, e o cartão e os ladrilhos seguem o da página. O logo do
+// laboratório é o desenho da marca (colorido, ou a máscara preta da OpenAI e da xAI) num círculo branco nos dois temas (06/11/2026; antes
+// ele era a máscara pintada na tinta, que seguia o tema).
 test(
-  'a moldura é escura nos dois temas, e o cartão, os ladrilhos e o logo seguem o tema da página',
+  'a moldura é escura nos dois temas, o cartão e os ladrilhos seguem o tema, e o logo fica no círculo branco',
   { tag: '@tema' },
   async ({ page }) => {
     await page.goto('/');
@@ -340,10 +341,12 @@ test(
     );
     const tile = region(page, 'Seis laboratórios, o mesmo prompt').getByRole('listitem').first();
     expect(await background(tile)).toBe(dark ? 'rgb(31, 31, 31)' : 'rgb(245, 245, 245)');
-    expect(
-      await tile
-        .locator('.logo')
-        .evaluate((element) => getComputedStyle(element, '::before').backgroundColor),
-    ).toBe(dark ? 'rgb(250, 250, 250)' : 'rgb(10, 10, 10)');
+    const logo = tile.locator('.logo');
+    expect(await background(logo)).toBe('rgb(255, 255, 255)');
+    const desenho = await logo.evaluate((element) => {
+      const style = getComputedStyle(element, '::before');
+      return `${style.backgroundImage} ${style.maskImage}`;
+    });
+    expect(desenho).toMatch(/\/laboratorios\/[a-z]+\.svg/);
   },
 );

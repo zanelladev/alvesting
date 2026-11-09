@@ -21,9 +21,10 @@ import { MarketRepository } from './modules/market-data/infrastructure/market.re
 // O banco é o de ENSAIO_DATABASE_URL (alvesting_ensaio no .env.example): recriado e migrado a cada execução, e nunca deduzido do
 // DATABASE_URL, então o de dev não entra. O Azurite (STORAGE_CONNECTION_STRING) guarda o que o ensaio escreve, em containers com o
 // prefixo "ensaio-". Recusa rodar com NODE_ENV=production.
-const USAGE = `Uso: arena:ensaio [--pregoes N] [--semente N] [--logos-sinteticos]
+const USAGE = `Uso: arena:ensaio [--pregoes N] [--semente N] [--retroativos K] [--logos-sinteticos]
   --pregoes N          quantos pregões seguidos (${MIN_SESSIONS} a ${MAX_SESSIONS}; padrão 5)
   --semente N          a semente do mercado, das notícias e do macro sintéticos (inteiro; padrão 1)
+  --retroativos K      os K primeiros pregões com o ciclo RETROATIVO, para o site testar os rótulos (0 a N; padrão 0)
   --logos-sinteticos   depois do relatório, os dois logos sintéticos que o e2e lê (o e2e:seed a passa)
 Variáveis (o .env.example traz as do docker compose): ENSAIO_DATABASE_URL, o banco que o ensaio recria (o nome tem de terminar em
 _ensaio ou _test), e STORAGE_CONNECTION_STRING, o Azurite. O relatório sai na tela e em .data/ensaio/ (fora do git).`;
@@ -40,7 +41,7 @@ async function main(argv: string[]): Promise<number> {
     console.error(`${parsed.message}\n${USAGE}`);
     return 2;
   }
-  const { sessions, seed, syntheticLogos } = parsed;
+  const { sessions, seed, syntheticLogos, retroactive } = parsed;
 
   if (process.env.NODE_ENV === 'production') {
     console.error('O ensaio esvazia um banco e não roda com NODE_ENV=production.');
@@ -106,10 +107,14 @@ async function main(argv: string[]): Promise<number> {
       seed,
       sessions,
       stocks: STOCKS,
+      retroactiveSessions: retroactive,
       log: (line) => console.log(`  ${line}`),
     });
 
-    const base = path.join(dir, `relatorio-s${seed}-p${sessions}`);
+    const base = path.join(
+      dir,
+      `relatorio-s${seed}-p${sessions}${retroactive > 0 ? `-r${retroactive}` : ''}`,
+    );
     await writeFile(`${base}.txt`, result.text);
     await writeFile(`${base}.json`, result.json);
     console.log(`\n${result.text}`);

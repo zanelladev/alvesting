@@ -1,10 +1,10 @@
 # Metodologia da arena
 
-**Status:** regras da Temporada 1 (o experimento), conferidas com o plano em 31/10/2026. A liquidação, as referências, a política aleatória, o Monte Carlo e as métricas foram definidas na etapa 7 (01/11/2026) e estão na seção "Liquidação, referências e métricas". Os resultados vão para `docs/RESULTADOS.md` na etapa 14.
+**Status:** regras da Temporada 1 (o experimento), conferidas com o plano em 31/10/2026. A Temporada 1 de verdade (06/11/2026, decisão do Artur): de 13/10 a 30/12/2026, com os pregões que já passaram rodados como retroativos e os seguintes ao vivo; seção "Temporada 1: o trecho retroativo e o ao vivo". A liquidação, as referências, a política aleatória, o Monte Carlo e as métricas foram definidas na etapa 7 (01/11/2026) e estão na seção "Liquidação, referências e métricas". Os resultados vão para `docs/RESULTADOS.md` na etapa 14.
 
 ## Pergunta de pesquisa
 
-Com as mesmas notícias, os mesmos dados e o mesmo prompt, LLMs de ponta tomam decisões de compra e venda na B3 melhores do que o acaso e do que o CDI numa temporada de 20 pregões?
+Com as mesmas notícias, os mesmos dados e o mesmo prompt, LLMs de ponta tomam decisões de compra e venda na B3 melhores do que o acaso e do que o CDI numa temporada de algumas dezenas de pregões (a Temporada 1 tem 53, de 13/10 a 30/12/2026)?
 
 ## Hipóteses
 
@@ -30,7 +30,7 @@ Parâmetros da temporada, conforme o plano (§2).
 | Regra        | Valor                                                                                                                                                                                  |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Capital      | R$ 100.000,00 por competidor                                                                                                                                                           |
-| Duração      | 20 pregões. A Temporada 0 é ensaio com provedores fake e não entra no resultado                                                                                                       |
+| Duração      | 53 pregões na Temporada 1 (de 13/10 a 30/12/2026, o último pregão de 2026; o plano previa 20). A Temporada 0 é ensaio com provedores fake e não entra no resultado                     |
 | Universo     | Até 500 ações ON, PN e UNIT, com volume financeiro médio de 60 pregões e presença em pelo menos 90% deles. Sem FII, ETF, BDR e opções. Refeito todo domingo e congelado na semana     |
 | Ordem        | Embaralhada com semente do pregão; igual para todos os modelos                                                                                                                         |
 | Ações        | BUY: 5% a 25% do patrimônio. SELL: 1% a 100% da posição. HOLD: com motivo. Só posição comprada, sem alavancagem e sem day trade                                                       |
@@ -84,7 +84,7 @@ Cada fonte entra no `docs/DEPENDENCIAS.md` no PR que a usar. O COTAHIST da B3 fo
 
 - Sorteio obrigatório no ranking.
 - Monte Carlo de 1.000 carteiras aleatórias, com as mesmas regras e semente fixa. O percentil de cada modelo é o resultado principal, e o cálculo é reproduzível: a mesma semente dá exatamente o mesmo resultado, e outra semente dá outro.
-- Com 20 pregões, o ranking diz pouco sozinho. Por isso as hipóteses são sobre o percentil, e não sobre a posição no ranking.
+- Com poucas dezenas de pregões, o ranking diz pouco sozinho. Por isso as hipóteses são sobre o percentil, e não sobre a posição no ranking.
 - Como o percentil é calculado e como a política aleatória sorteia as ordens: seções "Política aleatória" e "Monte Carlo".
 
 ## Liquidação, referências e métricas
@@ -314,6 +314,56 @@ Preços em centavos por ação. Eventos e CDI:
 
 **O que a planilha prova.** O `model-a` cobre compra com piso em ação inteira, venda parcial com custo médio, o meio do centavo subindo (46,5 → 47 e 98.929,5 → 98.930), compra reduzida pelo caixa, compra listada antes da venda que a paga, dia sem barra com a venda recusada e a posição marcada pelo último fechamento, desdobramento (a quantidade dobra, o custo fica), juros com o CDI de uma taxa que ainda não saiu e juros que arredondam a zero. As referências cobrem a fatia igual com custo, o desdobramento sem ordem e o caixa que sobra rendendo. O teto de 10 posições, a fração de ação de um evento, o BOVA11 sem barra e a ação cara demais para a fatia não cabem em 3 ações e são cobertos pelos testes de unidade, com contas feitas à mão nos próprios testes.
 
+## Temporada 1: o trecho retroativo e o ao vivo
+
+**Decisão do Artur (06/11/2026; ADR 0038).** A Temporada 1 tem os seis modelos do OpenRouter (Anthropic, OpenAI, Google, xAI, DeepSeek e
+Alibaba; `docs/ARENA.md`, seção 8), o Sorteio e as três referências, e vai de **13/10/2026 ao último pregão de 2026 (30/12/2026)**: 53 pregões
+pelo calendário da B3 (`apps/api/seasons/temporada-1.json`; um teste refaz a conta). **13/10 é o primeiro pregão em que os seis modelos já
+existiam no OpenRouter**: o Gemini 4 Argon entrou na lista nesse dia, e os outros cinco antes. Começar antes deixaria um modelo sem decidir, e
+trocar o elenco no meio quebraria "mesmas regras para todos".
+
+**Dois trechos.** Os pregões que já tinham passado quando a temporada começou de verdade (de 13/10 até a véspera da virada) entram como
+**retroativos**: rodados depois, pelo `arena:retroativo`, com o mesmo motor da arena (os mesmos agendadores, handlers, validação, filtro de
+vazamento e liquidação) e com o relógio do pregão simulado. A partir da virada, cada pregão é **ao vivo**: decidido na janela das 08:00 às 09:30
+do próprio pregão, pelo operador local (o Mac, até a Azure existir). Cada ciclo guarda o modo (`RETROATIVO` ou `AO_VIVO`) e a hora real em que
+rodou, e o site os mostra.
+
+**O que o pregão retroativo vê.** Só o que o pipeline ao vivo teria visto às 07:30 do pregão, fonte por fonte (`docs/DADOS.md`, seção 22): as
+barras até o pregão anterior; o documento da CVM a partir da hora em que a busca ao vivo o veria (o primeiro pregão depois do dia seguinte ao
+da entrega); cada valor do BCB só depois de público, pela regra mais conservadora (o CDI e o dólar um dia útil mais velhos que no ao vivo, o
+IPCA um mês mais velho); e a notícia de portal só se o operador a viu de verdade. O teste de visibilidade confere cada fonte.
+
+**O que o pregão retroativo não tem.** As notícias dos portais (InfoMoney, Money Times, Seu Dinheiro e Agência Brasil): o RSS só mostra os
+últimos itens e não guarda histórico, então o pregão retroativo fica sem elas até o operador local começar a coletá-las (o `--so-dados`, antes
+da virada). O fato relevante da CVM e o macro do BCB ele tem, pela regra acima. O modelo do pregão retroativo decide, portanto, com menos
+notícia que o do ao vivo: é uma diferença entre os dois trechos, igual para todos os modelos do mesmo pregão.
+
+**As datas reais.** Num ciclo retroativo, a hora da decisão, o prazo, o fechamento, a liquidação e a hora em que o documento da CVM foi "visto"
+seguem o relógio do pregão simulado. A hora real em que o ciclo rodou está em `executed_at` (a API pública a devolve como `executedAt`), e a de
+cada chamada à LLM, nas horas do pedido e da resposta HTTP do IO bruto. Nenhuma rota pública apresenta um valor do retroativo como coletado ou
+decidido na hora: o ciclo, o feed, a página do modelo, a da ação e a home levam o modo, e o ranking diz quantos pregões foram de cada modo.
+
+**As regras do ao vivo.** O operador nunca abre um ciclo "ao vivo" atrasado: passada a janela da decisão (09:30, menos 5 minutos de margem), o
+pregão não ganha ciclo ao vivo e só pode ser coberto pelo retroativo, como retroativo. Ele também só abre o ciclo ao vivo quando todos os
+pregões anteriores da temporada já têm ciclo, e nunca para um pregão que já tem um.
+
+**O mesmo prompt nos dois trechos.** A temporada fixa o SHA-256 do prompt ao começar, e nenhum ciclo abre com outro, retroativo ou ao vivo.
+O texto continua oculto (seção "Prompt e briefing").
+
+**A prova descartada (06/11/2026).** Antes do lote, o pregão de 13/10 rodou uma vez como prova do caminho real (das 12:29 às 12:33). Ela achou
+um erro da arena, e não dos modelos: o formato de resposta (JSON Schema) mandado aos seis usava `oneOf`, que a Anthropic e o Google recusam
+(HTTP 400), e por isso o Claude Opus 5.5 e o Gemini 4 Argon ficaram com HOLD forçado (`falha`) por um defeito nosso; o GPT-6.1 Sol, o Grok
+4.7, o DeepSeek V4 Pro e o Qwen3.8 Max decidiram. A mesma prova mostrou o DeepSeek em laço de espaços quando o OpenRouter o mandava para a
+Wafer, e a tentativa anterior tinha parado antes de abrir o ciclo, na janela do IPCA (`docs/DADOS.md`, seção 15). As correções: um schema só,
+no dialeto que os seis aceitam, com as regras completas ainda conferidas pelo validador (`docs/ARENA.md`, seção 5; ADR 0016), a Wafer fora
+do roteamento e a janela mensal do IPCA. **Decisão do Artur:** descartar a prova e refazer o 13/10 com os seis e o mesmo prompt (o mesmo
+SHA-256), inclusive as quatro decisões válidas, para que todo pregão da temporada tenha o mesmo pedido para todos os modelos. Nada foi
+escondido: a prova está guardada fora do git em `.data/temporada/prova-2026-11-06/` (o log, o relatório do pregão, as decisões e a cópia
+inteira do banco, `alvesting_temporada.dump`, SHA-256 `69bd27ca5bd8f80a1b93f32702c3cd6a44847aec7c69c65c336bbe9614743be7`), e o IO bruto dela
+continua no Blob. Ela custou US$ 0,437786, e os testes de roteamento e de formato, mais US$ 0,10; nenhum dos dois entra na temporada. O banco
+da temporada foi recriado do zero, e o 13/10 refeito rodou das 13:37 às 13:41 (Brasília) do mesmo 06/11: os seis decidiram, por US$ 0,910464,
+o mesmo valor que o OpenRouter cobrou da chave.
+
 ## Limitações declaradas
 
 - **Amostra pequena.** Vinte pregões têm pouco poder estatístico. O sorteio e o Monte Carlo existem por isso.
@@ -338,9 +388,13 @@ Preços em centavos por ação. Eventos e CDI:
 - **Reliquidação.** A temporada é recalculada do zero a cada liquidação, e o resultado de um dia pode mudar depois: quando um evento corporativo é registrado depois, ou quando uma barra atrasada entra (a barra gravada nunca muda, e o `eod` não reabre a liquidação de um pregão já liquidado; a barra atrasada entra na próxima liquidação regular, e o admin decide se reprocessa antes: RUNBOOK). A decisão de um modelo foi tomada sobre a carteira que ele tinha naquele dia; depois de refazer a conta a carteira pode ser outra, e a ordem que deixa de caber é recusada e registrada (`no_position`, `insufficient_cash`, `max_positions`), exatamente como na primeira conta. A decisão em si não é refeita.
 - **Carteira da decisão atrasada.** O modelo decide com a carteira da última liquidação antes do pregão. Se a do pregão anterior atrasou (o `eod` ou o `settle` de ontem falhou; ou nenhuma rodou ainda e o pregão não é o primeiro da temporada, e então vale a carteira inicial), ele decide com a que existe, o log avisa, e a liquidação de depois executa a decisão sobre a carteira certa. O ciclo não é pulado por isso.
 - **Resultado do dia incompleto.** Há uma fonte só (a brapi), então não existe barra provisória a trocar. Um papel que a brapi não entregou até o prazo das 00:30 fica sem a barra do dia (o `eod` registra a contagem e os 20 primeiros, e o alerta `eod-barras-ausentes` avisa se faltar o BOVA11 ou mais de 10% do conjunto obrigatório), e nesse dia a ordem sobre ele não executa (`no_bar`) e a posição é marcada pelo último fechamento conhecido (`stale`). A barra que chega depois é gravada, mas o dia já liquidado só a vê na próxima liquidação regular. O volume que o universo usa é estimado (quantidade × fechamento) e o preço do histórico de um papel carregado depois de um provento pode vir ajustado (`docs/DADOS.md`, seção 4).
+- **Dois trechos na Temporada 1.** Os pregões retroativos não têm as notícias dos portais e veem o macro do BCB pela regra conservadora; os ao
+  vivo têm tudo. A diferença é igual para todos os modelos do mesmo pregão, mas pode pesar na comparação entre os trechos (seção "Temporada 1").
+  E o corte de conhecimento de cada modelo não é controlado pela arena: no pregão retroativo o modelo é chamado depois do pregão, e não há
+  como provar que o treino dele não viu nada do período (a arena só garante que o briefing e a carteira não trazem nada de depois do corte).
 - **Um período.** O resultado vale para essa temporada e essas condições. Não generaliza para outros períodos nem outros mercados.
 - **Não é recomendação.** A arena é acadêmica, e as decisões dos modelos não são recomendação de investimento. O chat (etapa 13) não é competidor e não entra nos resultados.
 
 ## Cronograma
 
-Contado da entrega (D), conforme o plano (§0.2): Temporada 0 (ensaio, 5 pregões) em D − 12 semanas; Temporada 1 entre D − 11 e D − 6 semanas. A data de entrega ainda não foi definida (plano, §17.1).
+Contado da entrega (D), conforme o plano (§0.2): Temporada 0 (ensaio, 5 pregões) em D − 12 semanas; Temporada 1 entre D − 11 e D − 6 semanas. A data de entrega ainda não foi definida (plano, §17.1). Em 06/11/2026 o Artur fixou a Temporada 1 de 13/10 a 30/12/2026 (seção "Temporada 1"), e o prazo do Playbook é 30/11/2026: o trabalho entregue nessa data tem a temporada em andamento, com o trecho retroativo e o começo do ao vivo.

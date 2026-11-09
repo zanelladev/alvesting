@@ -221,7 +221,7 @@ describe('WalletSummary', () => {
   const dts = (markup: string) =>
     [...markup.matchAll(/<dt[^>]*>(.*?)<\/dt>/g)].map((m) => plain(m[1]!));
 
-  // a ordem do Today do Rallies (docs/redesign-rallies/plano.md, f.3): o valor estimado em cima, a frase do resultado e o custo total
+  // a ordem do Today do Rallies (ADR 0035): o valor estimado em cima, a frase do resultado e o custo total
   it('o valor estimado, o resultado com sinal, percentual e palavra, e o custo', () => {
     const out = html(<WalletSummary totals={totals()} />);
     expect(dts(out)).toEqual(['Valor estimado', 'Resultado', 'Custo total']);
@@ -312,8 +312,9 @@ describe('WalletSummary', () => {
     expect(out).toContain('data-inicial="S"');
     // os botões da legenda nascem desativados (o servidor e o navegador sem JavaScript); a hidratação os liga
     expect(out).toMatch(/<button type="button" data-legenda="MOVE3" disabled=""/);
-    // o atalho para o formulário é a pílula cinza: a primária é o envio do formulário (o QA do fechamento, achado 9)
-    expect(out).toContain('<a href="#lancar" class="btn">Lançar compra</a>');
+    // o botão que abre o modal de lançar é a pílula cinza: a primária é o do cabeçalho dos lançamentos (o QA do fechamento, achado 9); nasce
+    // desativado (sem JavaScript ele não faria nada)
+    expect(out).toContain('<button type="button" class="btn" disabled="">Lançar compra</button>');
   });
 
   it('sem nenhuma posição com fechamento, não há rosca', () => {
@@ -374,11 +375,14 @@ describe('WalletPositions: o desenho limpo do Rallies', () => {
 });
 
 describe('WalletEmpty', () => {
-  it('a coluna da carteira vazia não tem números nem a região do resumo, e leva ao formulário', () => {
+  it('a coluna da carteira vazia não tem números nem a região do resumo, e abre o modal de lançar', () => {
     const out = html(<WalletEmpty />);
     expect(out).not.toContain('<dd');
     expect(out).not.toContain('id="resumo"');
-    // o atalho para o formulário é a pílula cinza: a primária é o envio do formulário (o QA do fechamento, achado 9)
-    expect(out).toContain('<a href="#lancar" class="btn">Lançar compra</a>');
+    // a pílula cinza que abre o modal (a primária é a do cabeçalho dos lançamentos), desativada até o JavaScript, com o <noscript> ao lado
+    expect(out).toContain(
+      '<button type="button" class="btn" disabled="">Lançar compra</button><noscript><span class="muted">Lançar uma compra precisa de JavaScript.</span></noscript>',
+    );
+    expect(out).not.toContain('#lancar');
   });
 });

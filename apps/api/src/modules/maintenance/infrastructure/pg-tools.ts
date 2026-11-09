@@ -143,7 +143,8 @@ export function majorOfVersionText(text: string): number | undefined {
 }
 
 // --- o processo filho ------------------------------------------------------------------------------------------------------------
-export type PgTool = 'pg_dump' | 'pg_restore';
+// o psql é da restauração da temporada (application/season-restore.ts), que aplica o script do pg_restore numa transação só
+export type PgTool = 'pg_dump' | 'pg_restore' | 'psql';
 
 export interface SpawnOptions {
   env: NodeJS.ProcessEnv;
@@ -196,4 +197,46 @@ export function collect(child: ChildProcess, options: { stdout?: boolean } = {})
     child.on('error', reject);
     child.once('close', (code, signal) => resolve({ code, signal, stderr, stdout }));
   });
+}
+
+const VERSION_TIMEOUT_MS = 30_000;
+
+// As ferramentas têm de ser do major do servidor: o pg_dump de major maior escreve sintaxe que o servidor não conhece, o de menor recusa o
+// servidor. A produção as chama pelo PATH da imagem (postgresql-client-17, docs/INFRA.md, 2.8); nesta máquina de desenvolvimento o libpq do
+// Homebrew é o 18 e não serve. O backup-verify confere o pg_dump e o pg_restore; a restauração da temporada, o pg_restore e o psql.
+export async function assertToolsMajor(
+  spawn: SpawnTool,
+  tools: readonly PgTool[],
+  serverMajor: number,
+  target: DatabaseTarget,
+  signal: AbortSignal,
+): Promise<void> {
+  for (const tool of tools) {
+    let text: string;
+    try {
+      const child = spawn(tool, ['--version'], {
+        env: toolEnv(target),
+        signal,
+        timeoutMs: VERSION_TIMEOUT_MS,
+      });
+      const exit = await collect(child);
+      if (exit.code !== 0)
+        throw new Error(`${tool} --version saiu com ${exit.code}: ${exit.stderr}`);
+      text = exit.stdout;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error(
+          `${tool} não foi encontrado no PATH: instale o postgresql-client-${serverMajor} (docs/INFRA.md, 2.8)`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+    const major = majorOfVersionText(text);
+    if (major !== serverMajor) {
+      throw new Error(
+        `${tool} é do PostgreSQL ${major ?? '?'} e o servidor é o ${serverMajor}: instale o postgresql-client-${serverMajor} (docs/INFRA.md, 2.8)`,
+      );
+    }
+  }
 }

@@ -1,4 +1,4 @@
-// O FAQ da landing (docs/redesign-rallies/plano.md, d.6): seis perguntas, com as respostas tiradas do Como funciona e da carteira (o texto de
+// O FAQ da landing (ADR 0035): seis perguntas, com as respostas tiradas do Como funciona e da carteira (o texto de
 // lá, encurtado; quem quiser a regra inteira vai ao Como funciona). Texto estático, sem `details`: três colunas a partir de 1024 px, duas a
 // partir de 768, uma no celular. A resposta sobre os modelos depende de a arena estar simulada.
 const MODELOS_SIMULADOS =

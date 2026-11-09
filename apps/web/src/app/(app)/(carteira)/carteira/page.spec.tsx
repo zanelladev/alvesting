@@ -25,6 +25,7 @@ vi.mock('../../../../lib/wallet', () => ({ readPortfolio }));
 vi.mock('../../../../lib/logos', () => ({ versoesDosLogos: () => Promise.resolve(new Map()) }));
 
 const { default: WalletPage, metadata } = await import('./page');
+const { WalletLots } = await import('../../../../components/wallet-lots');
 
 // Corta cada elemento aria-hidden com tudo o que ele tem dentro (as rodas do contador da Arc, o logo).
 function semEscondido(markup: string): string {
@@ -214,9 +215,13 @@ describe('a página /carteira', () => {
   it('com lançamentos: o resumo, a tabela de posições (com o ticker sem cotação) e os cartões, nesta ordem', async () => {
     readPortfolio.mockResolvedValue(WITH_LOTS);
     const out = await render();
-    const order = ['id="resumo"', 'id="posicoes"', 'id="lancamentos"', 'id="lancar"'].map((id) =>
-      out.indexOf(id),
-    );
+    // o modal de lançar (fechado) fica depois da lista
+    const order = [
+      'id="resumo"',
+      'id="posicoes"',
+      'id="lancamentos"',
+      'id="lancamento-titulo"',
+    ].map((id) => out.indexOf(id));
     expect(order.every((i) => i > 0)).toBe(true);
     expect(order).toEqual([...order].sort((a, b) => a - b));
     // o texto que o leitor de tela lê: sem as rodas dos algarismos do contador (aria-hidden), que levam o número inteiro num sr-only
@@ -235,16 +240,22 @@ describe('a página /carteira', () => {
     expect(out.match(/data-lot="/g)).toHaveLength(2);
   });
 
-  it('o seletor de data para no dia de hoje em BRASÍLIA, e não no do servidor (UTC)', async () => {
+  // O último dia que o calendário do modal deixa escolher é o `today` que a página entrega aos lançamentos (o calendário só se desenha aberto,
+  // no navegador): ele é lido da árvore que a página monta.
+  it('o calendário para no dia de hoje em BRASÍLIA, e não no do servidor (UTC)', async () => {
     readPortfolio.mockResolvedValue(EMPTY);
+    const todayOf = (node: unknown): string | undefined => {
+      if (!node || typeof node !== 'object') return undefined;
+      if (Array.isArray(node)) return node.map(todayOf).find(Boolean);
+      const element = node as { type?: unknown; props?: { today?: string; children?: unknown } };
+      return element.type === WalletLots ? element.props?.today : todayOf(element.props?.children);
+    };
     // 09/11/2026 02:00 em UTC ainda é 08/11, 23:00 em Brasília
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-09T02:00:00.000Z'));
-    const night = await render();
-    expect(night).toMatch(/<input[^>]*type="date"[^>]*max="2026-11-08"/);
+    expect(todayOf(await WalletPage({}))).toBe('2026-11-08');
     vi.setSystemTime(new Date('2026-11-09T13:00:00.000Z'));
-    const noon = await render();
-    expect(noon).toMatch(/<input[^>]*type="date"[^>]*max="2026-11-09"/);
+    expect(todayOf(await WalletPage({}))).toBe('2026-11-09');
   });
 
   it('a página não é indexada (a carteira de ninguém é conteúdo público) e tem título próprio', () => {

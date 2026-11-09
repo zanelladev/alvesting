@@ -44,9 +44,17 @@ Comandos (rodam com o banco do ambiente, sem fila e sem LLM; em dev, `pnpm --fil
 
 | Comando | O que faz |
 |---|---|
-| `season:create <arquivo.json>` | Valida o arquivo inteiro (`seasonFileSchema`, estrito: chave a mais, segredo inclusive, é recusada, e a mensagem de erro nunca repete o valor) e cria a temporada em `DRAFT` com o elenco. Exemplos versionados em `apps/api/seasons/`: `temporada-0.json` (o ensaio, 5 pregões, 6 provedores fake) e `temporada-1.rascunho.json` (a Temporada 1, 20 pregões, elenco abaixo) |
+| `season:create <arquivo.json>` | Valida o arquivo inteiro (`seasonFileSchema`, estrito: chave a mais, segredo inclusive, é recusada, e a mensagem de erro nunca repete o valor) e cria a temporada em `DRAFT` com o elenco. Exemplos versionados em `apps/api/seasons/`: `temporada-0.json` (o ensaio, 5 pregões, 6 provedores fake). O `temporada-1.json` (a Temporada 1, seção 8) traz a data fixa do primeiro pregão (`startDate`) e não é deste comando: ele o recusa dizendo que quem o cria e o inicia é o `arena:retroativo` |
 | `season:start <id>` | `DRAFT` para `RUNNING`, com a data de início no **próximo pregão depois de hoje** (de Brasília): hoje nunca é o início, porque o briefing das 07:30 e o ciclo das 08:00 podem já ter passado. No domingo 01/11/2026 o início é a terça 03/11 (02/11 é Finados) |
 | `cycle:show <AAAA-MM-DD\|id> [slug]` | Mostra o ciclo de um pregão: status, motivo de pulo, hashes do prompt e do briefing, e uma linha por competidor (resultado, visão, ordens por ação, descartados, custo, chamadas). Só o formato público; nunca o IO bruto |
+
+**A Temporada 1 de verdade** (ADR 0038; `docs/METODOLOGIA.md`, "Temporada 1"; `docs/RUNBOOK.md`, seção 13) começa em 13/10/2026, antes de hoje, e
+por isso não passa pelo `season:start`: o `arena:retroativo` a cria do `temporada-1.json` e a inicia **na data do arquivo**, com o SHA-256 do
+prompt fixado em `season.prompt_sha256`; roda os pregões que já passaram como **retroativos**; e o operador local (`arena:operar`) roda os
+seguintes **ao vivo**. Cada ciclo guarda o modo (`cycle.mode`: `RETROATIVO` ou `AO_VIVO`, o padrão) e a hora real em que nasceu
+(`cycle.executed_at`); a API pública os devolve em toda rota que mostra o ciclo (`mode` e `executedAt`) e o ranking conta os pregões de cada modo
+(`cyclesByMode`). O agendador de produção e o reprocesso do painel só abrem ciclo `AO_VIVO`; a api nem consegue gravar outro (o gatilho
+`cycle_api_guard`, migration `20261106120000_retroactive_cycles`).
 
 **Na Azure** (e pelo painel) os dois primeiros comandos são `POST /admin/seasons` e `PATCH /admin/seasons/:id` (etapa 10, parte 2; `docs/API.md`, seção 8): o mesmo arquivo e a mesma data de início, com a trilha de auditoria na
 transação. O painel também **edita o rascunho** (nome, parâmetros e elenco, que o comando não faz). **Regras, elenco e prompt de uma temporada em andamento ou encerrada ficam fixos**: a edição só aceita o rascunho
@@ -181,6 +189,12 @@ segurança (ADR 0021):
    com o erro) e **não lança**: a mensagem é concluída e **não vai para a DLQ**. Se nem o HOLD dá para gravar (banco fora), o erro
    sobe e a mensagem vai para a DLQ, que é o que o alerta da etapa 10 vigia.
 3. Mensagem inválida (corpo torto, fila errada) continua indo para a DLQ na hora, sem HOLD: não há competidor a registrar.
+   **Erro de configuração também não vira HOLD** (06/11/2026): chave ausente, recusada (HTTP 401) ou sem crédito (HTTP 402), prompt
+   ausente ou sem a linha de canário (`LlmConfigError`). Não é decisão do modelo, e o HOLD `falha` mancharia a temporada (no retroativo,
+   um crédito que acabasse no meio gravaria HOLD em todos os pregões seguintes, porque a chamada recusada não custa e o teto nunca
+   dispara). A última entrega lança, a mensagem vai para a DLQ (o alerta enxerga) e o par fica sem decisão: o `arena:retroativo` para
+   no pregão antes da liquidação e, corrigida a causa, decide o que falta; ao vivo, a varredura do item 4 grava `sem_resposta`, e o
+   operador local nem abre o ciclo sem saldo para o pior caso do pregão (`temporada/credit.ts`, regra 5 do `operator.ts`).
 4. **A varredura** (`CycleCloser.closeOverdue`): ciclo `OPEN` com o prazo vencido há mais de 15 minutos fecha, e cada MODEL sem decisão
    ganha HOLD `sem_resposta`. Cobre o que nenhum handler vê: o broker mandou a mensagem para a DLQ por trava expirada (processo que
    caiu três vezes), ou ela nunca foi publicada. Roda no `sched-cycle` (antes de abrir o ciclo do dia) e **no início do `settle`**
@@ -212,8 +226,8 @@ vira HOLD `prompt_divergente`, por desenho.
 por prompt, por exemplo `openssl rand -hex 12`). O filtro de vazamento o extrai do próprio prompt em tempo de execução: não há nada a
 configurar nem um segundo segredo. Se um modelo repetir a linha, ela é trocada por um aviso antes de ir ao banco, à API ou ao
 Blob, e o campo é registrado em `decision.leak_fields`. Os trechos de 8 palavras seguidas valem do mesmo jeito. **O job de decisões
-recusa um prompt sem a linha de canário** (erro de configuração, antes de registrar o SHA-256 e de chamar o modelo; vira HOLD `falha`
-na última entrega e o alerta enxerga): sem ela o filtro perderia o alarme mais forte em silêncio, e um texto de marcação ("TODO")
+recusa um prompt sem a linha de canário** (erro de configuração, antes de registrar o SHA-256 e de chamar o modelo; não vira HOLD,
+nem na última entrega: a mensagem vai para a DLQ e o alerta enxerga, seção 5): sem ela o filtro perderia o alarme mais forte em silêncio, e um texto de marcação ("TODO")
 rodaria a temporada. Confira a linha antes de semear (o token mais curto que 16 caracteres, com maiúscula ou com hífen no meio não
 casa).
 
@@ -267,8 +281,20 @@ duas opções da conta são um passo manual sem verificação; (2) decida `zdr: 
 (sem endpoint o OpenRouter responde 404); (3) uma chamada com cada um dos seis, conferindo `applied` (modelo e provedor reais) e o custo
 contra o painel; (4) o 404 "No endpoints found" com `require_parameters` e o 402 de crédito aparecem agora com o `code` na mensagem.
 
-**JSON Schema com `strict: false`**, de propósito: `confidence` é opcional no contrato (ADR 0016) e o modo estrito da OpenAI exige todos os
-campos obrigatórios. O schema é uma dica para o modelo; a barreira é o `parseLlmDecision`. **Não verificado com chamada real** (seção 10).
+**JSON Schema com `strict: false`, no dialeto comum**, de propósito: `confidence` é opcional no contrato (ADR 0016) e o modo estrito da
+OpenAI exige todos os campos obrigatórios. O schema é uma dica para o modelo; a barreira é o `parseLlmDecision`. Ele é escrito à mão em
+`llm-messages.ts`, só com tipos, obrigatórios, `enum` e objetos fechados, e **não** é o `z.toJSONSchema` do contrato. Na primeira chamada
+real (a prova do pregão de 13/10, rodada em 06/11/2026), o schema do contrato, com `oneOf`, `const`, `pattern` e limites de número e de
+texto, levou HTTP 400 em dois dos seis: a Anthropic respondeu "Schema type 'oneOf' is not supported" e o Google, `INVALID_ARGUMENT`, e os
+dois ficaram com HOLD forçado. Os outros quatro aceitaram. O mesmo pedido com o dialeto comum passou nos seis. O teste do
+`llm-messages.spec.ts` confere que os campos, os obrigatórios e os enums são os do contrato e que nenhum recurso fora do dialeto voltou.
+Aceitar `response_format` (o `supported_parameters` do endpoint) não diz quais recursos de JSON Schema o provedor aceita.
+
+**Um provedor fora do roteamento: a Wafer** (`IGNORED_OPENROUTER_PROVIDERS` no gateway, a mesma lista para todos os competidores; só o
+DeepSeek V4 Pro, entre os seis, tem endpoint nela). No teste do schema novo (06/11/2026), o DeepSeek pela Wafer começou o JSON certo e
+entrou num laço de espaços e tabulações até o limite de saída (HTTP 200 com `finish_reason` "length", 16 mil tokens, US$ 0,07); com o
+schema do contrato, também deixou espaços soltos no meio. A mesma chamada sem a Wafer saiu certa em três provedores (Sail Research,
+Together e CoreWeave). Sem a exclusão, a falha do motor de saída estruturada de um provedor viraria HOLD por resposta inválida do modelo.
 
 **Tempo de cada chamada:** o menor entre o que falta até 09:30 e o `replicaTimeout` do job (1500 s) menos 2 minutos de margem; a
 segunda chamada (o reparo) recebe só o que sobrou. O `fetch` do Node espera 5 minutos pelos cabeçalhos, pouco para um modelo de
@@ -277,15 +303,19 @@ acima. Com menos de 10 segundos não vale começar a primeira chamada, e com men
 resposta, já paga, vira HOLD com o IO e o custo, em vez de se perder na nova tentativa). O transporte de produção (SDK com o `Agent` do
 `undici`) tem teste contra um servidor em 127.0.0.1: sucesso, custo, servidor que não responde (timeout) e conexão fechada.
 
-## 8. Elenco da Temporada 1 (rascunho; a decisão é do Artur)
+## 8. Elenco da Temporada 1 (decidido em 06/11/2026)
 
-Um modelo de topo por laboratório, conferido na lista pública (`GET https://openrouter.ai/api/v1/models`, sem chave) em **01/11/2026**.
+Um modelo de topo por laboratório, conferido na lista pública (`GET https://openrouter.ai/api/v1/models`, sem chave) em **01/11/2026** (os
+IDs e os recursos) e em **06/11/2026** (os preços: a resposta das 08:53, com 453 modelos, consultada pelo coordenador; `docs/DEPENDENCIAS.md`).
 "Topo" é o que a própria descrição na lista chama de principal; as variantes `-pro` (modo de raciocínio mais caro) e os `:batch` ficam
-de fora. O arquivo é `apps/api/seasons/temporada-1.rascunho.json`.
+de fora. O arquivo é `apps/api/seasons/temporada-1.json`: a Temporada 1, de **13/10/2026** (o primeiro pregão em que os seis já existiam no
+OpenRouter: o Gemini 4 Argon entrou em 13/10) ao **último pregão de 2026, 30/12/2026**, **53 pregões** pelo calendário da B3 (o
+`season-files.spec.ts` refaz a conta), com as regras de sempre (capital de R$ 100.000,00, 10 posições, 5 ordens, 0,03% de custo, decisão às
+08:00 e prazo às 09:30) e as sementes do Sorteio e do Monte Carlo do rascunho.
 
-**Até a integração, este elenco aparece simulado** (seção 1): a temporada sintética usa os mesmos seis nomes e slugs com o provedor `fake`
-e uma estratégia fake para cada um (`docs/ENSAIO.md`, seção 3), e o site marca cada um como "simulado". O rascunho continua com o
-`openrouter` e os IDs abaixo: no dia, é ele que vira a temporada, e a etiqueta some sozinha.
+**A temporada sintética continua simulada** (seção 1): o ensaio, a demo local e a semente do e2e usam os mesmos seis nomes e slugs com o
+provedor `fake` (`docs/ENSAIO.md`, seção 3), e o site marca cada um como "simulado". A Temporada 1 nasce com o `openrouter` e os IDs abaixo,
+e a etiqueta some sozinha.
 
 | Laboratório | ID | US$ / M entrada | US$ / M saída | JSON Schema | Esforço `medium` |
 |---|---|---|---|---|---|
@@ -293,7 +323,7 @@ e uma estratégia fake para cada um (`docs/ENSAIO.md`, seção 3), e o site marc
 | OpenAI | `openai/gpt-6.1-sol` | 2 | 10 | sim | sim |
 | Google | `google/gemini-4-argon` | 2 | 10 | sim | sim |
 | xAI | `x-ai/grok-4.7` | 2 | 6 | sim | sim |
-| DeepSeek | `deepseek/deepseek-v4-pro-0813` | 0,115 | 4 | sim | **não**: os níveis são `max`, `high`, `low` e `none` |
+| DeepSeek | `deepseek/deepseek-v4-pro-0813` | 0,1165 | 4,66 | sim | **não**: os níveis são `max`, `high`, `low` e `none` |
 | Alibaba | `qwen/qwen3.8-max-0902` | 2 | 6 | sim | sim |
 
 "JSON Schema" = `response_format` e `structured_outputs` em `supported_parameters`; "Esforço" = `reasoning_effort` em
@@ -302,28 +332,35 @@ Sol aceitam também `max_completion_tokens`, razão de o OpenRouter usar `max_to
 parâmetro não é enviado e o modelo usa o padrão dele (`high`). É uma assimetria da metodologia ("esforço médio onde existir") a
 declarar entre as limitações. Fora do elenco, por escolha: `anthropic/claude-fable-5.1` (US$ 10 / 50, mais caro e de outra linha),
 `deepseek/deepseek-v4-pro` (0423, anterior ao 0813, a versão GA) e `qwen/qwen3.8-max-prime` (variante de maior vazão, a um preço maior).
+Os preços de 06/11/2026 são os de 01/11/2026, menos o DeepSeek V4 Pro (0813), que passou de 0,115 e 4 para 0,1165 e 4,66.
 
-**Estimativa de custo por ciclo (um modelo) e por temporada de 20 pregões.** Entrada de um briefing sintético do tamanho do real
-(305 ações, 17 com barras, 8 notícias: **45.765 bytes**, contra os 43.405 do de dev) mais a carteira (247 bytes na carteira inicial,
-15.879 bytes com 10 posições de 30 barras) e o rascunho do prompt (6.250 bytes). A 3 bytes por token são uns 17,5 mil tokens de
-entrada com a carteira inicial e uns 22,7 mil com 10 posições; é uma aproximação, e o tokenizer de cada modelo difere. Dois cenários:
-**típico** (20 mil de entrada, 6 mil de saída: uns 4,5 mil de raciocínio e 1,5 mil de JSON) e **teto** (27 mil de entrada, a 2,5 bytes por
-token com a carteira cheia, e 16 mil de saída, o limite do gateway).
+**Estimativa de custo.** Entrada de um briefing sintético do tamanho do real (305 ações, 17 com barras, 8 notícias: **45.765 bytes**, contra os
+43.405 do de dev) mais a carteira (247 bytes na carteira inicial, 15.879 bytes com 10 posições de 30 barras) e o rascunho do prompt (6.250
+bytes). A 3 bytes por token são uns 17,5 mil tokens de entrada com a carteira inicial e uns 22,7 mil com 10 posições; é uma aproximação, e o
+tokenizer de cada modelo difere. Dois cenários (`apps/api/src/temporada/plan.ts`, `COST_SCENARIOS`, com a conta à mão no `plan.spec.ts`):
+**típico** (20 mil de entrada e 6 mil de saída: uns 4,5 mil de raciocínio e 1,5 mil de JSON) e **pior caso** (a primeira chamada no teto, 27 mil
+de entrada a 2,5 bytes por token com a carteira cheia e os 16 mil de saída do gateway, **mais o reparo**, com a resposta de volta na entrada:
+43 mil e 16 mil). O custo de cada chamada arredonda para cima (`pricedCostMicro`).
 
-| Modelo | Ciclo típico | 20 pregões, típico | Ciclo no teto | 20 pregões, teto |
+| Modelo | Pregão típico | Pior caso do pregão | 53 pregões, típico | 53 pregões, pior caso |
 |---|---|---|---|---|
-| Claude Opus 5.5 | US$ 0,200 | US$ 4,00 | US$ 0,428 | US$ 8,56 |
-| GPT-6.1 Sol | US$ 0,100 | US$ 2,00 | US$ 0,214 | US$ 4,28 |
-| Gemini 4 Argon | US$ 0,100 | US$ 2,00 | US$ 0,214 | US$ 4,28 |
-| Grok 4.7 | US$ 0,076 | US$ 1,52 | US$ 0,150 | US$ 3,00 |
-| DeepSeek V4 Pro (0813) | US$ 0,026 | US$ 0,53 | US$ 0,067 | US$ 1,34 |
-| Qwen3.8 Max (0902) | US$ 0,076 | US$ 1,52 | US$ 0,150 | US$ 3,00 |
-| **Os seis** | **US$ 0,578** | **US$ 11,57** | **US$ 1,223** | **US$ 24,46** |
+| Claude Opus 5.5 | US$ 0,200 | US$ 0,920 | US$ 10,60 | US$ 48,76 |
+| GPT-6.1 Sol | US$ 0,100 | US$ 0,460 | US$ 5,30 | US$ 24,38 |
+| Gemini 4 Argon | US$ 0,100 | US$ 0,460 | US$ 5,30 | US$ 24,38 |
+| Grok 4.7 | US$ 0,076 | US$ 0,332 | US$ 4,03 | US$ 17,60 |
+| DeepSeek V4 Pro (0813) | US$ 0,030 | US$ 0,157 | US$ 1,61 | US$ 8,34 |
+| Qwen3.8 Max (0902) | US$ 0,076 | US$ 0,332 | US$ 4,03 | US$ 17,60 |
+| **Os seis** | **US$ 0,582** | **US$ 2,661** | **US$ 30,86** | **US$ 141,05** |
 
-O reparo faz uma segunda chamada, com a resposta anterior de volta na entrada: no pregão em que acontece, o custo do modelo pode
-chegar a 2 vezes o da tabela. O OpenRouter cobra uma taxa sobre a compra de créditos que esta tabela não inclui (não conferida). O teto de
-produção proposto é **US$ 40 por mês**, com folga de 1,6 vez sobre o teto da tabela (`arenaMonthlyCostCapUsd` em `main.prod.bicepparam`); o
-plano (§5.12) estimava US$ 20 a 50.
+Por mês (pelo mês do pregão, que é como o teto do mês conta): outubro tem 14 pregões (típico US$ 8,15; pior caso US$ 37,26), novembro 19
+(US$ 11,06; US$ 50,56) e dezembro 20 (US$ 11,65; US$ 53,23). Os 17 pregões retroativos de 13/10 a 05/11 custam uns US$ 9,90 no típico e no
+máximo US$ 45,24. O OpenRouter cobra uma taxa sobre a compra de créditos que esta tabela não inclui (não conferida). O custo de verdade é o
+`usage.cost` que o OpenRouter devolve em cada resposta, gravado em cada decisão.
+
+**Os tetos.** O teto de produção proposto é **US$ 40 por mês** (`arenaMonthlyCostCapUsd` em `main.prod.bicepparam`; no Mac,
+`ARENA_MONTHLY_COST_CAP_USD`), com folga de 3,4 vezes sobre o típico do mês mais caro (dezembro); só novembro ou dezembro inteiros perto do pior caso passariam dele, e
+então o ciclo seguinte ao teto seria pulado (`orcamento`). O `arena:retroativo` tem ainda o **teto da execução** (`--teto-usd`, padrão 30): antes de abrir
+cada pregão, para se o gasto da execução mais o pior caso do pregão passaria dele. O plano (§5.12) estimava US$ 20 a 50 por mês.
 
 ## 9. A API (`GET /api/v1/cycles/:id`)
 

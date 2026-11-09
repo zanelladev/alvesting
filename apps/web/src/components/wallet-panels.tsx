@@ -4,6 +4,7 @@ import { LogoDoPapel } from './logo-do-papel';
 import { Th, direction } from './tables';
 import { LINK, NavLink, ROW, TABLE, TD, TH, TableScroll } from './ui';
 import { AlocacaoDaCarteira, Dinheiro, Termo } from './wallet-charts';
+import { BotaoLancar } from './wallet-lots';
 
 // O resumo e as posições da carteira (etapa 12, parte 2; docs/TELAS.md, seção 9): Server Components; as peças vivas (o contador, a rosca e o
 // tooltip) entram como ilhas, de components/wallet-charts.tsx. Os números vêm prontos da api (`GET /api/v1/me/portfolio`, docs/API.md, seção
@@ -17,7 +18,7 @@ const DASH = '—';
 const NO_QUOTE = 'sem cotação';
 
 // As explicações do tooltip (o termo com o sublinhado pontilhado). A mesma coisa está em texto na tela, para quem usa o toque: o parágrafo das
-// posições e o do formulário de lançar.
+// posições e o do modal de lançar.
 export const EXPLICA = {
   resultado:
     'O valor estimado menos o custo: o que as ações valem pelo último fechamento, menos o que você pagou por elas. Não conta proventos, desdobramentos, corretagem, taxas nem impostos.',
@@ -56,10 +57,10 @@ export const TickerComLogo = ({ ticker, versao }: { ticker: string; versao?: str
   </NavLink>
 );
 
-// A coluna da carteira (o "Portfolio" do Today do Rallies; docs/redesign-rallies/plano.md, f.3): o valor estimado, o resultado com o sinal, o
+// A coluna da carteira (o "Portfolio" do Today do Rallies; ADR 0035): o valor estimado, o resultado com o sinal, o
 // percentual e a palavra, e o custo total, no contador da Arc (rola quando o número muda depois de lançar, editar ou apagar; nada na abertura);
-// a alocação na rosca da beUI, com a legenda ligada; e, no pé, a pílula cinza "Lançar compra", que leva ao formulário (no celular ele fica no
-// fim da tela). Os três números são os pares termo/valor da região "Resumo", nesta ordem, que o e2e confere contra a api.
+// a alocação na rosca da beUI, com a legenda ligada; e, no pé, a pílula cinza "Lançar compra", que abre o modal de lançar (o botão é uma ilha
+// de cliente, de wallet-lots.tsx). Os três números são os pares termo/valor da região "Resumo", nesta ordem, que o e2e confere contra a api.
 export function WalletSummary({
   totals,
   positions = [],
@@ -116,16 +117,14 @@ export function WalletSummary({
         </p>
       ) : null}
       <AlocacaoDaCarteira positions={positions} logos={logos} />
-      {/* o atalho para o formulário é a pílula cinza: a primária é o envio do formulário, a ação principal da tela (o QA do fechamento, achado
-          9: eram duas pílulas primárias com o mesmo texto) */}
-      <a href="#lancar" className="btn">
-        Lançar compra
-      </a>
+      {/* a pílula cinza: a primária é o "Lançar compra" do cabeçalho dos lançamentos, a ação principal da tela (o QA do fechamento, achado 9:
+          eram duas pílulas primárias com o mesmo texto) */}
+      <BotaoLancar />
     </section>
   );
 }
 
-// A mesma coluna com a carteira vazia: sem números (não há o que somar) e sem a região "Resumo"; a frase e a pílula que leva ao formulário.
+// A mesma coluna com a carteira vazia: sem números (não há o que somar) e sem a região "Resumo"; a frase e a pílula que abre o modal de lançar.
 export const WalletEmpty = () => (
   <div className="min-w-0 space-y-4">
     <p className="font-display text-20 font-semibold text-ink">Nenhuma compra ainda</p>
@@ -133,9 +132,7 @@ export const WalletEmpty = () => (
       Lance a primeira e aqui aparecem o valor estimado, o resultado, o custo total e a alocação da
       carteira.
     </p>
-    <a href="#lancar" className="btn">
-      Lançar compra
-    </a>
+    <BotaoLancar />
   </div>
 );
 

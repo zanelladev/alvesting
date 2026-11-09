@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { cycleStatusSchema, cycleViewSchema, holdReasonSchema } from './cycle.js';
+import { cycleModeSchema, cycleStatusSchema, cycleViewSchema, holdReasonSchema } from './cycle.js';
 import { decisionItemSchema } from './llm-decision.js';
 import { ulidSchema } from './messages.js';
 import { llmProviderSchema, seasonFileSchema, seasonParamsSchema } from './season.js';
@@ -159,6 +159,8 @@ export type LeaderboardRow = z.infer<typeof leaderboardRowSchema>;
 export const leaderboardSchema = z.strictObject({
   season: seasonSummarySchema,
   asOf: isoDate.nullable(),
+  // quantos pregões do ranking (os ciclos até `asOf`) foram rodados retroativos e quantos ao vivo (cycle.ts, CYCLE_MODES)
+  cyclesByMode: z.strictObject({ RETROATIVO: nonNegative, AO_VIVO: nonNegative }),
   rows: z.array(leaderboardRowSchema),
 });
 export type Leaderboard = z.infer<typeof leaderboardSchema>;
@@ -205,6 +207,9 @@ const droppedItem = cycleDecision.shape.dropped.element;
 
 export const feedDecisionSchema = z.strictObject({
   date: isoDate,
+  // o modo do ciclo e a hora real em que ele rodou (cycle.ts): a decisão retroativa diz que é retroativa
+  mode: cycleModeSchema,
+  executedAt: isoDateTime,
   competitor: publicCompetitorSchema,
   status: cycleDecision.shape.status,
   holdReason: holdReasonSchema.nullable(),
@@ -333,6 +338,8 @@ export const stockDetailSchema = z.strictObject({
   decisions: z.array(
     z.strictObject({
       date: isoDate,
+      mode: cycleModeSchema,
+      executedAt: isoDateTime,
       competitor: publicCompetitorSchema,
       action: decisionItem.shape.action,
       percent: decisionItem.shape.percent,
@@ -369,6 +376,8 @@ export const lastCycleSchema = z.strictObject({
   decisionAt: isoDateTime,
   deadlineAt: isoDateTime,
   closedAt: isoDateTime.nullable(),
+  mode: cycleModeSchema,
+  executedAt: isoDateTime,
   prompt: cycleViewSchema.shape.prompt,
   briefingSha256: sha256.nullable(),
   // itens válidos (não descartados) de todas as decisões do ciclo, por ação

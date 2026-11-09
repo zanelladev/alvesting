@@ -28,6 +28,19 @@ export interface AuthDeps {
   log: AuthLogSink;
 }
 
+// Os saltos que a api, sem o Front Door, pula no X-Forwarded-For (o ingress interno do Container Apps, entre o site e ela): as faixas
+// privadas (RFC 1918), a compartilhada da Azure e das operadoras (RFC 6598), o loopback e as locais do IPv6. Nenhum cliente da internet
+// chega à api com um desses (veja `trustedProxies`, abaixo).
+const PRIVATE_NETWORKS = [
+  '10.0.0.0/8',
+  '172.16.0.0/12',
+  '192.168.0.0/16',
+  '100.64.0.0/10',
+  '127.0.0.0/8',
+  '::1/128',
+  'fc00::/7',
+];
+
 const CONSENT_REQUIRED = {
   code: 'CONSENT_REQUIRED',
   message: 'Aceite os termos de uso e a política de privacidade vigentes para criar a conta',
@@ -168,6 +181,15 @@ export function createAuth({ prisma, config, mailer, consent, log }: AuthDeps) {
         // Better Auth só confia em uma cadeia com trustedProxies. Sem o Front Door (dev, teste e o perfil econômico), o X-Forwarded-For.
         // Sem IP confiável o Better Auth junta todo mundo num balde por caminho e por réplica (veja o ponytail abaixo).
         ipAddressHeaders: config.behindFrontDoor ? ['x-azure-socketip'] : ['x-forwarded-for'],
+        // Sem o Front Door (o perfil econômico, ADR 0039) o X-Forwarded-For chega do repasse do site com UM valor, o IP do cliente (a entrada
+        // da direita, que o ingress do site escreveu: apps/web/src/lib/api-proxy.ts), e o ingress INTERNO da api acrescenta o IP do site à
+        // direita ("If specified in initial request, it is appended to": Learn, "Ingress in Azure Container Apps"). Sem esta lista o Better
+        // Auth recusa a cadeia de dois (getIPFromHeader confia só no cabeçalho de um valor) e junta todo mundo num balde; com ela, anda da
+        // direita para a esquerda, pula os saltos de endereço privado e conta o primeiro público. O próprio Better Auth avisa para não usar
+        // uma faixa privada que cubra clientes: aqui nenhum cliente chega à api de endereço privado (o ingress dela é interno, só os apps
+        // do ambiente a alcançam, e o site manda um valor só). ponytail: as faixas privadas inteiras, porque o IP que o ingress acrescenta
+        // (o da réplica do site) só a Azure mostra; depois do primeiro deploy dá para estreitar à sub-rede do ambiente (docs/INFRA.md, 11).
+        ...(config.behindFrontDoor ? {} : { trustedProxies: PRIVATE_NETWORKS }),
       },
     },
 

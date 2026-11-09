@@ -42,6 +42,8 @@ const SIMULATED_NOTICE =
 
 const decision = (slug: string, name: string): FeedDecision => ({
   date: '2026-11-04',
+  mode: 'AO_VIVO',
+  executedAt: '2026-11-04T11:00:00.000Z',
   competitor: { slug, name, type: 'MODEL', provider: 'fake', modelId: 'fake/momentum' },
   status: 'DECIDED',
   holdReason: null,

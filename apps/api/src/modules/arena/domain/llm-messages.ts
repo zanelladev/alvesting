@@ -1,5 +1,4 @@
-import { llmDecisionSchema, type ParseResult } from '@alvesting/contracts';
-import { z } from 'zod';
+import { type ParseResult } from '@alvesting/contracts';
 
 // As mensagens que vão ao modelo (plano 10; docs/ARENA.md). O prompt (texto secreto) vai SOZINHO no papel de sistema, em
 // outro lugar do código. Aqui está o turno do usuário: o briefing e a parte própria do competidor, como DADO delimitado,
@@ -52,10 +51,34 @@ export function repairMessage(failure: Exclude<ParseResult<unknown>, { success: 
   return `Sua resposta anterior não segue o formato pedido. Problemas: ${shown.join('; ')}${more}. ${FORMAT_REQUEST}`;
 }
 
-// O formato que pedimos aos provedores com saída estruturada. É o do contrato (ADR 0016), sem o $schema, que alguns
-// provedores recusam. Quem decide o que vale é o parseLlmDecision, não o provedor.
-const { $schema: _draft, ...jsonSchema } = z.toJSONSchema(llmDecisionSchema) as Record<
-  string,
-  unknown
->;
-export const decisionJsonSchema: Record<string, unknown> = jsonSchema;
+// O formato que pedimos aos provedores com saída estruturada: o MESMO para os seis, no dialeto que todos aceitam (tipos,
+// obrigatórios, enum e objetos fechados). Não é o z.toJSONSchema(llmDecisionSchema): ele usa oneOf, const, pattern e limites de
+// número e de texto, e na primeira chamada real (06/11/2026) a Anthropic recusou o oneOf ("Schema type 'oneOf' is not
+// supported") e o Google respondeu INVALID_ARGUMENT, os dois com HTTP 400 (docs/ARENA.md, seção 5). O schema é só a dica do
+// formato; quem decide o que vale é o parseLlmDecision, com o contrato inteiro (ADR 0016). O teste confere que os campos, os
+// obrigatórios e os enums são os do contrato.
+export const decisionJsonSchema: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    market_view: { type: 'string', enum: ['otimista', 'pessimista', 'neutro'] },
+    decisions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          ticker: { type: 'string' },
+          action: { type: 'string', enum: ['BUY', 'SELL', 'HOLD'] },
+          percent_of_equity: { type: 'number' },
+          percent_of_position: { type: 'number' },
+          confidence: { type: 'number' },
+          rationale: { type: 'string' },
+        },
+        required: ['ticker', 'action', 'rationale'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['summary', 'market_view', 'decisions'],
+  additionalProperties: false,
+};

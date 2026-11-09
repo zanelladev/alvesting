@@ -9,7 +9,7 @@ import { versoesDosLogos } from '../../lib/logos';
 import { REFERENCE_TICKER, readBars, readTape } from '../../lib/quotes';
 import { withApiDown } from '../../lib/with-api-down';
 
-// A landing (ADR 0035; docs/redesign-rallies/plano.md, seção d), no desenho da landing do Rallies com o nosso conteúdo: o hero de texto, a
+// A landing (ADR 0035), no desenho da landing do Rallies com o nosso conteúdo: o hero de texto, a
 // moldura grande com a escadaria e o cartão "Arena agora" por cima, a faixa dos seis laboratórios, os quatro painéis com recortes de UI de
 // verdade, o FAQ e o CTA; o rodapé grande é da casca do site (components/site-chrome.tsx). O conteúdo da arena (o gráfico do patrimônio, o
 // ranking inteiro, o feed, os ciclos, a temporada e a faixa de cotações) mora na /arena.

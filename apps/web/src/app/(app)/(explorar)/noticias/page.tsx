@@ -18,7 +18,7 @@ import { versoesDosLogos } from '../../../../lib/logos';
 import { cursorOf, first, orNotFound, type SearchParams } from '../../../../lib/page';
 import { withApiDown } from '../../../../lib/with-api-down';
 
-// As notícias (plano §3; no desenho do Rallies, docs/redesign-rallies/plano.md, f.1: cada notícia como item de feed, com a barra "Explorar"
+// As notícias (plano §3; no desenho do Rallies, ADR 0035: cada notícia como item de feed, com a barra "Explorar"
 // ao lado): título, fonte, hora, tickers (com o logo de cada ação; docs/TELAS.md, 4a) e o link para o site de origem, da mais nova à mais
 // antiga, com filtro por ticker. O filtro e a paginação são links e um formulário GET, então funcionam sem JavaScript. O trecho nunca é
 // mostrado.

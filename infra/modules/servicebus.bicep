@@ -36,9 +36,15 @@ var serviceBusRoles = {
   owner: serviceBusDataOwner
 }
 
+// Cada identidade declarada uma vez só: o ARM recusa o mesmo recurso duas vezes no template ("defined multiple times", a prévia de
+// 07/11/2026), e `grants` repete a identidade (uma linha por par). O union(…, []) tira a repetição; o papel acha a sua pelo indexOf. Pelo
+// mesmo motivo o escopo do papel é a fila declarada abaixo, e não um `existing` dela.
+var queueNames = map(queues, item => item.name)
+var granteeNames = union(map(grants, grant => grant.identity), [])
+
 resource grantees 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing = [
-  for grant in grants: {
-    name: grant.identity
+  for identityName in granteeNames: {
+    name: identityName
   }
 ]
 
@@ -67,15 +73,6 @@ resource queue 'Microsoft.ServiceBus/namespaces/queues@2026-01-01' = [
   }
 ]
 
-// A fila de cada linha de `grants`, como escopo do papel. É `existing` (a fila nasce acima) e por isso o dependsOn explícito: sem ele o ARM
-// podia criar o papel antes da fila.
-resource grantQueues 'Microsoft.ServiceBus/namespaces/queues@2026-01-01' existing = [
-  for grant in grants: {
-    parent: namespace
-    name: grant.queue
-  }
-]
-
 // ponytail: o escalador azure-servicebus do KEDA lê a profundidade da fila pela API de administração, e a
 // documentação do KEDA pede a política "Manage" (com chave). Na Entra o único papel interno com Manage é
 // Data Owner. É uma inferência, não confirmada sem a assinatura (docs/INFRA.md, seção 11): se o KEDA acordar
@@ -84,12 +81,15 @@ resource grantQueues 'Microsoft.ServiceBus/namespaces/queues@2026-01-01' existin
 // namespace: o escopo de fila para o escalador também não foi verificado, e se o KEDA não acordar o worker o caminho de volta é o
 // namespace (seção 11).
 resource access 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
-  for (grant, i) in grants: {
-    scope: grantQueues[i]
-    name: guid(grantQueues[i].id, grantees[i].id, serviceBusRoles[grant.role])
-    dependsOn: [queue]
+  for grant in grants: {
+    scope: queue[indexOf(queueNames, grant.queue)]
+    name: guid(
+      queue[indexOf(queueNames, grant.queue)].id,
+      grantees[indexOf(granteeNames, grant.identity)].id,
+      serviceBusRoles[grant.role]
+    )
     properties: {
-      principalId: grantees[i].properties.principalId
+      principalId: grantees[indexOf(granteeNames, grant.identity)].properties.principalId
       principalType: 'ServicePrincipal'
       roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', serviceBusRoles[grant.role])
     }

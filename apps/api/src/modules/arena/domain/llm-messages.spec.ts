@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { parseLlmDecision } from '@alvesting/contracts';
+import { llmDecisionSchema, parseLlmDecision } from '@alvesting/contracts';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { canonicalBytes, sha256Hex } from '../../briefing/domain/canonical-json.js';
 import { decisionJsonSchema, repairMessage, userMessage, type DataBlock } from './llm-messages.js';
 
@@ -113,5 +114,66 @@ describe('decisionJsonSchema: o formato pedido aos provedores com saída estrutu
 
   it('não leva $schema (alguns provedores recusam)', () => {
     expect(schema.$schema).toBeUndefined();
+  });
+
+  // A primeira chamada real (06/11/2026): a Anthropic recusou o oneOf com HTTP 400 e o Google respondeu INVALID_ARGUMENT ao schema
+  // do contrato; o dialeto comum passou nos seis. Nada fora dele pode voltar.
+  it('usa só o dialeto que os seis provedores aceitam: nada de oneOf, const, pattern nem limites', () => {
+    const forbidden = new Set([
+      'oneOf',
+      'anyOf',
+      'allOf',
+      'not',
+      'const',
+      'pattern',
+      'format',
+      'minimum',
+      'maximum',
+      'minLength',
+      'maxLength',
+      'minItems',
+      'maxItems',
+      '$ref',
+      '$defs',
+    ]);
+    const found: string[] = [];
+    const walk = (node: unknown, inProperties: boolean): void => {
+      if (Array.isArray(node)) return node.forEach((item) => walk(item, false));
+      if (node === null || typeof node !== 'object') return;
+      for (const [key, value] of Object.entries(node)) {
+        // dentro de `properties` a chave é o nome de um campo, não uma palavra do schema
+        if (!inProperties && forbidden.has(key)) found.push(key);
+        walk(value, key === 'properties' && !inProperties);
+      }
+    };
+    walk(decisionJsonSchema, false);
+    expect(found).toEqual([]);
+  });
+
+  it('tem os campos, os obrigatórios e os enums do contrato (llmDecisionSchema)', () => {
+    type Node = {
+      properties: Record<string, Node & { const?: string; enum?: string[] }>;
+      items: Node & { oneOf?: Node[] };
+      required: string[];
+    };
+    const contract = z.toJSONSchema(llmDecisionSchema) as unknown as Node;
+    const ours = decisionJsonSchema as unknown as Node;
+    const branches = contract.properties.decisions!.items.oneOf!;
+    const item = ours.properties.decisions!.items;
+
+    expect(Object.keys(ours.properties).sort()).toEqual(Object.keys(contract.properties).sort());
+    expect(ours.required).toEqual(contract.required);
+    expect(ours.properties.market_view!.enum).toEqual(contract.properties.market_view!.enum);
+    expect(Object.keys(item.properties).sort()).toEqual(
+      [...new Set(branches.flatMap((branch) => Object.keys(branch.properties)))].sort(),
+    );
+    expect(item.properties.action!.enum).toEqual(
+      branches.map((branch) => branch.properties.action!.const),
+    );
+    expect(item.required).toEqual(
+      branches
+        .map((branch) => branch.required)
+        .reduce((common, required) => common.filter((key) => required.includes(key))),
+    );
   });
 });

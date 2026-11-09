@@ -5,7 +5,7 @@ import escadaria from '../arte/escadaria-q0.json';
 import { tapeLoop } from '../lib/fita';
 import { Hero, heroPill, type HeroProps } from './hero';
 
-// O hero da landing (ADR 0035; docs/redesign-rallies/plano.md, d.2 e d.3): a pílula da temporada em cada estado, os dois CTAs, o aviso da arena
+// O hero da landing (ADR 0035): a pílula da temporada em cada estado, os dois CTAs, o aviso da arena
 // simulada, a arte na moldura escura com o quadro 0 no HTML (sem JavaScript), a fita decorativa com o texto para o leitor de tela e o cartão
 // "Arena agora" fora da moldura. Renderizado no servidor, como o Next.
 const season = (status: SeasonSummary['status']): SeasonSummary =>

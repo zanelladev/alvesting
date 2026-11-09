@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { ServiceBusClient } from '@azure/service-bus';
+import Long from 'long';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QUEUES, messageId, type QueueMessage } from '@alvesting/contracts';
 import { DRAIN_TIMEOUT_MS, MessagingService, RECEIVE_ONE_WAIT_MS } from './messaging.service.js';
@@ -54,7 +55,7 @@ function makeReceiver(received: Received[] = []) {
     completeMessage: vi.fn(),
     abandonMessage: vi.fn(),
     deadLetterMessage: vi.fn(),
-    peekMessages: vi.fn<(n: number) => Promise<Received[]>>(() => Promise.resolve([])),
+    peekMessages: vi.fn<(n: number, o?: unknown) => Promise<Received[]>>(() => Promise.resolve([])),
     receiveMessages: vi.fn<(n: number, o?: unknown) => Promise<Received[]>>(() =>
       Promise.resolve(received),
     ),
@@ -596,7 +597,11 @@ describe('DLQ', () => {
     const { service, receivers } = busWithDeadLetters([dead('eod:2026-10-30', eod, '42')]);
     const letters = await service.readDeadLetters('market', 5);
     expect(receivers[0]!.options).toMatchObject({ subQueueType: 'deadLetter' });
-    expect(receivers[0]!.receiver.peekMessages).toHaveBeenCalledWith(5);
+    // sempre do começo: sem o fromSequenceNumber, o SDK continua do último número espiado, que ele guarda no cliente (por fila) e não
+    // no receiver, e a segunda leitura voltaria vazia (o teste de integração com o emulador pegou)
+    expect(receivers[0]!.receiver.peekMessages).toHaveBeenCalledWith(5, {
+      fromSequenceNumber: Long.ONE,
+    });
     expect(receivers[0]!.receiver.close).toHaveBeenCalled();
     expect(letters).toEqual([
       {

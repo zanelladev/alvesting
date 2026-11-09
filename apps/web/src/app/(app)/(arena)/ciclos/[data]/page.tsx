@@ -15,7 +15,7 @@ import { versoesDosLogos } from '../../../../../lib/logos';
 import { orNotFound } from '../../../../../lib/page';
 import { withApiDown } from '../../../../../lib/with-api-down';
 
-// O ciclo de um pregão (plano §3 e §10; no desenho do Rallies, docs/redesign-rallies/plano.md, e.7: as decisões em itens de feed, numa
+// O ciclo de um pregão (plano §3 e §10; no desenho do Rallies, ADR 0035: as decisões em itens de feed, numa
 // coluna): os horários, a versão e o SHA-256 do prompt (o texto nunca, nem em bloco de código), o SHA-256 do briefing (a mono, a única desta
 // tela), as decisões de cada modelo, com o logo de cada ação à esquerda do ticker, e os itens descartados com o motivo. O "simulado" vai uma
 // vez, no aviso discreto do topo, e os itens tiram a etiqueta deles. `:data` é AAAA-MM-DD; o ULID do ciclo também vale (a api aceita os dois).

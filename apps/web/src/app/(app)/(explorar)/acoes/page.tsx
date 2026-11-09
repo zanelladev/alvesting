@@ -18,7 +18,7 @@ import { versoesDosLogos } from '../../../../lib/logos';
 import { first, orNotFound, type SearchParams } from '../../../../lib/page';
 import { withApiDown } from '../../../../lib/with-api-down';
 
-// A busca de ações (plano §3; no desenho do Rallies, docs/redesign-rallies/plano.md, f.1): por ticker ou por nome, até 20 resultados, um por
+// A busca de ações (plano §3; no desenho do Rallies, ADR 0035): por ticker ou por nome, até 20 resultados, um por
 // linha numa lista com fio (o logo e o ticker na sans 500 com algarismos tabulares, e o nome em muted; a linha acende no hover), com a barra
 // "Explorar" ao lado. Formulário GET: funciona sem JavaScript. O logo (components/logo-do-papel.tsx; docs/TELAS.md, "Logos das ações") vai
 // dentro do link, à esquerda do ticker, a 14 px dele.

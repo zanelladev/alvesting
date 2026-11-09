@@ -16,6 +16,10 @@ export function formatCycle(view: CycleView): string {
       (view.skipReason ? ` (pulado: ${view.skipReason})` : ''),
     `  decisão ${brasiliaTime(view.decisionAt)} · prazo ${brasiliaTime(view.deadlineAt)} (Brasília)` +
       (view.closedAt ? ` · fechado às ${brasiliaTime(view.closedAt)}` : ''),
+    // o retroativo diz que é retroativo: as horas acima são as do pregão simulado, e a real vem aqui (ADR 0038)
+    view.mode === 'RETROATIVO'
+      ? `  retroativo: rodado de verdade em ${view.executedAt} (UTC), depois do pregão`
+      : `  ao vivo: rodado em ${view.executedAt} (UTC)`,
     view.prompt
       ? `  prompt: versão ${view.prompt.version} · SHA-256 ${view.prompt.sha256 ?? 'ainda não registrado'}`
       : '  prompt: nenhum',

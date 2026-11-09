@@ -416,15 +416,16 @@ describe.skipIf(!ready)(title, () => {
 
     it('um modelo que devolve o prompt inteiro no summary e nos rationales: endpoint, Blob, banco e logs ficam limpos', async () => {
       const logs = captureLogs();
-      // fake-a devolve o prompt inteiro nos textos públicos; fake-b é um OpenRouter cuja chamada falha com 401 e eco do pedido
-      // (a chave e o prompt não podem vazar); fake-c falha lendo a carteira com um erro que carrega o prompt
+      // fake-a devolve o prompt inteiro nos textos públicos; fake-b é um OpenRouter cuja chamada falha com 500 e eco do pedido
+      // (a chave e o prompt não podem vazar; 401 e 402 seriam erro de configuração, que não vira HOLD: llm-gateway.spec.ts); fake-c
+      // falha lendo a carteira com um erro que carrega o prompt
       let echoedByProvider = '';
       const fake = createFakeFetch();
       const fetch: Fetch = async (input, init) => {
         if (requestUrl(input).includes('openrouter.ai')) {
           return new Response(
             JSON.stringify({ error: { message: `eco do pedido: ${requestBody(init)}` } }),
-            { status: 401, headers: { 'content-type': 'application/json' } },
+            { status: 500, headers: { 'content-type': 'application/json' } },
           );
         }
         const response = await fake(input, init);

@@ -1,4 +1,5 @@
 import { ServiceBusClient, type ServiceBusReceiver } from '@azure/service-bus';
+import Long from 'long';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { QUEUES, type QueueMessage, type QueueName } from '@alvesting/contracts';
 import { MessagingService } from './messaging.service.js';
@@ -49,11 +50,12 @@ describe.skipIf(!enabled)(title, () => {
   }
 
   // Quantas mensagens a fila ainda tem. O peek enxerga até a mensagem travada por um receiver, então a
-  // contagem só cai a zero depois do completeMessage.
+  // contagem só cai a zero depois do completeMessage. Do começo da fila, como o readDeadLetters: o SDK guarda o último número
+  // espiado no cliente, e sem o fromSequenceNumber a contagem cairia a zero logo depois do primeiro peek que visse a mensagem.
   async function pending(queue: QueueName): Promise<number> {
     const receiver = bus.createReceiver(queue);
     try {
-      return (await receiver.peekMessages(10)).length;
+      return (await receiver.peekMessages(10, { fromSequenceNumber: Long.ONE })).length;
     } finally {
       await receiver.close();
     }

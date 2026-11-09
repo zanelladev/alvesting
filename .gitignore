@@ -19,6 +19,9 @@ playwright-report
 test-results
 .lighthouseci
 
+# relatórios de cobertura do Vitest (`pnpm coverage`, docs/QUALIDADE.md): gerados a cada execução, o CI os guarda como artefato
+coverage
+
 # estado do rollout do deploy (scripts/deploy.mjs), só aparece se alguém rodar o script na mão
 .deploy-state.json
 
@@ -29,3 +32,6 @@ test-results
 
 # sistema operacional e editores
 .DS_Store
+
+# capturas de tela das ondas do desenho: ficam fora do git (docs/TELAS.md, seção 7); eram 92 dos 105 MiB da árvore até 09/11/2026
+docs/**/*.png

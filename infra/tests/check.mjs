@@ -262,8 +262,11 @@ const codeIdentityOf = (workload) =>
       }[workload];
 // O KEDA autentica as regras de escala do worker e das decisões com a id-alvesting-scale (lifecycle None).
 const KEDA_WORKLOADS = ['ca-worker-data', 'job-worker-decisions'];
-// Identidades só da plataforma (pull da imagem e referência de segredo): o código do container não recebe token.
+// Identidades só da plataforma (pull da imagem e referência de segredo): o código do container não recebe token. No econômico o migrate sai
+// daqui (ADR 0039): a restauração da temporada lê o backups com a identidade dele, que vale para o código (lifecycle Main).
 const PLATFORM_ONLY = { 'ca-web': ID.web, 'job-migrate': ID.migrate };
+const platformOnlyOf = (profile) =>
+  profile === 'economico' ? { 'ca-web': ID.web } : PLATFORM_ONLY;
 
 const vaultScope = 'Microsoft.KeyVault/vaults/kv-alvesting';
 const sbScope = 'Microsoft.ServiceBus/namespaces/sb-alvesting';
@@ -338,6 +341,17 @@ const secretsRead = ({ padrao, openai }) => ({
   [ID.migrate]: ['database-url', 'database-url-api'],
 });
 
+// O perfil econômico, em que a produção nasce (ADR 0039), soma dois papéis de Blob, os dois por container: o migrate LÊ o backups (a
+// restauração da temporada, dist/restore-cli.js, numa execução do job-migrate) e quem opera (o adminPrincipalId, "admin" aqui) escreve nos
+// três (o envio do dump e a cópia do Blob do Azurite: docs/RUNBOOK.md, 13.6). No padrão nenhum dos dois existe (o RUNBOOK, 5.3, dá o papel à mão).
+const ECONOMICO_BLOB_GRANTS = [
+  `${ID.migrate} | Storage Blob Data Reader | ${storageScope}/blobServices/default/containers/backups`,
+  ...['briefings', 'llm-io', 'backups'].map(
+    (container) =>
+      `admin | Storage Blob Data Contributor | ${storageScope}/blobServices/default/containers/${container}`,
+  ),
+];
+
 // Quem recebe o quê (docs/INFRA.md, seção 3.2): "identidade | papel | escopo". Service Bus POR FILA (QUEUE_ROLES) e Blob POR CONTAINER
 // (BLOB_ROLES), nenhum papel no namespace nem na conta. AcrPull: todo workload.
 const expectedGrants = (opts) =>
@@ -366,6 +380,7 @@ const expectedGrants = (opts) =>
       ];
     }),
     `admin | Key Vault Secrets Officer | ${vaultScope}`,
+    ...(opts.padrao ? [] : ECONOMICO_BLOB_GRANTS),
     ...(opts.padrao
       ? [
           ...[ID.web, ID.api, ID.worker, ID.decisions, ID.sched, ID.migrate].map(
@@ -408,6 +423,8 @@ const PLAIN_ENV = new Set([
   'HOSTNAME',
   'PUBLIC_URL',
   'API_INTERNAL_URL',
+  // o repasse de /api pelo site, só no econômico (ADR 0039): a flag `on`
+  'API_PROXY',
   'WEB_INTERNAL_URL',
   'FRONT_DOOR_ENDPOINT_ID',
   'ORIGIN_LOCK',
@@ -450,7 +467,9 @@ function bicep(args, { withInputs = true } = {}) {
   return { status: r.status, out: r.stdout ?? '', err: r.stderr ?? '' };
 }
 
-// Snapshot do deploy com a prod como base e algumas linhas `param x = ...` trocadas.
+// Snapshot do deploy com a prod como base e algumas linhas `param x = ...` trocadas. O perfil da base é o PADRÃO, como sempre foi: o
+// main.prod.bicepparam passou ao econômico (ADR 0039), e os testes que não dizem o perfil (fase 1, domínio próprio, Azure OpenAI...) seguem
+// olhando o padrão. Quem quer o econômico pede (profileModel('economico')).
 const snapshots = new Map();
 function snapshot(label, overrides) {
   if (!snapshots.has(label)) {
@@ -469,7 +488,7 @@ function runSnapshot(label, overrides) {
   const dir = mkdtempSync(join(INFRA, 'tests', '.tmp-'));
   try {
     let text = readFileSync(PARAMS.prod, 'utf8').replace(/^using .*$/m, "using '../../main.bicep'");
-    for (const [name, value] of Object.entries(overrides)) {
+    for (const [name, value] of Object.entries({ profile: "'padrao'", ...overrides })) {
       const line = `param ${name} = ${value}`;
       const pattern = new RegExp(`^param ${name} = .*$`, 'm');
       text = pattern.test(text) ? text.replace(pattern, line) : `${text.trimEnd()}\n${line}\n`;
@@ -766,10 +785,12 @@ test('ordem dos apps: todo app e job depende dos papéis de segredo (secretAcces
   }
 });
 
-// O papel de Blob e o de Service Bus têm como escopo um recurso `existing` (o container, a fila), e o Bicep NÃO gera dependência para um
-// `existing`: sem o dependsOn explícito o ARM pode criar o papel antes do container ou da fila (a corrida que só aparece na Azure, de vez em
-// quando, e que um deploy repetido esconde). O que se afirma é o template compilado, no módulo aninhado (nomes simbólicos, languageVersion 2.0).
-test('ordem do storage e do Service Bus: o papel de cada container e de cada fila espera o container e a fila nascerem (dependsOn)', () => {
+// O papel de Blob e o de Service Bus têm como escopo o container e a fila que o próprio módulo declara, e por isso o Bicep gera a dependência:
+// sem ela o ARM pode criar o papel antes do container ou da fila (a corrida que só aparece na Azure, de vez em quando). E nada é declarado duas
+// vezes: o ARM recusa o template ("defined multiple times", a prévia de 07/11/2026, quando cada linha da matriz virava um `existing` da
+// identidade e da fila). Então nenhum `existing` do tipo que o módulo cria, e todo laço de `existing` percorre uma lista sem repetição
+// (union(…, [])). O que se afirma é o template compilado, no módulo aninhado (nomes simbólicos, languageVersion 2.0).
+test('storage e Service Bus: o papel espera o container e a fila, e nenhum recurso é declarado duas vezes', () => {
   const r = bicep(['build', MAIN, '--stdout'], { withInputs: false });
   assert.equal(r.status, 0, r.err);
   const deployments = JSON.parse(r.out).resources.filter(
@@ -779,8 +800,8 @@ test('ordem do storage e do Service Bus: o papel de cada container e de cada fil
     ['storage', 'blobAccess', 'containers'],
     ['servicebus', 'access', 'queue'],
   ]) {
-    const { resources } = deployments.find((deployment) => deployment.name === module).properties
-      .template;
+    const { resources, variables } = deployments.find((deployment) => deployment.name === module)
+      .properties.template;
     assert.equal(
       resources[assignments]?.type,
       'Microsoft.Authorization/roleAssignments',
@@ -790,10 +811,23 @@ test('ordem do storage e do Service Bus: o papel de cada container e de cada fil
       resources[creates],
       `${module}: o recurso ${creates} (o que o papel tem como escopo) nasce no módulo`,
     );
+    const dependsOn = resources[assignments].dependsOn ?? [];
     assert.ok(
-      (resources[assignments].dependsOn ?? []).includes(creates),
-      `${module}: ${assignments} não depende de ${creates}: dependsOn ${JSON.stringify(resources[assignments].dependsOn)}`,
+      dependsOn.some((entry) => entry === creates || entry.startsWith(`[format('${creates}[`)),
+      `${module}: ${assignments} não depende de ${creates}: dependsOn ${JSON.stringify(dependsOn)}`,
     );
+    for (const [name, resource] of Object.entries(resources).filter(([, r]) => r.existing)) {
+      assert.notEqual(
+        resource.type,
+        resources[creates].type,
+        `${module}: ${name} é um existing do mesmo tipo de ${creates}, o recurso declarado duas vezes`,
+      );
+      const list = /variables\('([^']+)'\)/.exec(resource.copy?.count ?? '')?.[1];
+      assert.ok(
+        !resource.copy || variables?.[list]?.startsWith('[union('),
+        `${module}: o laço ${name} percorre ${resource.copy?.count}, que pode repetir nome (falta o union(…, []))`,
+      );
+    }
   }
 });
 
@@ -1017,7 +1051,13 @@ for (const profile of PROFILES) {
         assert.equal(http.length, 1, `${name}: uma regra HTTP`);
         assert.equal(http[0].http.metadata.concurrentRequests, concurrency, `${name} concorrência`);
         assert.equal(app.properties.configuration.activeRevisionsMode, 'Multiple');
-        assert.equal(app.properties.configuration.ingress.external, true);
+        // a api do econômico é interna (só o site a alcança, ADR 0039); no padrão, as duas são externas
+        const external = !(name === 'ca-api' && profile === 'economico');
+        assert.equal(
+          app.properties.configuration.ingress.external,
+          external,
+          `${name}: ingress externo`,
+        );
         assert.equal(app.properties.configuration.ingress.allowInsecure, false);
         const probes = containersOf(app)[0].probes;
         assert.deepEqual(probes.map((p) => p.type).sort(), ['Liveness', 'Readiness', 'Startup']);
@@ -1244,9 +1284,11 @@ for (const profile of PROFILES) {
         );
         // lifecycle None: o token não fica disponível ao código do container. Vale para o que a plataforma usa
         // sozinha (pull da imagem, referência de segredo, regra de escala); o resto usa o SDK da Azure.
+        const onlyPlatform = platformOnlyOf(profile);
         const platformOnly = {
-          ...(w.name in PLATFORM_ONLY ? { [PLATFORM_ONLY[w.name]]: 'None' } : {}),
+          ...(w.name in onlyPlatform ? { [onlyPlatform[w.name]]: 'None' } : {}),
           ...(keda ? { [ID.scale]: 'None' } : {}),
+          ...(profile === 'economico' && w.name === 'job-migrate' ? { [ID.migrate]: 'Main' } : {}),
         };
         assert.deepEqual(lifecycles(w), platformOnly, `${w.name}: lifecycle das identidades`);
       }
@@ -1347,7 +1389,7 @@ for (const profile of PROFILES) {
       const m = profileModel(profile);
       for (const w of m.workloads) {
         const value = envOf(w).AZURE_CLIENT_ID?.value;
-        if (w.name in PLATFORM_ONLY) {
+        if (w.name in platformOnlyOf(profile)) {
           // O código do web e do migrate não recebe token (lifecycle None): não há o que apontar.
           assert.equal(value, undefined, `${w.name}: sem AZURE_CLIENT_ID`);
           continue;
@@ -1635,7 +1677,7 @@ for (const profile of PROFILES) {
       assert.deepEqual(n.contactEmails, [INPUT_ENV.ALVESTING_BUDGET_EMAIL]);
       assert.equal(n.enabled, true);
     }
-    assert.equal(budget.properties.timeGrain, 'Monthly');
+    assert.equal(budget.properties.timeGrain, 'Annually');
     assert.equal(budget.properties.timePeriod.startDate, '2026-11-01');
   });
 
@@ -2694,7 +2736,7 @@ test('[padrao] ACR Basic, imagens do ACR e pull por identidade', () => {
   }
 });
 
-test('[economico] sem Front Door, sem WAF, sem ACR; imagens do GHCR; api com CORS para a web', () => {
+test('[economico] sem Front Door, sem WAF, sem ACR; imagens do GHCR; a api interna, sem CORS, e o site repassa /api', () => {
   const m = profileModel('economico');
   assert.equal(m.underNamespace('Microsoft.Cdn/').length, 0, 'nenhum recurso Microsoft.Cdn');
   assert.equal(m.ofType('Microsoft.Network/FrontDoorWebApplicationFirewallPolicies').length, 0);
@@ -2713,14 +2755,73 @@ test('[economico] sem Front Door, sem WAF, sem ACR; imagens do GHCR; api com COR
     assert.ok(!('FRONT_DOOR_ID' in envOf(w)), `${w.name}: sem FRONT_DOOR_ID`);
     assert.ok(!('ORIGIN_LOCK' in envOf(w)), `${w.name}: sem ORIGIN_LOCK (não há Front Door)`);
   }
-  const cors = m.one('Microsoft.App/containerApps', 'ca-api').properties.configuration.ingress
-    .corsPolicy;
-  assert.equal(cors.allowedOrigins.length, 1, 'CORS só para a origem da web');
-  assert.ok(cors.allowedOrigins[0].includes('https://ca-web.'), 'a origem liberada é a da web');
-  assert.ok(
-    m.one('Microsoft.App/containerApps', 'ca-web').properties.configuration.ingress.corsPolicy ==
-      null,
+  // Uma origem só, pelo site (ADR 0039): a api é INTERNA e sem CORS (o navegador nunca chama o host dela), e o site repassa /api/* a ela
+  // pelo endereço interno (<app>.internal.<domínio>), o mesmo que o SSR lê. Com o CORS de antes, entrar, cadastrar e a carteira davam 404.
+  const api = m.one('Microsoft.App/containerApps', 'ca-api');
+  assert.equal(api.properties.configuration.ingress.external, false, 'a api é interna');
+  assert.ok(api.properties.configuration.ingress.corsPolicy == null, 'a api sem CORS');
+  const web = m.one('Microsoft.App/containerApps', 'ca-web');
+  assert.equal(web.properties.configuration.ingress.external, true, 'o site é a entrada');
+  assert.ok(web.properties.configuration.ingress.corsPolicy == null);
+  assert.equal(envOf(web).API_PROXY?.value, 'on', 'o site repassa /api/* à api');
+  assert.match(
+    String(envOf(web).API_INTERNAL_URL?.value),
+    /'https:\/\/ca-api\.internal\.\{0\}'|https:\/\/ca-api\.internal\./,
+    'o endereço interno da api',
   );
+  for (const w of m.workloads.filter((x) => x.name !== 'ca-web')) {
+    assert.ok(!('API_PROXY' in envOf(w)), `${w.name}: o repasse é só do site`);
+  }
+});
+
+test('[padrao] o site não repassa /api (o Front Door faz) e lê a api pelo endereço externo dela', () => {
+  const web = profileModel('padrao').one('Microsoft.App/containerApps', 'ca-web');
+  assert.ok(!('API_PROXY' in envOf(web)));
+  assert.doesNotMatch(String(envOf(web).API_INTERNAL_URL?.value), /internal/);
+});
+
+// A restauração da temporada (ADR 0039; docs/RUNBOOK.md, 13.6): no econômico, o job-migrate, com o comando trocado numa execução, lê o dump
+// do container backups. Só LÊ, e só ele (o worker continua o único que grava ali), com a identidade dele valendo para o código (Main) e os
+// dois endereços de que o DefaultAzureCredential e o cliente do Blob precisam. No padrão nada disso existe.
+test('[economico] a restauração: o migrate só lê o backups, com a identidade dele valendo para o código; quem opera escreve nos três', () => {
+  const m = profileModel('economico');
+  const migrate = m.one('Microsoft.App/jobs', 'job-migrate');
+  assert.deepEqual(migrate.properties.configuration.identitySettings, [
+    {
+      identity: migrate.properties.configuration.identitySettings[0].identity,
+      lifecycle: 'Main',
+    },
+  ]);
+  assert.ok(
+    migrate.properties.configuration.identitySettings[0].identity.includes(ID.migrate),
+    'a identidade do próprio migrate',
+  );
+  const env = envOf(migrate);
+  assert.match(
+    String(env.AZURE_CLIENT_ID?.value),
+    new RegExp(`userAssignedIdentities/${ID.migrate}'`),
+  );
+  assert.ok(env.STORAGE_BLOB_ENDPOINT?.value, 'o endereço do Blob');
+  const grants = m.grants();
+  const backups = grants.filter((g) => g.endsWith('/containers/backups'));
+  assert.deepEqual(
+    backups.sort(),
+    [
+      `${ID.migrate} | Storage Blob Data Reader | ${storageScope}/blobServices/default/containers/backups`,
+      `${ID.worker} | Storage Blob Data Contributor | ${storageScope}/blobServices/default/containers/backups`,
+      `admin | Storage Blob Data Contributor | ${storageScope}/blobServices/default/containers/backups`,
+    ].sort(),
+  );
+  assert.ok(
+    !grants.some((g) => g.startsWith(`${ID.migrate} |`) && g.includes('Contributor')),
+    'o migrate nunca escreve no Blob',
+  );
+  const padrao = profileModel('padrao');
+  const migratePadrao = padrao.one('Microsoft.App/jobs', 'job-migrate');
+  assert.equal(migratePadrao.properties.configuration.identitySettings[0].lifecycle, 'None');
+  assert.ok(!('STORAGE_BLOB_ENDPOINT' in envOf(migratePadrao)));
+  assert.ok(!padrao.grants().some((g) => g.startsWith(`${ID.migrate} | Storage`)));
+  assert.ok(!padrao.grants().some((g) => g.startsWith('admin | Storage')));
 });
 
 test('[padrao] a api não tem CORS (mesmo domínio pelo Front Door)', () => {
@@ -3281,8 +3382,11 @@ test('INFRA.md, 2.7: o contrato de ambiente lista exatamente as variáveis que o
     } else {
       assert.match(row.origin, /^valor/, `${key}: variável em texto puro tem origem "valor"`);
     }
+    // o que só o econômico injeta (o repasse do site, a restauração do migrate; ADR 0039) diz "econômico"
     const when = present.has('economico')
-      ? 'sempre'
+      ? present.has('padrao')
+        ? 'sempre'
+        : 'econômico'
       : present.has('padrao')
         ? 'padrão'
         : 'enableOpenAI';

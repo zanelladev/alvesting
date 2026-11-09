@@ -1,6 +1,6 @@
 # ADR 0025: As telas da conta: uma origem só, leitura do servidor sem cache e formulários que exigem JavaScript
 
-- **Status:** aceita
+- **Status:** aceita (o item 1 em parte substituído pelo ADR 0039: no perfil econômico, sem Front Door, o site passou a repassar `/api/*` à api)
 - **Data:** 02/11/2026
 - **Origem:** `docs/PLANO.md`, §9, §12 e §13; etapa 11 do §16 (parte 2); `docs/CONTA.md`, seção 9; ADRs 0018, 0023 e 0024
 

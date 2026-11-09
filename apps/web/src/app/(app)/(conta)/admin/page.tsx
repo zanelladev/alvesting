@@ -71,7 +71,7 @@ export default withApiDown(async function AdminPage() {
       </PageHead>
       <PilhaDeAvisos />
 
-      {/* Na casca do app, sem barra secundária: cada seção num cartão (docs/redesign-rallies/plano.md, f.4); as tabelas rolam dentro dele */}
+      {/* Na casca do app, sem barra secundária: cada seção num cartão (ADR 0035); as tabelas rolam dentro dele */}
       <div className="max-w-[960px] space-y-4">
         <SecaoCartao id="jobs" title="Jobs">
           <JobsPanel jobs={data.jobs} />

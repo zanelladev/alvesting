@@ -3,7 +3,7 @@ import { formatDateTime, formatDay } from '../lib/format';
 import { LogoDoPapel } from './logo-do-papel';
 import { LINK, NavLink } from './ui';
 
-// A lista de notícias (plano §3; no desenho do Rallies, docs/redesign-rallies/plano.md, f.1: cada notícia como um item de feed, separado do
+// A lista de notícias (plano §3; no desenho do Rallies, ADR 0035: cada notícia como um item de feed, separado do
 // de cima por um fio): título, fonte, hora de Brasília, tickers e o link para o site de origem. Título e link são dado de terceiro
 // (docs/DADOS.md, seção 13): o título entra como texto (o React o escapa), o link já passou pelo contrato (só http e https, sem usuário nem
 // senha) e abre noutra aba sem entregar a janela de origem nem a página de onde veio (`noopener noreferrer`) e sem passar a nossa reputação

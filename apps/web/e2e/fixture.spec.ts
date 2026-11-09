@@ -13,8 +13,7 @@ const fact = (scope: Locator, term: string): Locator => scope.locator(`dt:text-i
 const WEEKDAY = '(domingo|segunda-feira|terça-feira|quarta-feira|quinta-feira|sexta-feira|sábado)';
 
 test.describe('temporada que ainda não teve ciclo', () => {
-  // A landing (a /) abre com a api falsa; o que falta é dito na /arena, para onde foi o conteúdo da home de antes (docs/redesign-rallies/plano.md,
-  // seção e).
+  // A landing (a /) abre com a api falsa; o que falta é dito na /arena, para onde foi o conteúdo da home de antes (ADR 0035).
   test('a arena diz o que falta, em vez de uma tela quebrada: sem ciclo, sem resultado, sem decisão e sem macro', async ({
     page,
   }) => {

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-// O chat desligado (docs/redesign-rallies/plano.md, f.2): o desenho do Chat do Rallies, pronto e sem nenhuma chamada. O chat é a etapa 13 e só
+// O chat desligado (ADR 0035): o desenho do Chat do Rallies, pronto e sem nenhuma chamada. O chat é a etapa 13 e só
 // começa depois do aval do orientador (CLAUDE.md). O que este spec prova é o que NÃO acontece: a caixa não aceita texto, nenhum botão responde,
 // não há formulário, e nada do que a pessoa faça sai da página (nenhum pedido à api, nenhum envio, nada fora da origem). Os 360 px sem rolagem,
 // os alvos de 44 px e o axe nos dois temas estão no laço de ROUTES do layout.spec.ts, que tem o /chat.

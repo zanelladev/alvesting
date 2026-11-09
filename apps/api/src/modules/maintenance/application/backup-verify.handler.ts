@@ -15,11 +15,11 @@ import {
 import { JobBusyError, type JobRunStore } from '../../messaging/infrastructure/job-run.store.js';
 import {
   TEMP_DATABASE,
+  assertToolsMajor,
   collect,
   databaseTarget,
   dropTempDatabase,
   dumpArgs,
-  majorOfVersionText,
   restoreArgs,
   spawnNative,
   tempDatabaseName,
@@ -35,10 +35,9 @@ const CONTAINER = 'backups';
 // disco efêmero pequeno; nada do dump passa pelo disco).
 const BLOCK_BYTES = 4 * 1024 * 1024;
 const UPLOAD_CONCURRENCY = 2;
-// O prazo do conjunto (dump, envio, restauração e contagens) e de cada comando de versão. Fica abaixo do `lockRenewalMs` da fila maintenance
-// (packages/contracts, 25 min): a mensagem não é reentregue a outra réplica enquanto este handler ainda trabalha.
+// O prazo do conjunto (dump, envio, restauração e contagens). Fica abaixo do `lockRenewalMs` da fila maintenance (packages/contracts, 25 min):
+// a mensagem não é reentregue a outra réplica enquanto este handler ainda trabalha.
 const DEADLINE_MS = 20 * 60_000;
-const VERSION_TIMEOUT_MS = 30_000;
 const QUERY_TIMEOUT_MS = 5 * 60_000;
 
 export interface TableCount {
@@ -161,7 +160,7 @@ export class BackupVerifyHandler {
       await open(maintenance);
       await open(origin);
       const serverMajor = await this.serverMajor(maintenance);
-      await this.assertTools(serverMajor, target, signal);
+      await assertToolsMajor(this.spawn, ['pg_dump', 'pg_restore'], serverMajor, target, signal);
       await this.assertClassified(origin);
       await this.sweepOrphans(maintenance);
 
@@ -256,40 +255,6 @@ export class BackupVerifyHandler {
   private async serverMajor(client: pg.Client): Promise<number> {
     const { rows } = await client.query<{ server_version_num: string }>('SHOW server_version_num');
     return Math.floor(Number(rows[0]!.server_version_num) / 10_000);
-  }
-
-  // pg_dump e pg_restore têm de ser do major do servidor: o de major maior escreve sintaxe que o servidor não conhece, o de menor recusa o
-  // servidor. A produção os chama pelo PATH da imagem (postgresql-client-17, docs/INFRA.md, 2.8); nesta máquina de desenvolvimento o libpq do
-  // Homebrew é o 18 e não serve.
-  private async assertTools(serverMajor: number, target: DatabaseTarget, signal: AbortSignal) {
-    for (const tool of ['pg_dump', 'pg_restore'] as const) {
-      let text: string;
-      try {
-        const child = this.spawn(tool, ['--version'], {
-          env: toolEnv(target),
-          signal,
-          timeoutMs: VERSION_TIMEOUT_MS,
-        });
-        const exit = await collect(child);
-        if (exit.code !== 0)
-          throw new Error(`${tool} --version saiu com ${exit.code}: ${exit.stderr}`);
-        text = exit.stdout;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          throw new Error(
-            `${tool} não foi encontrado no PATH: instale o postgresql-client-${serverMajor} (docs/INFRA.md, 2.8)`,
-            { cause: error },
-          );
-        }
-        throw error;
-      }
-      const major = majorOfVersionText(text);
-      if (major !== serverMajor) {
-        throw new Error(
-          `${tool} é do PostgreSQL ${major ?? '?'} e o servidor é o ${serverMajor}: instale o postgresql-client-${serverMajor} (docs/INFRA.md, 2.8)`,
-        );
-      }
-    }
   }
 
   // Fail closed: toda tabela do banco tem de ter decisão na matriz (e vice-versa). Uma tabela nova, pessoal e sem classificação (a carteira,

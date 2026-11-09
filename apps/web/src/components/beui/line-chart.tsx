@@ -40,6 +40,7 @@ import type { PublicCompetitor } from '@alvesting/contracts';
 import { layoutEquity, rotuloCoberto, serieDe, spreadLabels } from '../../lib/chart';
 import { formatBRL, formatDate } from '../../lib/format';
 import { MOTION } from '../../lib/motion';
+import { IconeInfo } from '../icones';
 import { AnimatedCounter } from '../arc/animated-counter/animated-counter';
 import { Logo, partesDoNome } from '../competidor';
 import { linePath } from './xy-path';
@@ -558,6 +559,19 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
             <li className="legenda-serie">
               <span aria-hidden="true" className="mc-amostra" />
               Faixa p5 a p95 do Monte Carlo
+              {/* o "i" abre a explicação: o popover nativo (o clique, o toque e o teclado abrem; o Esc e o toque fora fecham), que funciona
+                  antes da hidratação. O id é fixo: um gráfico com a faixa por página. */}
+              <button
+                type="button"
+                popoverTarget="faixa-explicada"
+                className="info"
+                aria-label="O que é a faixa p5 a p95 do Monte Carlo"
+              >
+                <IconeInfo size={16} />
+              </button>
+              <div id="faixa-explicada" popover="auto" className="info-balao">
+                {FAIXA_EXPLICADA}
+              </div>
             </li>
           ) : null}
         </ul>
@@ -565,6 +579,11 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
     </figure>
   );
 }
+
+// O que é a faixa (o balão do "i" da legenda), em português simples: o Monte Carlo da liquidação (apps/api, settlement/domain/monte-carlo.ts)
+// sorteia 1.000 carteiras com as regras e os custos dos modelos, e a faixa vai do percentil 5 ao 95 do patrimônio delas em cada pregão.
+const FAIXA_EXPLICADA =
+  'São 1.000 carteiras sorteadas, com as mesmas regras e custos dos modelos. Em cada pregão, 90% delas fecharam dentro desta faixa: a borda de baixo é o p5 (5% ficaram abaixo dela) e a de cima, o p95 (5% ficaram acima). Uma linha acima da faixa foi melhor que 95% das carteiras sorteadas; abaixo, pior que 95% delas; dentro, o resultado não se distingue da sorte.';
 
 const lastValue = (cents: readonly (number | null)[]) =>
   cents.findLast((c): c is number => c !== null) ?? null;

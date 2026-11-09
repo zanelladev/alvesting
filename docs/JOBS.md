@@ -163,7 +163,9 @@ consumida pelo worker: quem a consome é o `job-worker-decisions`, com `Messagin
   novo, **grava a decisão como HOLD `falha`** e conclui a mensagem, que **não vai para a DLQ**; o `job_run` fica `FAILED` com o erro. Só se nem
   o HOLD puder ser gravado (banco fora) a mensagem vai para a DLQ. A rede de segurança é a **varredura** (`CycleCloser`, no `sched-cycle` e no
   início do `settle`): ciclo `OPEN` vencido há mais de 15 minutos fecha, e quem não tem decisão ganha HOLD `sem_resposta`. O ciclo fecha quando
-  todos os MODEL têm decisão, normal ou HOLD forçado.
+  todos os MODEL têm decisão, normal ou HOLD forçado. **A exceção é o erro de configuração** (chave ausente, recusada ou sem crédito, HTTP
+  401 e 402; prompt ausente ou sem canário): ele não vira HOLD nem na última entrega, a mensagem vai para a DLQ e o par fica sem decisão
+  (`docs/ARENA.md`, seção 5; o `arena:retroativo` para no pregão antes da liquidação).
 - **O reparo e o HOLD que guarda a chamada paga.** O reparo (a segunda chamada) só começa com 3 minutos de folga, no prazo e no job;
   sem eles, a primeira resposta vira HOLD `resposta_invalida` (ou `prazo`) **com o IO bruto e o custo**, em vez de se perder na nova
   tentativa da fila. `lockRenewalMs` (26 min) é maior que o `replicaTimeout` (25 min) por regra, com teste; se uma execução assumir
@@ -412,7 +414,17 @@ verdade de todas as filas e um barramento em processo no lugar do Service Bus, p
 rede. Usa o banco `alvesting_ensaio`, recriado a cada execução, e nunca o de dev:
 
 ```bash
-pnpm --filter @alvesting/api arena:ensaio [--pregoes 5] [--semente N]   # relatório na tela e em .data/ensaio/
+pnpm --filter @alvesting/api arena:ensaio [--pregoes 5] [--semente N] [--retroativos K]   # relatório na tela e em .data/ensaio/
+```
+
+A Temporada 1 na máquina, até a Azure (ADR 0038; seção 9; `docs/RUNBOOK.md`, seção 13). O banco é sempre o de `TEMPORADA_DATABASE_URL` (o
+`alvesting_temporada`), nunca o de dev:
+
+```bash
+pnpm --filter @alvesting/api temporada:preparar                     # cria e migra o banco da temporada, db:roles, copia o mercado do dev
+pnpm --filter @alvesting/api arena:retroativo --dry-run [--ate D]   # o plano: pregões, chamadas e custo; nenhuma chamada e nenhuma escrita
+pnpm --filter @alvesting/api arena:retroativo [--ate D] [--teto-usd 30]   # os pregões que já passaram, como RETROATIVO
+pnpm --filter @alvesting/api arena:operar [--so-dados]              # o operador ao vivo nos horários de produção (o launchd o mantém)
 ```
 
 Comando da liquidação (etapa 7). Só o banco (`DATABASE_URL`); não passa pela fila nem pelo Blob. O admin por tela existe desde a etapa 10 (parte 2): o painel `/admin` ("Evento corporativo") e
@@ -568,3 +580,37 @@ restauração num servidor limpo: o dump leva os **`GRANT` do papel de grupo `al
 (`docs/INFRA.md`, seção 4); o [RUNBOOK](RUNBOOK.md), seção 5, tem o passo a passo.
 
 **Não verificado na Azure:** o `CREATE DATABASE` e o `pg_restore` no Flexible Server (o administrador não é superusuário), o envio de verdade para o Blob e o tempo com o banco real.
+
+---
+
+## 9. O operador local: a mesma agenda, no Mac, até a Azure (ADR 0038)
+
+Enquanto a assinatura da Azure não existe, a Temporada 1 roda na máquina: o `arena:retroativo` cobre os pregões que já passaram e o
+`arena:operar` roda os seguintes ao vivo (`docs/METODOLOGIA.md`, "Temporada 1"; o procedimento está no `docs/RUNBOOK.md`, seção 13). Os dois são o
+**mesmo motor do ensaio** (`apps/api/src/ensaio/world.ts`, `assembleWorld`): os mesmos agendadores e handlers desta página, ligados ao barramento
+do processo (`InProcessBus`) no lugar do Service Bus, com as peças reais (`apps/api/src/temporada/pieces.ts`).
+
+**A agenda tem uma fonte só** (`apps/api/src/temporada/agenda.ts`, `AGENDA`): os crons da tabela da seção 1, em UTC, e o `agenda.spec.ts` os
+compara com o vetor `schedulers` do `infra/modules/containerapps.bicep`. Mudar um cron é mudar os dois (e o `infra/tests/check.mjs`, seção 6).
+
+| Job | Cron (UTC) | No operador |
+|---|---|---|
+| `news` | `*/30 * * * *` | igual; depois de um buraco (o Mac dormiu), só a meia-hora mais recente: o feed devolve o que tem agora |
+| `briefing` | `30 10 * * 1-5` | igual, até o prazo do pregão; depois dele, não congela (quem congela é o retroativo). Não roda no `--so-dados` |
+| `cycle` | `0 11 * * 1-5` | só abre ciclo `AO_VIVO` dentro da janela (até 09:30 menos 5 min), com o prompt fixado, com todo pregão anterior resolvido e se o pregão não tem ciclo. Não roda no `--so-dados` |
+| `eod` | `30 0 * * 2-6` | igual: as novas tentativas até 00:30 são cópias agendadas no barramento; no `--so-dados` não pede a liquidação |
+| `universe` | `0 12 * * 0` | igual, com a atualização semanal da brapi e os logos (o `icons.brapi.dev` está na lista branca) |
+| `retention` | `0 13 * * *` | igual |
+| `backup` | `0 6 1 * *` | **fora**: o `backup-verify` pede o `pg_dump` da versão do servidor e um servidor onde restaurar; no Mac a cópia é o `pg_dump` do RUNBOOK (13.6) |
+
+**Cada volta** (a cada 20 s) roda, em ordem de horário, o que venceu desde a volta anterior, e entrega o que o barramento tem depois de cada
+passo (o eod da véspera conclui antes do briefing do dia). A primeira volta olha 26 horas para trás (o universo, 7 dias), para o Mac que dormiu
+a noite. A idempotência é a de sempre: o `job_run` de cada mensagem barra a repetição, então rodar de novo um passo que já rodou não muda nada.
+
+**O que muda em relação à Azure.** Uma mensagem por vez, na ordem (a concorrência de `QUEUES` não vale); a cópia agendada (a nova tentativa do
+eod, a da fila) vive na memória do processo, e se ele reiniciar a volta seguinte a repõe pelo cron perdido (o `job_run` em `WAITING` é
+reassumido); a decisão roda no mesmo processo (não há o job de decisões; o limite de cada chamada é o mesmo da seção 3.2, o menor entre o que falta
+até 09:30 e os 25 minutos da réplica menos 2); o Blob é o Azurite, nos containers `temporada-briefings` e `temporada-llm-io`; não há telemetria (o Application Insights) nem os
+alertas do Azure Monitor: o sinal é o log do dia em `.data/operador/AAAA-MM-DD.log`, com uma linha de batimento a cada 30 minutos. A rede é
+uma lista branca (o OpenRouter, a brapi e o `icons.brapi.dev`, a CVM, o BCB, os quatro feeds e o loopback); o resto é bloqueado e anotado no log.
+

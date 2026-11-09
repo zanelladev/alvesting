@@ -1,6 +1,7 @@
 import {
   isValidModelId,
   llmProviderSchema,
+  type CycleMode,
   seasonParamsSchema,
   type CompetitorSpec,
   type LlmProvider,
@@ -43,6 +44,8 @@ export interface SeasonRow {
   status: SeasonStatus;
   startDate: IsoDate | null;
   params: SeasonParams;
+  // o SHA-256 do prompt com que a temporada começou (arena:retroativo); nulo se ela começou pelo season:start ou pelo painel
+  promptSha256: string | null;
 }
 
 // A temporada como o admin a vê: o arquivo do season:create (nome, parâmetros e elenco, na ordem do elenco) mais o estado.
@@ -80,6 +83,9 @@ export interface CycleRow {
   decisionAt: Date;
   deadlineAt: Date;
   closedAt: Date | null;
+  // RETROATIVO ou AO_VIVO (ADR 0038), e a hora real em que a linha nasceu
+  mode: CycleMode;
+  executedAt: Date;
   briefing: { id: string; sha256: string } | null;
   promptVersion: { id: string; version: string; sha256: string | null } | null;
 }
@@ -110,6 +116,8 @@ const toCycle = (row: CycleWithRelations): CycleRow => ({
   decisionAt: row.decisionAt,
   deadlineAt: row.deadlineAt,
   closedAt: row.closedAt,
+  mode: row.mode,
+  executedAt: row.executedAt,
   briefing: row.briefing,
   promptVersion: row.promptVersion,
 });
@@ -121,6 +129,7 @@ function toSeason(row: {
   status: SeasonStatus;
   startDate: Date | null;
   params: Prisma.JsonValue;
+  promptSha256: string | null;
 }): SeasonRow {
   const params = seasonParamsSchema.safeParse(row.params);
   // nunca seguir com um padrão no lugar de um parâmetro que o banco guardou torto
@@ -132,6 +141,7 @@ function toSeason(row: {
     status: row.status,
     startDate: row.startDate ? toIso(row.startDate) : null,
     params: params.data,
+    promptSha256: row.promptSha256,
   };
 }
 
@@ -275,18 +285,25 @@ export class ArenaRepository {
     return row ? toSeason(row) : null;
   }
 
+  // o arena:retroativo e o operador local acham a temporada pelo slug do arquivo
+  async seasonBySlug(slug: string): Promise<SeasonRow | null> {
+    const row = await this.prisma.season.findUnique({ where: { slug } });
+    return row ? toSeason(row) : null;
+  }
+
   // DRAFT -> RUNNING com a data de início. A condição no WHERE é a trava: só um season:start vence a mesma temporada.
   // `options.exclusive` (as rotas /admin; o comando season:start não passa) recusa com 'running_exists' se OUTRA temporada está em
   // andamento (docs/ARENA.md, seção 10: duas, com regras diferentes, derrubam o `freeze` todo dia). A conferência e o UPDATE são um passo
   // só, sob a trava consultiva `season:start` desta transação: o WHERE vale por linha e dois rascunhos são duas linhas, então sem a
   // trava dois inícios juntos liam "nenhuma em andamento" os dois e iniciavam os dois. Todo início toma a trava, com ou sem a opção, para o
   // exclusivo enxergar o que um comando acabou de iniciar. `audit` vai na mesma transação e só se a temporada começou.
+  // `options.promptSha256` (só o arena:retroativo, que lê o prompt): o SHA-256 do texto com que a temporada começa, fixado na mesma instrução.
   async startSeason(
     id: string,
     startDate: IsoDate,
     now: Date,
     audit?: AuditEntry,
-    options: { exclusive?: boolean } = {},
+    options: { exclusive?: boolean; promptSha256?: string } = {},
   ): Promise<'started' | 'not_found' | 'not_draft' | 'running_exists'> {
     const outcome = await this.prisma.$transaction(async (tx) => {
       await lockBy(tx, 'season:start');
@@ -296,7 +313,12 @@ export class ArenaRepository {
       }
       const result = await tx.season.updateMany({
         where: { id, status: 'DRAFT' },
-        data: { status: 'RUNNING', startDate: toDate(startDate), startedAt: now },
+        data: {
+          status: 'RUNNING',
+          startDate: toDate(startDate),
+          startedAt: now,
+          ...(options.promptSha256 ? { promptSha256: options.promptSha256 } : {}),
+        },
       });
       if (result.count !== 1) return 'not_updated' as const;
       if (audit) await appendAudit(tx, audit, id);
@@ -480,12 +502,15 @@ export class ArenaRepository {
 
   // Um ciclo por temporada e pregão, idempotente: repetir devolve o que já existe. Aberto e fechado não mudam (as mensagens
   // já saíram); o pulado é reavaliado, porque o briefing pode ter chegado e o orçamento pode ter mudado.
+  // `mode` só vale na criação (AO_VIVO, o padrão do banco, se não vier): o ciclo que já existe não muda de modo. A hora real
+  // (executed_at) é sempre a do relógio da máquina na criação, nunca a do relógio do pregão.
   async upsertCycle(input: {
     seasonId: string;
     date: IsoDate;
     decisionAt: Date;
     deadlineAt: Date;
     state: CycleState;
+    mode?: CycleMode;
   }): Promise<{ cycle: CycleRow; created: boolean }> {
     const where = { seasonId_date: { seasonId: input.seasonId, date: toDate(input.date) } };
     const existing = await this.prisma.cycle.findUnique({ where });
@@ -498,6 +523,7 @@ export class ArenaRepository {
             date: toDate(input.date),
             decisionAt: input.decisionAt,
             deadlineAt: input.deadlineAt,
+            ...(input.mode ? { mode: input.mode } : {}),
             ...stateData(input.state),
           },
           include: CYCLE_INCLUDE,

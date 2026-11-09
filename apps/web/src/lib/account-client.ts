@@ -2,8 +2,9 @@ import type { ConsentProof } from '@alvesting/contracts';
 // Pelo subcaminho, e não pelo índice: este módulo vai ao navegador, e o índice leva o zod junto (packages/contracts/src/account-constants.ts).
 import { ACCOUNT_LIMITS } from '@alvesting/contracts/account-constants';
 
-// O que o navegador faz ao falar com a api da conta (etapa 11, parte 2; docs/CONTA.md). Sempre na mesma origem: na Azure o Front Door
-// manda `/api/*` para a api e o resto para o site, e em dev o `rewrites` do next.config.ts faz o mesmo. Por isso o cookie da sessão
+// O que o navegador faz ao falar com a api da conta (etapa 11, parte 2; docs/CONTA.md). Sempre na mesma origem: na Azure, no perfil padrão, o
+// Front Door manda `/api/*` para a api e o resto para o site; no econômico e em dev o próprio site repassa `/api/*` (src/lib/api-proxy.ts;
+// ADR 0039). Por isso o cookie da sessão
 // (HttpOnly, SameSite=Lax) e o `Origin` que a api confere chegam sozinhos. As respostas do Better Auth (`/api/auth/*`) e as rotas
 // `/api/v1/me*` têm formatos diferentes ({ code } e o envelope { error: { code } }): a leitura aceita os dois.
 

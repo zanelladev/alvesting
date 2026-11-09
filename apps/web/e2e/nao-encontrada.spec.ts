@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
-// A 404 e o urso (ADR 0035; docs/redesign-rallies/plano.md, f.8; docs/redesign-rallies/relatorios/landing.md). A árvore da 404 vai no payload de
+// A 404 e o urso (ADR 0035). A árvore da 404 vai no payload de
 // TODA página (o Next a serializa duas vezes), então o urso não manda o quadro 0 no documento: o HTML leva o texto, os caminhos e o quadro de
 // espera (a grade e o sprite do quadro 0, os ladrilhos, pelo CSS), e o texto do quadro chega depois do load, do arquivo pequeno
 // (urso-q0.json). O celular nunca pede o arquivo inteiro (o JSON dos quadros e o sprite grande); a partir de 1024 px o urso anda; com

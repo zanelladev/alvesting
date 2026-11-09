@@ -62,13 +62,14 @@ describe('os documentos carregados', () => {
 // em 04/11/2026 (o item 5 passou a prometer o pior caso da limpeza diária): quem aceitou a 0.2 recebe 403 CONSENT_REQUIRED até aceitar a
 // 0.3 (portfolio.integration.spec.ts), e os termos, cujo texto não mudou, seguem na 0.2. Todas ainda são rascunho (ninguém aceitou em
 // produção): enquanto a vigente for rascunho, atualize o hash dela abaixo ao editar o texto; depois de publicada, suba a versão e
-// acrescente a linha. A linha da versão anterior fica, como registro do que foi aceito.
+// acrescente a linha. A linha da versão anterior fica, como registro do que foi aceito. Em 07/11/2026 o item 6
+// da 0.3, ainda rascunho, trocou a East US 2 pela Chile Central (ADR 0040), e o hash da 0.3 foi atualizado.
 const FROZEN: Record<string, string> = {
   'TERMS@0.1': '8b7dce70705a94a18cde089b1dbc241d0a1fd92b3d954eecb74db828a104b221',
   'PRIVACY@0.1': 'e1568adee4a666bd0bd0c68ab490ba59aeb721124b1b30315d7be9c09ecf93b4',
   'TERMS@0.2': '54c7213262ea7215a922bbb000023240f09527a2f77640bd5f8dc0dd63622133',
   'PRIVACY@0.2': 'cef4099255991531928b40d9ec2afeeb628949f5cb14be31a5db51fdc717ef4c',
-  'PRIVACY@0.3': 'a781b6ce221109bc8252723bf4eafce6673002405e7018a6296fb966dd21e44d',
+  'PRIVACY@0.3': '80b64d8fb737db4e049771619966eda189f5bd55a9f8d89686dcd5c68bc1ad26',
 };
 
 describe('versões congeladas', () => {
@@ -115,11 +116,11 @@ describe('o que cada documento precisa dizer (plano §12)', () => {
     expect(privacy).toMatch(/retenção|por quanto tempo/i);
   });
 
-  it('a privacidade: direitos do titular (art. 18) e a transferência internacional para os Estados Unidos (art. 33)', () => {
+  it('a privacidade: direitos do titular (art. 18) e a transferência internacional para o Chile e os Estados Unidos (art. 33)', () => {
     expect(privacy).toMatch(/art\. 18/);
     expect(privacy).toMatch(/art\. 33/);
     expect(privacy).toMatch(/Estados Unidos/);
-    expect(privacy).toMatch(/East US 2/);
+    expect(privacy).toMatch(/Chile Central/);
     expect(privacy).toMatch(/consentimento específico e em destaque/i);
     for (const right of ['acesso', 'correção', 'portabilidade', 'eliminação', 'revogação']) {
       expect(privacy, right).toMatch(new RegExp(right, 'i'));

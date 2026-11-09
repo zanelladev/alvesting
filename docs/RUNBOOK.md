@@ -33,6 +33,8 @@ Mapa: cada alerta, sinal, orçamento e ação de auditoria aponta para a seção
 | `account.promoted`, `account.demoted` | 7 |
 | `account.deleted` | 8 |
 
+**A Temporada 1 na máquina, até a Azure** (o banco da temporada, o `arena:retroativo` e o operador local): seção 13.
+
 ## Antes de começar
 
 - **Conta e variáveis.** `az login` com a conta do Artur. Os blocos abaixo rodam em zsh ou bash, e supõem estas variáveis:
@@ -42,7 +44,7 @@ export RG=rg-alvesting-prod KV=kv-alvesting
 SITE="$(az deployment group show -g $RG -n alvesting --query properties.outputs.siteUrl.value -o tsv)"
 ```
 
-  Recursos (nomes do `infra/main.bicep`, perfil padrão): cofre `kv-alvesting`; Blob `stalvesting` (containers `briefings`, `llm-io` e `backups`); Service Bus `sb-alvesting`; Postgres `psql-alvesting`; Communication Services `acs-alvesting`; Log Analytics `log-alvesting`; Front Door `afd-alvesting` (só no padrão). Apps: `ca-web`, `ca-api`, `ca-worker-data`. Jobs: `job-migrate`, `job-worker-decisions` e os agendadores `job-sched-news`, `job-sched-briefing`, `job-sched-cycle`, `job-sched-eod`, `job-sched-universe`, `job-sched-retention` e `job-sched-backup`.
+  Recursos (nomes do `infra/main.bicep`; a produção nasce no perfil econômico, ADR 0039): cofre `kv-alvesting`; Blob `stalvesting` (containers `briefings`, `llm-io` e `backups`); Service Bus `sb-alvesting`; Postgres `psql-alvesting`; Communication Services `acs-alvesting`; Log Analytics `log-alvesting`; Front Door `afd-alvesting` (só no padrão). Apps: `ca-web`, `ca-api`, `ca-worker-data`. Jobs: `job-migrate`, `job-worker-decisions` e os agendadores `job-sched-news`, `job-sched-briefing`, `job-sched-cycle`, `job-sched-eod`, `job-sched-universe`, `job-sched-retention` e `job-sched-backup`.
 
 - **Extensão do `az`.** O `az monitor log-analytics query` (seções 2 e 8) vem da extensão `log-analytics` (1.0.0b3, prévia): instale-a uma vez com `az extension add --name log-analytics` (sem ela o `az` não conhece o comando). Todos os outros comandos `az` deste runbook são do núcleo da CLI (conferido no `--help` da 2.86.0).
 - **Sessão de admin para o `curl`.** As rotas `/api/v1/admin` pedem uma sessão de conta com o papel `admin` (seção 7) e, nas mutações, o `Origin` igual ao do site (sem ele, 403). O bloco guarda o cookie num arquivo só do dono e não põe a senha na linha de comando. A senha não pode ter aspas nem barra invertida, porque o JSON do bloco não as escapa. O `trap` só apaga o arquivo quando o shell fecha: apague-o com `rm -f` ao fim do uso.
@@ -329,7 +331,7 @@ docker exec alvesting-postgres-1 pg_restore -U alvesting -d alvesting_restore_te
 docker exec alvesting-postgres-1 dropdb -U alvesting alvesting_restore_test
 ```
 
-**Restaurar na Azure não tem caminho pronto.** O servidor é privado (sem acesso público), então o `pg_restore` tem de rodar dentro da VNet, e o Bicep não tem um job para isso. Se for preciso: crie o papel de grupo no servidor novo antes (`CREATE ROLE alvesting_api_group NOLOGIN`), porque o dump traz `GRANT` para ele e o `pg_restore --exit-on-error` para no primeiro se o papel não existir (`docs/JOBS.md`, 8.2); depois rode o `db:roles`. O dump não traz logins nem senhas. Lacuna: não ensaiada.
+**Restaurar na Azure** (ADR 0039; não ensaiado na Azure). O servidor é privado (sem acesso público), então a restauração roda dentro do ambiente: uma execução do `job-migrate` com o comando trocado, `node dist/restore-cli.js temporada <dump> <sha256>`, que lê o dump do `backups` pela identidade do migrate (só leitura, perfil econômico) e restaura **só os dados** num banco já migrado e sem temporada (o passo a passo é o da seção 13.6). O dump mensal leva o esquema junto e o comando o recusa; para usá-lo, dois passos: restaure-o num banco `_test` da máquina (o bloco acima) e tire dele um dump só de dados, com as mesmas opções do 13.6, passo 1 (o `DATABASE_URL` do `contagens` passa a ser o desse banco). O banco de destino é o de um servidor novo (o original, se ainda serve, volta pelo PITR, 5.2), com as migrations do `job-migrate` aplicadas antes (elas criam o papel de grupo e os `GRANT`); depois, o `db:roles` do mesmo job. O dump não traz logins nem senhas.
 
 ### 5.4 CPU e disco (`alvesting-banco-cpu`, `alvesting-banco-disco`)
 
@@ -526,9 +528,9 @@ Depois: `GET /api/v1/admin/seasons` mostra `RUNNING`, e a temporada vira a "atua
 
 O orçamento de US$ 100 (`budgetAmount = 100`, o crédito do Azure for Students) manda e-mail para o `ag-alvesting` em 50%, 80% e 100%. **Ele avisa, não desliga nada** (`docs/INFRA.md`, 6).
 
-**Ao chegar o de 80%:** é o gatilho para trocar de perfil. O padrão custa uns US$ 72 a 83 por mês; o econômico, uns US$ 5 a 10 (`docs/INFRA.md`, 9).
+**Ao chegar o de 80%:** é o gatilho para trocar de perfil, se a produção estiver no padrão. Ela nasce no econômico (ADR 0039, `infra/main.prod.bicepparam`), que custa uns US$ 5 a 10 por mês; o padrão, uns US$ 72 a 83 (`docs/INFRA.md`, 9).
 1. Confira o gasto no portal (Cost Management, o orçamento `budget-alvesting`) e a data em que o crédito acaba.
-2. Troque o perfil: `profile=economico` (no `.bicepparam` ou na linha de comando) e faça o deploy normal (`docs/INFRA.md`, 8.1). O padrão **não apaga** o Front Door, o WAF nem o ACR. Apague o perfil do Front Door à mão só depois de conferir o tráfego e o DNS (`az afd profile delete`).
+2. Troque o perfil: `profile=economico` (no `.bicepparam` ou na linha de comando) e faça o deploy normal (`docs/INFRA.md`, 8.1), com a variável do repositório `ALVESTING_PROFILE=economico` e o pacote do GHCR público (`docs/DEPLOY.md`, seção 3): as imagens passam a sair do GHCR. O padrão **não apaga** o Front Door, o WAF nem o ACR. Apague o perfil do Front Door à mão só depois de conferir o tráfego e o DNS (`az afd profile delete`).
 
 **Antes de o crédito acabar.** O plano assume que a assinatura de estudante **desliga os recursos** quando o crédito acaba. Isso não foi verificado aqui: confirme no portal da assinatura.
 - Gere o dump do mês à mão, se ele ainda não existe: `az containerapp job start -g $RG -n job-sched-backup` publica o `backup-verify` do mês de Brasília, e é idempotente (`docs/JOBS.md`, 1). Baixe-o e guarde fora da Azure, com a conferência da seção 5.3. Sem dado pessoal.
@@ -656,14 +658,232 @@ pnpm --filter @alvesting/api market:logos --confirmo-banco <nome do banco>
 **Risco:** apontar para o banco errado grava logo onde não devia (por isso o nome do banco tem de ser repetido). Só apaga o logo que o
 validador de hoje recusa.
 
+## 13. Operador local: a Temporada 1 no Mac, até a Azure
+
+**não ensaiado.** Nenhum destes passos rodou de verdade: os três comandos foram provados só com os substitutos do ensaio (a brapi falsa, o
+provedor fake de LLM, o SGS e a CVM sintéticos), sem rede (`apps/api/src/temporada/*.spec.ts`). A primeira execução real é do coordenador, depois
+da chave do OpenRouter e do prompt aprovados pelo Artur (o passo a passo exato está no relatório `docs/temporada-1/relatorios/t0-temporada-real.md`).
+Por que existe: ADR 0038. As regras da Temporada 1 (o trecho retroativo e o ao vivo): `docs/METODOLOGIA.md`, "Temporada 1".
+
+Os três comandos leem o banco de `TEMPORADA_DATABASE_URL` (o `alvesting_temporada`, no Postgres do docker compose) e recusam qualquer outro
+nome (só `alvesting_temporada` ou um `*_test`), servidor fora da máquina e `NODE_ENV=production`. O modelo do arquivo de ambiente é
+`infra/local/operador.env.example`: copie-o para FORA do repositório (por exemplo `~/segredos/alvesting-operador.env`, com `chmod 600`) e preencha
+lá o `BRAPI_TOKEN`, o `OPENROUTER_API_KEY` e o `PROMPT_ARENA_FILE` (o caminho do prompt aprovado, que tem a linha de canário). Os comandos do
+pnpm carregam o `.env.example` e o `.env.local`; para usar o arquivo de fora, rode o `node` direto, como no `launchd` (13.3).
+
+### 13.1 Preparar o banco da temporada (`temporada:preparar`)
+
+```bash
+pnpm --filter @alvesting/api temporada:preparar
+```
+
+Cria o `alvesting_temporada` se ele não existe, aplica as migrations, roda o `db:roles` e copia do banco de dev (`DATABASE_URL`, só lido) os
+instrumentos, os logos, os pregões e as barras. Não chama a brapi. Rodar de novo não duplica nada (cada tabela pela chave natural) e nunca
+apaga nem reescreve o que o banco da temporada já tem; o pregão confirmado no dev confirma o que lá ainda era só previsão.
+
+**A senha do login da api é do servidor inteiro.** O `db:roles` grava a senha do `alvesting_api` a partir da `API_DATABASE_URL`, e papel no
+Postgres é do servidor, não de um banco: a demo local, o e2e e todo banco deste Postgres usam o mesmo login. Use sempre a senha de dev do
+`.env.example` (`alvesting_api`); outra senha derruba a demo e o e2e até alguém rodar o `db:roles` de novo com a de dev.
+
+### 13.2 Os pregões que já passaram (`arena:retroativo`)
+
+Primeiro o plano, que não chama nada e não escreve nada (sem o banco, vale para a temporada inteira):
+
+```bash
+pnpm --filter @alvesting/api arena:retroativo --dry-run --ate 2026-11-05
+```
+
+Mostra os pregões (fechados e a rodar), os competidores, as chamadas às LLMs (uma por decisão que falta; até duas com o reparo) e o custo
+estimado pelos preços do arquivo, típico e pior caso. Depois a execução:
+
+```bash
+pnpm --filter @alvesting/api arena:retroativo --ate 2026-11-05 --teto-usd 30
+```
+
+- **O que faz:** cria e inicia a temporada de `apps/api/seasons/temporada-1.json` na data do arquivo (13/10/2026), com o SHA-256 do prompt
+  fixado, se ela ainda não existe; lê de uma vez as barras que faltam (a brapi, em blocos de até 85 dias), o macro do BCB e os documentos da CVM;
+  e roda os pregões em ordem, cada um com o relógio do pregão. Cada ciclo nasce `RETROATIVO`, com a hora real em `executed_at`.
+- **`--ate`:** o último pregão desta execução. Sem ele, o último pregão com barras confirmadas antes de hoje no banco da temporada.
+- **`--teto-usd`** (padrão 30): antes de abrir cada pregão, para se o que esta execução já gastou mais o pior caso do pregão (as duas
+  chamadas de cada modelo que falta decidir) passaria do teto. Sai com o código 3 e diz o pregão.
+- **O teto do mês** (`ARENA_MONTHLY_COST_CAP_USD`, o mesmo do agendador de produção) conta o gasto **pelo mês do pregão**, não pelo mês em
+  que rodou: os pregões de outubro rodados em novembro somam em outubro; os de novembro, retroativos e ao vivo, somam juntos em novembro.
+  Sem a variável, o ciclo com modelo pago é pulado (`orcamento`), como em produção.
+- **Parar:** Ctrl+C termina a entrega em curso (a chamada que está esperando a resposta termina e é gravada) e para. Rodar de novo continua
+  de onde parou: o pregão fechado e liquidado é pulado, e o par (ciclo, competidor) que já tem decisão não chama o modelo de novo.
+- **Recusa:** prompt diferente do que a temporada fixou (o SHA-256 está na mensagem; o texto nunca), temporada iniciada por outro caminho ou
+  com outra data de início. Nenhum ciclo abre.
+- **Pregão que não fecha:** se o pregão termina sem o ciclo fechado e liquidado (o ciclo pulado por falta de briefing, por exemplo o universo
+  da semana sem os 60 pregões confirmados, ou por orçamento; a liquidação que falhou), a execução para nele e sai com o código 3, dizendo o
+  pregão. Corrija a causa (o log do dia diz qual) e rode de novo: o pregão pulado é reavaliado. Se o BCB ou a CVM falham na leitura de antes dos
+  pregões, o comando sai com erro antes de abrir qualquer ciclo.
+- **O crédito acabou (ou a chave foi recusada):** o OpenRouter responde HTTP 402 (ou 401), e isso é erro de configuração, que não vira HOLD
+  (`docs/ARENA.md`, seção 5). O pregão fica com o ciclo aberto e os modelos sem decisão, e a execução para **antes da liquidação**, com o código
+  3 e a linha "o pregão ficou com modelo sem decisão". Confira o saldo no painel do OpenRouter, recarregue (ou troque a chave no arquivo de
+  ambiente) e rode de novo: o pregão é retomado só para quem não decidiu. Para não chegar a isso, use um `--teto-usd` abaixo do saldo da chave.
+- **Saída:** um relatório por pregão em `.data/temporada/pregao-AAAA-MM-DD.txt` (o ciclo, a hora real, cada decisão e o custo), o resumo em
+  `.data/temporada/resumo.txt` e o log em `.data/temporada/AAAA-MM-DD.log`. A guarda de rede deixa passar só o OpenRouter, a brapi, a CVM, o
+  BCB e o loopback; o resto vai para o log como `rede bloqueada`.
+
+### 13.3 O operador ao vivo (`arena:operar`) e o `launchd`
+
+O operador roda a agenda de produção (`apps/api/src/temporada/agenda.ts`, os mesmos crons do Bicep, em UTC): notícias a cada 30 min, briefing às
+07:30, ciclo às 08:00 com prazo às 09:30, eod às 21:30 com as novas tentativas até 00:30 e a liquidação, o universo (com os logos) no domingo
+e a limpeza diária. O `backup-verify` fica de fora: é da Azure. Com `--so-dados` ele só coleta (notícias, eod, universo, logos e limpeza): nem
+briefing, nem ciclo, nem liquidação. É o modo de antes da virada, para o RSS começar a ser coletado.
+
+Instalar (troque os três marcadores do modelo; o `node` é o 26 do nvm):
+
+```bash
+cd <pasta do repositório>
+pnpm --filter @alvesting/api build
+sed -e "s#__REPO__#$PWD#g" -e "s#__NODE__#$(bash -lc 'source ~/.nvm/nvm.sh && nvm which 26')#g" \
+    -e "s#__ENV_FILE__#$HOME/segredos/alvesting-operador.env#g" \
+    infra/local/br.alvesting.operador.plist > ~/Library/LaunchAgents/br.alvesting.operador.plist
+plutil -lint ~/Library/LaunchAgents/br.alvesting.operador.plist
+mkdir -p .data/operador
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/br.alvesting.operador.plist     # liga (e liga a cada login)
+```
+
+- **Desligar:** `launchctl bootout gui/$(id -u)/br.alvesting.operador` (o SIGTERM termina a volta em curso; o `KeepAlive` não o religa).
+- **Reiniciar** (depois de um build novo): `launchctl kickstart -k gui/$(id -u)/br.alvesting.operador`.
+- **Só coleta:** acrescente `--so-dados` depois de `operar` no plist e reinicie.
+- **Ver o log:** `tail -f .data/operador/$(TZ=America/Sao_Paulo date +%F).log`. Uma linha de `batimento` a cada 30 minutos; sem ela, o
+  processo parou (veja `.data/operador/launchd.err.log`). Os avisos dos handlers vão para o mesmo arquivo.
+- **O que ele recusa** (uma linha no log, e nada aberto): o ciclo depois do prazo menos 5 minutos; o prompt diferente do fixado; o pregão com
+  algum pregão anterior da temporada sem ciclo fechado (o retroativo não alcançou o presente); o pregão que já tem ciclo (o ciclo ao vivo
+  aberto antes de um reinício é só retomado para quem não decidiu); e o pregão sem saldo no OpenRouter para o pior caso dele (uns US$ 2,66 com
+  os seis modelos), ou com o saldo que não pôde ser lido (`temporada/credit.ts`, que lê `GET /api/v1/key` e `/api/v1/credits` sem gastar
+  crédito). Sem ciclo ao vivo, o dia fica para o `arena:retroativo` depois da recarga, e os dias seguintes também esperam por ele.
+
+### 13.4 O Mac dormiu ou desligou
+
+O `caffeinate -i` do plist impede o Mac de dormir por inatividade enquanto o operador roda; a tampa fechada sem energia externa (ou o Mac
+desligado) para tudo. Ao voltar, a primeira volta olha para trás (26 horas; o universo, 7 dias) e roda, em ordem de horário, o que ainda está na
+janela: o eod da véspera (a barra de um pregão passado não muda, e ele conclui na hora), o universo do domingo, a limpeza e a notícia mais
+recente. **O ciclo nunca abre "ao vivo" atrasado:** passado o prazo (09:30, menos a margem de 5 min), o pregão não ganha ciclo ao vivo, e o
+briefing também não é congelado ao vivo depois do prazo; a linha `a janela da decisão passou` fica no log. Esse dia vira um buraco até o
+retroativo cobri-lo (13.5), e **enquanto ele existir nenhum pregão seguinte abre ao vivo** (regra 3 acima).
+
+### 13.5 Cobrir um dia perdido
+
+1. Espere a noite do pregão perdido: o eod do operador (21:30, até 00:30) confirma as barras do dia. Ou passe `--ate` e deixe o retroativo
+   pedir as barras à brapi.
+2. Antes das 08:00 do pregão seguinte: `arena:retroativo --dry-run` (confira que o plano é só o dia perdido) e depois `arena:retroativo`. O dia
+   entra como `RETROATIVO`, com o briefing pela regra de visibilidade, e a liquidação dele, se já tinha rodado sem ciclo, é refeita.
+3. Confira no log do operador que o ciclo das 08:00 abriu (`ciclo ao vivo aberto`).
+
+### 13.6 Levar o `alvesting_temporada` para a Azure
+
+**não ensaiado na Azure.** Provado na máquina em 06/11/2026 (ADR 0039; o relatório da onda Azure): o dump do `alvesting_temporada` restaurado pelo
+comando de cima, num banco cujo dono **não é superusuário** (como o administrador do Flexible Server), deu as 32 tabelas com as contagens da origem
+e a api servindo esse banco mostrou os mesmos 17 ciclos (13/10 a 05/11). O teste `season-restore.integration.spec.ts` repete isso com uma temporada
+sintética, as recusas inclusive. O que só a Azure prova: o `job start --yaml` lendo o Blob pela identidade do migrate (`docs/INFRA.md`, seção 11).
+
+**Antes.** A produção no perfil econômico de pé: a fase 2 da infra, o primeiro deploy pelo pipeline (o `job-migrate` já aplicou as migrations) e
+o site respondendo. O papel de escrita nos containers (`Storage Blob Data Contributor` em `backups`, `briefings` e `llm-io`) é do
+`ALVESTING_ADMIN_PRINCIPAL_ID` desde a fase 1 do econômico (`infra/modules/storage.bicep`); se ele não estava exportado na fase 1, rode a infra de
+novo com ele. **A hora:** depois da liquidação da noite (o `eod` sai às 21:30 e as novas tentativas vão até 00:30) e antes das 07:30 de um pregão, ou
+no fim de semana. Os agendadores da Azure rodam desde a fase 2 (as notícias a cada 30 minutos): o que eles gravaram sem temporada dá lugar ao dump;
+a conta que você já criou no site novo fica (o dump não tem as tabelas pessoais).
+
+1. **O dump e as contagens da origem, na máquina.** Só os dados (o esquema é o das migrations da Azure), sem as tabelas pessoais (o dump fica no
+   `backups`, que guarda 12 meses e não leva dado pessoal: `docs/INFRA.md`, 4) e sem o controle das migrations:
+
+   ```bash
+   cd <pasta do repositório>; umask 077; mkdir -p ~/segredos
+   docker exec alvesting-postgres-1 pg_dump -U alvesting -d alvesting_temporada --format=custom --data-only \
+     --exclude-table-data=public._prisma_migrations \
+     --exclude-table-data=public.user --exclude-table-data=public.session --exclude-table-data=public.account \
+     --exclude-table-data=public.verification --exclude-table-data=public.consent \
+     --exclude-table-data=public.portfolio --exclude-table-data=public.portfolio_lot \
+     > ~/segredos/alvesting-temporada.dump
+   shasum -a 256 ~/segredos/alvesting-temporada.dump                       # anote o SHA-256: vai no passo 3
+   pnpm --filter @alvesting/api build
+   DATABASE_URL=postgresql://alvesting:alvesting@localhost:25432/alvesting_temporada \
+     node apps/api/dist/restore-cli.js contagens > ~/segredos/contagens-origem.txt
+   STORAGE_CONNECTION_STRING='UseDevelopmentStorage=true;DevelopmentStorageProxyUri=http://127.0.0.1:25100' \
+     node apps/api/dist/restore-cli.js exportar-blob ~/segredos/blob-temporada   # briefings/ e llm-io/, com os nomes do Azurite
+   ```
+
+   O operador do Mac (13.3) ainda pode estar ligado: o que ele gravar depois do dump não vai para a Azure. Por isso a hora calma, e por isso
+   o `contagens` de novo logo depois: se mudou, refaça o dump.
+
+2. **O envio ao Blob da conta**, com o seu login (`--auth-mode login`: a conta não tem chave). O dump vai ao `backups` com um nome seu; os arquivos
+   da temporada vão aos containers da conta **com os mesmos nomes** (a leitura do briefing usa o pregão e o SHA-256 do nome, e a coluna
+   `briefing.uri` continua com o endereço do Azurite, que nenhuma rota devolve):
+
+   ```bash
+   export RG=rg-alvesting-prod
+   ST="$(az deployment group show -g $RG -n alvesting --query properties.outputs.storageAccountName.value -o tsv)"
+   NOME="temporada-$(TZ=America/Sao_Paulo date +%F).dump"
+   az storage blob upload --auth-mode login --account-name "$ST" -c backups -n "$NOME" -f ~/segredos/alvesting-temporada.dump
+   az storage blob upload-batch --auth-mode login --account-name "$ST" -d briefings -s ~/segredos/blob-temporada/briefings
+   az storage blob upload-batch --auth-mode login --account-name "$ST" -d llm-io -s ~/segredos/blob-temporada/llm-io
+   ```
+
+   Os comandos e as opções são os da referência do `az storage blob` (Learn, conferida em 06/11/2026; o `--overwrite` fica no padrão, `false`: um
+   arquivo que já existe é recusado, nunca trocado). Um 403 é o papel ainda propagando (até 10 minutos) ou o `ALVESTING_ADMIN_PRINCIPAL_ID` que
+   não entrou na fase 1. Ser Owner do resource group não basta: o dado do Blob pede o papel de dados (Learn, "Authorize access to blob data with
+   Azure CLI").
+
+3. **A restauração, dentro do ambiente**: uma execução do `job-migrate` com o comando trocado (o caminho de `docs/INFRA.md`, 8.6; a execução troca o
+   modelo inteiro, então o resto do modelo fica como veio). A identidade do migrate só lê o `backups` (perfil econômico) e o `DATABASE_URL` do job é o
+   administrador:
+
+   ```bash
+   umask 077; F="$(mktemp)"; trap 'rm -f "$F"' EXIT
+   az containerapp job show -g $RG -n job-migrate --query properties.template -o yaml > "$F"
+   # edite "$F": troque só o command e os args do contêiner migrate
+   #   command:
+   #   - node
+   #   args:
+   #   - dist/restore-cli.js
+   #   - temporada
+   #   - <o $NOME do passo 2>
+   #   - <o SHA-256 do passo 1>
+   az containerapp job start -g $RG -n job-migrate --yaml "$F"
+   az containerapp job execution list -g $RG -n job-migrate -o table      # espere Succeeded
+   ```
+
+   O comando confere, antes de escrever: o esquema das migrations, o banco **sem temporada** (com uma, recusa: a restauração é só para o banco
+   novo), o SHA-256 do dump e o dump **só de dados e sem as tabelas pessoais**. Então, numa transação só: o `TRUNCATE` do que os agendadores já
+   gravaram nas tabelas que o dump traz e os dados do dump. Qualquer erro desfaz tudo e nada muda. O `audit_log` só soma (a sua promoção a admin,
+   se veio antes, fica) e as tabelas pessoais não são tocadas. Nada pede superusuário.
+
+4. **A conferência.** O log da execução (Log Analytics, `docs/JOBS.md`, 6) traz uma linha por tabela, `restauração: <tabela> <linhas> linhas
+   (<linhas> do dump)`, e termina em `restauração conferida`: o comando já comparou cada tabela com as linhas que o dump trazia. Compare também com
+   o `contagens-origem.txt` do passo 1 (as 25 tabelas que o dump traz têm o mesmo número; as pessoais, as suas). E no site: a arena mostra os
+   pregões da temporada (os mesmos ciclos do Mac) e a `/arena` tem o último ciclo.
+
+5. **Desligar o operador do Mac ANTES de os agendadores da Azure assumirem** (o próximo `briefing` às 07:30 e o ciclo às 08:00): sem isso os dois
+   abririam o mesmo pregão, cada um no seu banco, e a chave do OpenRouter pagaria duas vezes.
+
+   ```bash
+   launchctl bootout gui/$(id -u)/br.alvesting.operador
+   launchctl list | grep alvesting || echo "operador desligado"
+   ```
+
+   Depois da virada, o `sched-cycle` de produção fixa a versão do Key Vault no ciclo e o job de decisões confere o SHA-256 dela; a recusa por
+   `season.prompt_sha256` é só do retroativo e do operador local (ADR 0038, consequências).
+
+6. **Apague o que ficou na máquina**: `rm -rf ~/segredos/alvesting-temporada.dump ~/segredos/blob-temporada ~/segredos/contagens-origem.txt`. O dump
+   no `backups` sai sozinho em 365 dias (o ciclo de vida, `docs/INFRA.md`, 4).
+
+**Se falhar:** a mensagem do comando diz o motivo e o banco não muda (transação única). `o destino já tem temporada`: a restauração já foi feita,
+ou alguém criou uma temporada pelo painel; não há como restaurar por cima. `O SHA-256 do dump ... não é o esperado`: o arquivo do Blob não é o do
+passo 1 (refaça o envio). `O dump traz o dado das tabelas pessoais` ou `não é só de dados`: refaça o passo 1 com as opções acima.
+
+**Risco:** apontar o `TEMPORADA_DATABASE_URL` para outro banco (os comandos recusam qualquer nome que não seja `alvesting_temporada` ou `*_test`)
+ou rodar o operador e o retroativo com prompts diferentes (os dois recusam, pelo SHA-256 fixado).
+
 ## Lacunas conhecidas
 
 O que este runbook **não** cobre, e por quê. Cada uma é pendência de código ou decisão do Artur:
 
 - **Apagar evento corporativo** (ticker, data ex ou tipo errados): só SQL, fora da trilha (seção 9).
+- **Recuperar um intervalo de barras na Azure** (`market:backfill --de --ate`, seção 12.5): o Postgres é privado e o `job-migrate`, o caminho de dentro do ambiente, não tem o token da brapi. A carga inicial vai no dump da temporada (13.6), e o `eod` do worker segue a partir dela; a janela de 5 pregões que ele recupera sozinho (seção 12.4) cobre a falha comum.
 - **Reliquidar uma temporada sem evento**: não há gatilho. Só o registro de evento enfileira a reliquidação. É o que impede o admin de refazer, por conta própria, um pregão já liquidado cuja barra chegou atrasada (seção 12.3): a barra entra no resultado quando a próxima liquidação regular recalcula a temporada do zero.
-- **Carga inicial na Azure**: não há job para o `market:backfill` (o Postgres é privado); roda de onde o banco é alcançável (seção 12.5).
-- **Restaurar o dump no servidor da Azure**: o servidor é privado, e não há job para o `pg_restore` (seção 5.3).
 - **`account:promote` e `account:demote` por e-mail, não por ULID**: a CLI recebe o e-mail (seção 7).
 - **Sinal que falta** (`docs/INFRA.md`, 5.3): um `job-sched-*` que termina com código diferente de 0 depois das retentativas, e a queda do `ca-web` no perfil econômico. A conferência diária (seção 1) é quem os vê.
 - **Blob apagado**: a recuperação da exclusão lógica não foi ensaiada (seção 5.2).

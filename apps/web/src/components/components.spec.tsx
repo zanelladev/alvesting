@@ -440,7 +440,7 @@ describe('tabelas', () => {
   it('o nome do competidor é o cabeçalho da linha e é link para a página dele', () => {
     const out = html(<LeaderboardTable rows={[row()]} label="Ranking" />);
     expect(out).toMatch(
-      /<th scope="row"[^>]*><span aria-hidden="true" data-inicial="C" class="logo[^"]*"><\/span><a class="[^"]*" href="\/modelos\/cdi">CDI<\/a><\/th>/,
+      /<th scope="row"[^>]*><span aria-hidden="true" data-ref="cdi" class="logo[^"]*"><\/span><a class="[^"]*" href="\/modelos\/cdi">CDI<\/a><\/th>/,
     );
   });
 
@@ -698,6 +698,23 @@ describe('gráfico do patrimônio (o Line Chart da beUI)', () => {
     expect(out).not.toContain('simulado');
   });
 
+  // O "i" da faixa abre a explicação no clique, no toque e pelo teclado (o popover nativo, sem JavaScript): o botão de 44 px aponta para o
+  // balão, que diz o que é a faixa em português simples. Sem a faixa, nem o "i" nem o balão.
+  it('o "i" da faixa do Monte Carlo abre o balão que a explica, e sem faixa ele não existe', () => {
+    const legend = /<figcaption.*<\/figcaption>/s.exec(html(<LineChart {...props} />))![0];
+    expect(legend).toMatch(
+      /Monte Carlo<button type="button" popoverTarget="faixa-explicada" class="info" aria-label="O que é a faixa p5 a p95 do Monte Carlo"><svg/,
+    );
+    expect(legend).toContain(
+      '<div id="faixa-explicada" popover="auto" class="info-balao">São 1.000 carteiras sorteadas, com as mesmas regras e custos dos modelos.',
+    );
+    expect(legend).toContain('a borda de baixo é o p5 (5% ficaram abaixo dela)');
+    expect(legend).toContain('dentro, o resultado não se distingue da sorte.</div>');
+    const semFaixa = html(<LineChart {...props} band={null} />);
+    expect(semFaixa).not.toContain('popoverTarget');
+    expect(semFaixa).not.toContain('info-balao');
+  });
+
   // As referências começam escondidas (a legenda as mostra, e a linha se desenha): fora da escala e sem o rótulo do fim, mas na tabela.
   it('a série escondida de início fica com o botão solto, sem o rótulo do fim, e continua na tabela', () => {
     const out = html(
@@ -728,7 +745,7 @@ describe('gráfico do patrimônio (o Line Chart da beUI)', () => {
     expect(labels).toMatch(
       /data-rotulo="claude-opus-5-5".*data-lab="anthropic".*background-color:var\(--chart-2\)[^>]*>R\$\u00a0101\.000,00</s,
     );
-    expect(labels).toMatch(/data-rotulo="sorteio".*data-inicial="S".*var\(--chart-7\)/s);
+    expect(labels).toMatch(/data-rotulo="sorteio".*data-ref="sorteio".*var\(--chart-7\)/s);
     expect(out).toMatch(/data-series="claude-opus-5-5"[^>]*style="stroke:var\(--chart-2\)"/);
     expect(out).toMatch(/data-series="sorteio"[^>]*stroke-dasharray="6 4"/);
     expect(out).not.toMatch(/(fill|stroke|color)[=:]"?#/);

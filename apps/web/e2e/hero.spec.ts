@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { arenaCurrentSchema } from '@alvesting/contracts';
 import { brl, dmy, fetchApi, fetchTape, pct } from './data';
 
-// O hero da landing (ADR 0035; docs/redesign-rallies/plano.md, d.2 e d.3): o título, os dois CTAs e a pílula da temporada com os endereços, a
+// O hero da landing (ADR 0035): o título, os dois CTAs e a pílula da temporada com os endereços, a
 // legenda com o crédito das cotações e a fita no pé da moldura, e a arte. A arte é arquivo e o código só troca o quadro: o quadro 0 vem no HTML
 // (sem JavaScript), o celular nunca pede o arquivo inteiro, a partir de 1024 px ela anda, e com movimento reduzido nada anda (nem a fita). Roda
 // em pixel-7, iphone-15 e desktop; as larguras que importam são postas à mão. O resto da landing está em landing.spec.ts.

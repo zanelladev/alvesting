@@ -69,6 +69,9 @@ export interface DecideDeps {
   // O prompt e a versão do segredo, do ambiente do job (por referência ao Key Vault). Só este job os tem.
   env: Pick<Env, 'PROMPT_ARENA' | 'PROMPT_ARENA_VERSION'>;
   clock?: () => Date;
+  // O relógio da MÁQUINA, para as horas do pedido e da resposta HTTP de cada chamada no meta do IO bruto. Em produção é o mesmo do `clock`;
+  // no arena:retroativo o `clock` é o do pregão simulado, e estas horas são a prova de quando a chamada aconteceu de verdade (ADR 0038).
+  wallClock?: () => Date;
   // abaixo disto não vale começar uma chamada, nem um reparo (os testes baixam para não esperar segundos nem minutos)
   minCallMs?: number;
   minRepairMs?: number;
@@ -87,6 +90,8 @@ const sum = (calls: Call[], pick: (usage: LlmResult['usage']) => number): number
 interface Call {
   turns: Turn[];
   result: LlmResult;
+  // as horas reais do pedido e da resposta HTTP (ISO, UTC), pelo relógio da máquina
+  http: { requestedAt: string; respondedAt: string };
 }
 
 interface Run {
@@ -114,11 +119,13 @@ interface Attempt {
 export class DecideHandler {
   private readonly logger = new Logger(DecideHandler.name);
   private readonly clock: () => Date;
+  private readonly wallClock: () => Date;
   private readonly minCallMs: number;
   private readonly minRepairMs: number;
 
   constructor(private readonly deps: DecideDeps) {
     this.clock = deps.clock ?? (() => new Date());
+    this.wallClock = deps.wallClock ?? (() => new Date());
     this.minCallMs = deps.minCallMs ?? MIN_CALL_MS;
     this.minRepairMs = deps.minRepairMs ?? MIN_REPAIR_MS;
   }
@@ -154,7 +161,14 @@ export class DecideHandler {
       // DLQ vira HOLD: na última entrega a mensagem iria para a DLQ, e a decisão ficaria sem registro. O handler grava o HOLD
       // "falha" e conclui a mensagem (o job_run guarda o erro). Se nem o HOLD dá para gravar, o erro sobe e a DLQ pega; a
       // varredura (CycleCloser) fecha o ciclo depois.
-      if (delivery.lastAttempt && (await this.holdAfterLastAttempt(message))) {
+      // A exceção é o erro de configuração (chave ausente, recusada ou sem crédito; prompt ausente ou sem canário): não é uma
+      // decisão do modelo, e o HOLD "falha" mancharia a temporada. A mensagem vai para a DLQ (o alerta enxerga) e o par fica sem
+      // decisão: o arena:retroativo para no pregão e, corrigida a causa, decide o que falta; ao vivo, a varredura grava "sem_resposta".
+      if (
+        delivery.lastAttempt &&
+        !(error instanceof LlmConfigError) &&
+        (await this.holdAfterLastAttempt(message))
+      ) {
         await this.deps.jobs.fail(claimed.claim, safe);
         return 'hold:falha';
       }
@@ -292,13 +306,15 @@ export class DecideHandler {
       });
       if (budget.ms < minMs) return budget.bound === 'deadline' ? 'deadline' : 'no_time';
       try {
+        const requestedAt = this.wallClock().toISOString();
         const result = await this.deps.gateway.call({
           competitor: attempt.gatewayCompetitor,
           system: prompt,
           turns: callTurns,
           timeoutMs: budget.ms,
         });
-        attempt.calls.push({ turns: callTurns, result });
+        const http = { requestedAt, respondedAt: this.wallClock().toISOString() };
+        attempt.calls.push({ turns: callTurns, result, http });
         return result;
       } catch (error) {
         // estourou o tempo: se o limite desta chamada era o prazo (o orçamento sabe), o motivo é o prazo, não uma falha do
@@ -475,6 +491,8 @@ export class DecideHandler {
       usage,
       costMicroUsd: costMicroUsd.toString(),
       applied: calls.map((call) => call.result.applied),
+      // as horas reais do pedido e da resposta HTTP de cada chamada (no retroativo, dias depois do pregão)
+      http: calls.map((call) => call.http),
       ioLeakPaths: leakPaths,
       ...input.extraMeta,
     };

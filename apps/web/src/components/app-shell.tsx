@@ -14,7 +14,7 @@ import {
 import { Rodape } from './rodape';
 import { NavLink } from './ui';
 
-// A casca do app (ADR 0035; docs/redesign-rallies/plano.md, c.2): a arena, o explorar, a carteira, o chat e a conta. Um componente de
+// A casca do app (ADR 0035): a arena, o explorar, a carteira, o chat e a conta. Um componente de
 // servidor, sem JavaScript: cada área tem um layout (app/(app)/(área)/layout.tsx) que diz qual é ela, e o item dela leva
 // `aria-current="page"`. A troca de área remonta a casca (é de servidor, custa pouco).
 // Uma `nav "Principal"` só, dentro do `<header>` (o banner, com o link "Alvesting"), desenhada de dois jeitos pelo CSS (globals.css): a
@@ -52,9 +52,7 @@ export function AppShell({ area, children }: { area: Area; children: ReactNode }
           className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2"
         >
           <Marca size={24} />
-          <span className="font-display text-base font-semibold text-ink lg:sr-only">
-            Alvesting
-          </span>
+          <span className="font-marca text-base font-semibold text-ink lg:sr-only">Alvesting</span>
         </NavLink>
         <nav aria-label="Principal" className="app-nav">
           <ul className="app-itens">

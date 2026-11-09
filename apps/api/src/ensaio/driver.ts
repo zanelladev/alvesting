@@ -62,6 +62,8 @@ export interface EnsaioOptions {
   seed: number;
   sessions: number;
   stocks: number;
+  // os K primeiros pregões abrem o ciclo como RETROATIVO (--retroativos K); padrão 0
+  retroactiveSessions?: number;
   // o arquivo da temporada (padrão: apps/api/seasons/ensaio.json)
   seasonFile?: string;
   // uma linha por passo, para quem acompanha
@@ -158,6 +160,7 @@ export async function runEnsaio(options: EnsaioOptions): Promise<EnsaioResult> {
       market,
       calendar,
       start: brt(addDays(week1Monday, -2), '12:00'),
+      ...(options.retroactiveSessions ? { retroactiveSessions: options.retroactiveSessions } : {}),
     });
 
     // 1. a carga histórica, pelo caminho de verdade (market:backfill, só que na brapi falsa), e a temporada (season:create)

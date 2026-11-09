@@ -12,6 +12,8 @@ const view = (overrides: Partial<CycleView> = {}): CycleView => ({
   decisionAt: '2026-11-03T11:00:00.000Z',
   deadlineAt: '2026-11-03T12:30:00.000Z',
   closedAt: '2026-11-03T11:02:00.000Z',
+  mode: 'AO_VIVO',
+  executedAt: '2026-11-03T11:00:00.120Z',
   prompt: { version: '0123456789abcdef0123456789abcdef', sha256: 'a'.repeat(64) },
   briefing: { sha256: 'b'.repeat(64) },
   decisions: [
@@ -96,6 +98,12 @@ describe('formatCycle (cycle:show)', () => {
   it('uma linha por competidor: status, visão, contagem por ação, descartados, custo e chamadas', () => {
     expect(text).toMatch(/fake-a\s+DECIDED\s+neutro\s+BUY 2 · SELL 0 · HOLD 1\s+1\s+0\.232000\s+2/);
     expect(text).toMatch(/fake-b\s+HOLD forçado: prazo/);
+  });
+
+  it('o ciclo retroativo diz que é retroativo e a hora real em que rodou; o ao vivo também diz o modo', () => {
+    const retro = formatCycle(view({ mode: 'RETROATIVO', executedAt: '2026-11-07T14:02:11.000Z' }));
+    expect(retro).toContain('retroativo: rodado de verdade em 2026-11-07T14:02:11.000Z (UTC)');
+    expect(formatCycle(view())).toContain('ao vivo: rodado em 2026-11-03T11:00:00.120Z (UTC)');
   });
 
   it('ciclo pulado mostra o motivo e que não há decisões', () => {

@@ -60,8 +60,15 @@ export interface ChatBody {
     type: 'json_schema';
     json_schema: { name: string; strict: boolean; schema: Record<string, unknown> };
   };
-  provider?: { require_parameters: true; data_collection: 'deny' };
+  provider?: { require_parameters: true; data_collection: 'deny'; ignore: readonly string[] };
 }
+
+// Provedores que o OpenRouter não usa para nenhum competidor (o mesmo para todos). A Wafer entrou num laço de espaços na saída
+// estruturada do DeepSeek V4 Pro (06/11/2026: começou o JSON certo e escreveu "\t\n" até o limite de saída, HTTP 200 com
+// finish_reason "length"; com o schema do contrato, também deixou espaços soltos no meio). A mesma chamada sem ela saiu certa em
+// três provedores (Sail Research, Together e CoreWeave). Uma resposta assim custa até 16 mil tokens e, no reparo, viraria HOLD
+// por resposta inválida, culpa do provedor e não do modelo (docs/ARENA.md, seção 5).
+export const IGNORED_OPENROUTER_PROVIDERS: readonly string[] = ['wafer'];
 
 // A requisição exata. O IO bruto grava esta mesma função com um marcador no lugar do prompt (llm-io), então o que foi
 // gravado é o que foi enviado, menos o texto do prompt.
@@ -88,9 +95,16 @@ export function buildRequestBody(
         }
       : {}),
     // OpenRouter (https://openrouter.ai/docs/guides/routing/provider-selection): só provedores que aceitam todos os
-    // parâmetros pedidos e que não coletam nem treinam com os dados. Nada disto vale para o Azure nem para o fake.
+    // parâmetros pedidos, que não coletam nem treinam com os dados e que não estão na lista acima. Nada disto vale para o Azure
+    // nem para o fake.
     ...(competitor.provider === 'openrouter'
-      ? { provider: { require_parameters: true as const, data_collection: 'deny' as const } }
+      ? {
+          provider: {
+            require_parameters: true as const,
+            data_collection: 'deny' as const,
+            ignore: IGNORED_OPENROUTER_PROVIDERS,
+          },
+        }
       : {}),
   };
 }
@@ -176,12 +190,22 @@ const SAFE_ERROR_CODE = /^[a-z0-9_.-]{1,40}$/;
 const safeCode = (value: unknown): string | undefined =>
   typeof value === 'string' && SAFE_ERROR_CODE.test(value) ? value : undefined;
 
-function toCallError(error: unknown, provider: LlmProvider): LlmCallError {
+// 401 (a chave foi recusada) e 402 (a conta ou a chave está sem crédito) não são falha do modelo: é a nossa configuração. Viram
+// LlmConfigError, que o DecideHandler nunca transforma em HOLD (docs/ARENA.md, seção 5): a decisão fica por fazer.
+const CONFIG_STATUS = new Set([401, 402]);
+
+function toCallError(error: unknown, provider: LlmProvider): LlmCallError | LlmConfigError {
   if (error instanceof APIConnectionTimeoutError) return new LlmCallError('timeout', provider);
   if (error instanceof APIUserAbortError) return new LlmCallError('timeout', provider);
   if (error instanceof APIError && typeof error.status === 'number') {
     const code = safeCode(error.code);
     const type = safeCode(error.type);
+    if (CONFIG_STATUS.has(error.status)) {
+      return new LlmConfigError(
+        `O provedor ${provider} recusou a chamada (HTTP ${error.status}${code === undefined ? '' : `, code=${code}`}): ` +
+          'a chave foi recusada ou está sem crédito. A decisão não vira HOLD; recarregue ou troque a chave e rode de novo',
+      );
+    }
     return new LlmCallError('http', provider, error.status, {
       ...(code === undefined ? {} : { code }),
       ...(type === undefined ? {} : { type }),

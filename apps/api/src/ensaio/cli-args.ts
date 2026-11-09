@@ -5,8 +5,10 @@ import { MAX_SESSIONS, MIN_SESSIONS } from './market.js';
 
 // `syntheticLogos`: a bandeira `--logos-sinteticos` (sem valor), a do seed do e2e (o e2e:seed e o playwright.config.ts a passam): depois do
 // relatório, que não os vê, os dois logos sintéticos que o e2e lê (synthetic-logos.ts).
+// `retroactive`: `--retroativos K`, os K primeiros pregões com o ciclo RETROATIVO (ADR 0038), para o site testar os rótulos. O padrão é 0
+// (todos ao vivo), e com ele o relatório é o de sempre, byte a byte.
 export type ParsedArgs =
-  | { kind: 'run'; sessions: number; seed: number; syntheticLogos: boolean }
+  | { kind: 'run'; sessions: number; seed: number; syntheticLogos: boolean; retroactive: number }
   | { kind: 'help' }
   | { kind: 'error'; message: string };
 
@@ -14,6 +16,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let sessions = 5;
   let seed = 1;
   let syntheticLogos = false;
+  let retroactive = 0;
   for (let i = 0; i < argv.length; i += 2) {
     const flag = argv[i];
     if (flag === '--ajuda' || flag === '--help') return { kind: 'help' };
@@ -23,7 +26,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
     const value = argv[i + 1];
-    if (flag !== '--pregoes' && flag !== '--semente') {
+    if (flag !== '--pregoes' && flag !== '--semente' && flag !== '--retroativos') {
       return { kind: 'error', message: `argumento desconhecido: ${flag}` };
     }
     if (value === undefined || !/^\d{1,15}$/.test(value)) {
@@ -33,6 +36,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       };
     }
     if (flag === '--pregoes') sessions = Number(value);
+    else if (flag === '--retroativos') retroactive = Number(value);
     else seed = Number(value);
   }
   if (sessions < MIN_SESSIONS || sessions > MAX_SESSIONS) {
@@ -41,7 +45,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
       message: `--pregoes vai de ${MIN_SESSIONS} a ${MAX_SESSIONS} (veio ${sessions})`,
     };
   }
-  return { kind: 'run', sessions, seed, syntheticLogos };
+  if (retroactive > sessions) {
+    return {
+      kind: 'error',
+      message: `--retroativos vai de 0 ao número de pregões (veio ${retroactive} para ${sessions})`,
+    };
+  }
+  return { kind: 'run', sessions, seed, syntheticLogos, retroactive };
 }
 
 // O banco do ensaio vem sempre de ENSAIO_DATABASE_URL (o .env.example traz o do docker compose), e nunca é deduzido do DATABASE_URL:

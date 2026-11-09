@@ -152,6 +152,23 @@ export class BriefingRepository {
     return result;
   }
 
+  // Todos os valores da lista fixa até a data (inclusive), do mais novo ao mais antigo de cada série. É o que o arena:retroativo filtra pela
+  // regra de visibilidade de cada série (src/temporada/visibility.ts), porque o banco de hoje tem valores que às 07:30 do pregão antigo ainda
+  // não tinham saído. A tabela é pequena (umas mil linhas por ano, cinco séries).
+  async macroHistory(asOf: IsoDate): Promise<MacroValue[]> {
+    const rows = await this.prisma.$queryRaw<Array<{ series: string; date: Date; value: string }>>`
+      SELECT series, date, value::text AS value
+      FROM macro_daily
+      WHERE date <= ${asOf}::date
+      ORDER BY series, date DESC`;
+    return rows.flatMap((row) => {
+      const series = MACRO_SERIES.find((candidate) => candidate.id === row.series);
+      return series
+        ? [{ series: series.id, date: toIso(row.date), value: atScale(row.value, series.scale) }]
+        : [];
+    });
+  }
+
   // As notícias vistas pela primeira vez em (after, until]: aberto no começo, fechado no fim. Dois intervalos
   // seguidos nunca repetem nem perdem uma notícia, e cada uma entra em exatamente um briefing.
   async news(after: Date, until: Date): Promise<NewsRow[]> {

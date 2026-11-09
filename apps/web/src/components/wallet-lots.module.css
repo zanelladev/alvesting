@@ -1,0 +1,229 @@
+/* O lançamento da carteira (wallet-lots.tsx; docs/TELAS.md, seção 9): o modal, o campo de dinheiro, o resumo acima dos botões e o cabeçalho
+   da seção. Num módulo, e não no globals.css: o CSS global vai inteiro à landing (o LCP mobile dela está no teto), e este só a /carteira
+   carrega. Cores dos tokens, o movimento com as durações e as curvas do projeto (lib/motion.ts e o globals.css). */
+
+/* O cabeçalho da seção "Lançamentos": o título e o "Lançar compra" na mesma linha, que quebra no celular estreito */
+.secaoTopo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 1rem;
+}
+
+/* O modal: o <dialog> do navegador com showModal() (a camada de cima dá o Esc, o foco preso dentro e o resto inerte). O desenho é o canvas do
+   tema com a sombra do projeto; o corpo rola por dentro quando não cabe, e a página atrás não rola. Abre em 250 ms com a saída forte e fecha
+   em 150 ms, só CSS (`@starting-style` e o `display` e o `overlay` discretos); o véu esmaece junto. Com movimento reduzido nada se desloca (e a
+   regra global do globals.css zera a duração). */
+/* `clip`, e não `hidden`: o modal não é um contêiner de rolagem (o `scrollIntoView` do calendário rolaria o próprio <dialog> e esconderia o
+   título); quem rola é o corpo */
+.modal {
+  box-sizing: border-box;
+  margin: auto;
+  border: 0;
+  padding: 0;
+  overflow: clip;
+  background: var(--color-canvas);
+  color: var(--color-body);
+  box-shadow: var(--shadow-raised);
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-out-quart),
+    translate var(--duration-fast) var(--ease-out-quart),
+    scale var(--duration-fast) var(--ease-out-quart),
+    overlay var(--duration-fast) allow-discrete,
+    display var(--duration-fast) allow-discrete;
+}
+.modal[open] {
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+  translate: 0 0;
+  scale: 1;
+  transition-duration: var(--duration-slow);
+  transition-timing-function: var(--ease-out-expo);
+}
+.modal::backdrop {
+  background: color-mix(in oklab, var(--color-moldura) 40%, transparent);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-out-quart),
+    overlay var(--duration-fast) allow-discrete,
+    display var(--duration-fast) allow-discrete;
+}
+.modal[open]::backdrop {
+  opacity: 1;
+  transition-duration: var(--duration-slow);
+}
+/* o véu mais forte no tema escuro (o canvas escuro sobre a página escura precisa de mais para se destacar) */
+:global(html.dark) .modal::backdrop {
+  background: color-mix(in oklab, var(--color-moldura) 64%, transparent);
+}
+@starting-style {
+  .modal[open]::backdrop {
+    opacity: 0;
+  }
+}
+/* No desktop (de 640 px para cima): centrado, no máximo 480 px, raio 16. Abre subindo 8 px e crescendo de 0,97. */
+@media (width >= 40rem) {
+  .modal {
+    width: min(480px, 100vw - 32px);
+    max-width: none;
+    max-height: calc(100dvh - 32px);
+    border-radius: 1rem;
+    translate: 0 0.5rem;
+    scale: 0.97;
+  }
+  @starting-style {
+    .modal[open] {
+      opacity: 0;
+      translate: 0 0.5rem;
+      scale: 0.97;
+    }
+  }
+}
+/* No celular (abaixo de 640 px): a folha de baixo, na largura toda, com o raio só em cima, até 92 % da altura e a área segura do iPhone no pé.
+   Abre subindo de baixo. */
+@media (width < 40rem) {
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    margin: auto 0 0;
+    border-radius: 1rem 1rem 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    translate: 0 100%;
+  }
+  @starting-style {
+    .modal[open] {
+      opacity: 0;
+      translate: 0 100%;
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal,
+  .modal[open] {
+    translate: none;
+    scale: none;
+  }
+  @starting-style {
+    .modal[open] {
+      translate: none;
+      scale: none;
+    }
+  }
+}
+/* a página atrás do modal não rola (só CSS) */
+:global(html):has(.modal[open]) {
+  overflow: hidden;
+}
+/* o título e o ✕ (o botão de 44 px), fixos no topo; o corpo rola embaixo deles */
+.cabeca {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 0.75rem 0.5rem 1.5rem;
+}
+.titulo {
+  min-width: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.fechar {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out-quart),
+    color var(--duration-fast) var(--ease-out-quart);
+}
+.fechar:hover:not(:disabled) {
+  background: var(--color-surface-card);
+  color: var(--color-ink);
+}
+.fechar:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.corpo {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.5rem 1.5rem 0;
+}
+/* Os botões presos no pé do corpo que rola (o `data-acoes` do AccountForm): num notebook de 900 px de altura o "Lançar compra" ficava
+   abaixo da dobra. O fundo do canvas e o fio de cima separam o que passa por baixo; a folga de baixo do corpo é a da própria linha. */
+.corpo [data-acoes] {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-inline: -1.5rem;
+  border-top: 1px solid var(--color-hairline);
+  padding: 1rem 1.5rem 1.5rem;
+  background: var(--color-canvas);
+}
+@media (width < 40rem) {
+  .cabeca {
+    padding-left: 1rem;
+  }
+  .corpo {
+    padding: 0.5rem 1rem 0;
+  }
+  .corpo [data-acoes] {
+    margin-inline: -1rem;
+    padding: 0.75rem 1rem 1rem;
+  }
+}
+
+/* O campo de dinheiro: o "R$" dentro do campo, à esquerda, no cinza do texto secundário (só à vista: o rótulo diz "em reais" ao leitor de tela) */
+.dinheiro {
+  position: relative;
+  min-width: 0;
+}
+.moeda {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  color: var(--color-muted);
+  font-size: 1rem;
+  line-height: 1;
+  pointer-events: none;
+  translate: 0 -50%;
+}
+.valor {
+  padding-left: 2.375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* O resumo acima dos botões: uma linha no cinza do painel, o rótulo à esquerda e o valor (o contador da Arc) à direita */
+.resumo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface-card);
+  font-size: 0.875rem;
+}
+.resumoValor {
+  color: var(--color-ink);
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

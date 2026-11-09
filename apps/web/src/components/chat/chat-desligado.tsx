@@ -1,7 +1,7 @@
 import { Icone, IconeArena, IconeCarteira, IconeChat } from '../icones';
 import { NavLink } from '../ui';
 
-// O chat desligado (docs/redesign-rallies/plano.md, f.2 e f.3): o desenho do Chat do Rallies, pronto e sem nenhuma chamada. O chat é a etapa 13
+// O chat desligado (ADR 0035): o desenho do Chat do Rallies, pronto e sem nenhuma chamada. O chat é a etapa 13
 // e só começa depois do aval do orientador (CLAUDE.md). Componentes de servidor: sem `'use client'`, sem `fetch`, sem `<form>`, sem leitura da api
 // nem da sessão. Os controles moram num `<fieldset disabled>`: a caixa não aceita texto e nenhum botão responde, então nada do que a pessoa digite
 // ou toque sai do navegador (o chat.spec.ts confere). O `/chat` usa a caixa e as sugestões; a carteira, o painel "Perguntar", que leva ao /chat.

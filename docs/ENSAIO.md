@@ -14,13 +14,14 @@ lê `.data/` (só escreve em `.data/ensaio/`).
 Com o Postgres e o Azurite do compose no ar (`docker compose up -d`):
 
 ```bash
-pnpm --filter @alvesting/api arena:ensaio [--pregoes 5] [--semente N]
+pnpm --filter @alvesting/api arena:ensaio [--pregoes 5] [--semente N] [--retroativos K]
 ```
 
 | Opção           | O que é                                                                                                          |
 | --------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `--pregoes N`   | Quantos pregões seguidos, de 3 a 20 (padrão 5). Menos de 3 não alcança o desdobramento, que é no 3º             |
 | `--semente N`   | A semente do mercado, das notícias e do macro (inteiro, padrão 1). A mesma semente dá o mesmo relatório         |
+| `--retroativos K` | Os K primeiros pregões abrem o ciclo como `RETROATIVO` (de 0 ao número de pregões; padrão 0), para o site testar os rótulos do retroativo (ADR 0038). Só muda o modo do ciclo: a linha do pregão no relatório ganha `\| retroativo`, e o relatório vai para `relatorio-s<semente>-p<pregões>-r<K>`. Com o padrão, o relatório é o de sempre, byte a byte (seção 6) |
 | `ENSAIO_DATABASE_URL` | O banco que o ensaio **apaga e recria** a cada execução. O nome tem de terminar em `_ensaio` ou `_test` **e o servidor tem de ser o da própria máquina** (`localhost`, `127.0.0.1` ou `::1`): um banco `*_test` de outro servidor é recusado antes de qualquer conexão. O `.env.example` traz `alvesting_ensaio`, no Postgres do compose |
 | `STORAGE_CONNECTION_STRING` | O Azurite (o do `.env.example`). O ensaio escreve em containers `ensaio-briefings` e `ensaio-llm-io`: os de dev (`briefings`, `llm-io`) não são tocados |
 
@@ -32,7 +33,8 @@ nem entram no processo.
 
 Saída, tudo fora do git (`.data/` é ignorado):
 
-- `.data/ensaio/relatorio-s<semente>-p<pregões>.txt` e `.json`: o relatório (seção 6). É o mesmo texto da tela.
+- `.data/ensaio/relatorio-s<semente>-p<pregões>.txt` e `.json`: o relatório (seção 6). É o mesmo texto da tela. Com `--retroativos K`, o
+  nome ganha `-r<K>`.
 
 Uma execução leva uns 5 segundos de ponta a ponta nesta máquina (Mac arm64, Postgres e Azurite locais), compilação incluída.
 
@@ -148,7 +150,9 @@ aparece nele.
 ## 4. Como é montado, e o que foi trocado
 
 `src/ensaio/world.ts` monta os handlers como os módulos Nest montam (`market-data.module.ts`, `arena.module.ts`,
-`settlement.module.ts`), com os mesmos repositórios sobre o Postgres e o Blob de verdade. O que foi trocado:
+`settlement.module.ts`), com os mesmos repositórios sobre o Postgres e o Blob de verdade. Desde 06/11/2026 (ADR 0038) a montagem é uma função
+só, `assembleWorld`, que recebe as peças escolhidas: o ensaio passa as sintéticas (abaixo), e o `arena:retroativo` e o operador local
+(`src/temporada/pieces.ts`) passam as reais. O ensaio não mudou: o relatório padrão continua com o mesmo SHA-256. O que o ensaio troca:
 
 | Em produção | No ensaio |
 | --- | --- |

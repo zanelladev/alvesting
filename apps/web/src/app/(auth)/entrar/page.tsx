@@ -72,8 +72,8 @@ export default withApiDown(async function SignInPage({
         ) : null}
       </PageHead>
 
-      {/* o formulário na coluna da tela dividida (components/tela-dividida.tsx): o campo de 44 px, a pílula primária larga no envio, o
-          DotSpinner enquanto envia */}
+      {/* o formulário na coluna do layout (auth), na casca do app: o campo de 44 px, a pílula primária larga no envio, o DotSpinner
+          enquanto envia */}
       <SignInForm next={next} google={providers.google} />
 
       <ul className="mt-6 flex flex-wrap gap-x-6">

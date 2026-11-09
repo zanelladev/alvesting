@@ -106,7 +106,7 @@ export const TABLE_POLICY: Readonly<Record<string, TablePolicy>> = {
     personal: false,
     api: ['SELECT', 'INSERT', 'UPDATE'],
     guard: 'season_api_guard',
-    why: 'POST e PATCH /admin/seasons (criar, editar o rascunho, iniciar); a API pública lê. O gatilho só deixa a api criar em rascunho e editar (nome, parâmetros) e iniciar o RASCUNHO: temporada em andamento ou encerrada não muda, como o 409 SEASON_LOCKED',
+    why: 'POST e PATCH /admin/seasons (criar, editar o rascunho, iniciar); a API pública lê. O gatilho só deixa a api criar em rascunho (sem o prompt fixado, prompt_sha256, que é do arena:retroativo) e editar (nome, parâmetros) e iniciar o RASCUNHO: temporada em andamento ou encerrada não muda, como o 409 SEASON_LOCKED',
   },
   competitor: {
     personal: false,
@@ -122,9 +122,10 @@ export const TABLE_POLICY: Readonly<Record<string, TablePolicy>> = {
   },
   cycle: {
     personal: false,
-    api: ['SELECT', 'INSERT', 'UPDATE'],
+    api: ['SELECT', 'INSERT'],
+    apiColumns: { UPDATE: ['status', 'skip_reason', 'briefing_id', 'prompt_version_id'] },
     guard: 'cycle_api_guard',
-    why: 'o reprocesso do ciclo cria o ciclo e reavalia o pulado; a API pública lê. O gatilho só deixa a api criar ciclo aberto ou pulado de temporada em andamento e reavaliar o PULADO (estado, motivo, briefing, versão do prompt): data, temporada e prazo nunca mudam',
+    why: 'o reprocesso do ciclo cria o ciclo e reavalia o pulado; a API pública lê (o modo e a hora real inclusive). O UPDATE é só das quatro colunas que o reprocesso reavalia; o INSERT é da tabela inteira porque o Prisma 7 nomeia toda coluna com padrão (migration 20261106120000_retroactive_cycles). O gatilho só deixa a api criar ciclo aberto ou pulado, AO_VIVO, de temporada em andamento, com a hora real do banco, e reavaliar o PULADO: data, temporada, prazo, modo e hora real nunca mudam',
   },
   corporate_event: {
     personal: false,

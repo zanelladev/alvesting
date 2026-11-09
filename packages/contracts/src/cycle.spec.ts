@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cycleViewSchema, HOLD_REASONS } from './cycle.js';
+import { CYCLE_MODES, cycleViewSchema, HOLD_REASONS } from './cycle.js';
 
 const ulid = (suffix: string) => `01K000000000000000000000${suffix}`;
 // o que o provedor aplicou, no formato que o DecideHandler grava (docs/ARENA.md, seção 3)
@@ -30,6 +30,8 @@ const view = (overrides: Record<string, unknown> = {}) => ({
   decisionAt: '2026-11-03T11:00:00.000Z',
   deadlineAt: '2026-11-03T12:30:00.000Z',
   closedAt: '2026-11-03T11:01:00.000Z',
+  mode: 'AO_VIVO',
+  executedAt: '2026-11-03T11:00:00.120Z',
   prompt: { version: '0123456789abcdef0123456789abcdef', sha256: 'a'.repeat(64) },
   briefing: { sha256: 'b'.repeat(64) },
   decisions: [
@@ -81,6 +83,20 @@ describe('cycleViewSchema: a resposta pública do ciclo', () => {
       decisions: [],
     });
     expect(cycleViewSchema.safeParse(skipped).success).toBe(true);
+  });
+
+  // O ciclo retroativo (ADR 0038): a hora da decisão e o prazo são os do pregão simulado, e a hora real em que rodou vem junto. Os dois
+  // campos são obrigatórios: uma resposta sem o modo deixaria o site apresentar o retroativo como se fosse ao vivo.
+  it('o modo e a hora real são obrigatórios, e o modo é um dos dois', () => {
+    expect(CYCLE_MODES).toEqual(['RETROATIVO', 'AO_VIVO']);
+    const retro = view({ mode: 'RETROATIVO', executedAt: '2026-11-07T14:02:11.000Z' });
+    expect(cycleViewSchema.safeParse(retro).success).toBe(true);
+    const { mode: _mode, ...withoutMode } = view();
+    const { executedAt: _executedAt, ...withoutExecutedAt } = view();
+    expect(cycleViewSchema.safeParse(withoutMode).success).toBe(false);
+    expect(cycleViewSchema.safeParse(withoutExecutedAt).success).toBe(false);
+    expect(cycleViewSchema.safeParse(view({ mode: 'ATRASADO' })).success).toBe(false);
+    expect(cycleViewSchema.safeParse(view({ executedAt: 'ontem' })).success).toBe(false);
   });
 
   it('o HOLD forçado leva o motivo, e os motivos conhecidos são fechados', () => {

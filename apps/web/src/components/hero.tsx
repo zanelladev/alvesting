@@ -5,7 +5,7 @@ import { Arte } from './arte';
 import { Fita } from './fita';
 import { BUTTON, NavLink } from './ui';
 
-// O hero da landing (ADR 0035; docs/redesign-rallies/plano.md, d.2 e d.3), no desenho do Rallies com a arte de antes. Em cima, duas colunas a
+// O hero da landing (ADR 0035), no desenho do Rallies com a arte de antes. Em cima, duas colunas a
 // partir de 1024 px: o título e os dois CTAs à esquerda; a pílula da temporada, o parágrafo e o aviso da arena simulada à direita (no celular,
 // uma coluna nessa ordem, os CTAs em largura cheia). Embaixo, a moldura grande, escura nos dois temas (`.moldura`: a arte é o azul claro da
 // marca sobre o preto, e no claro sumiria no branco): a escadaria enche o palco, e no pé, por dentro, a legenda com o crédito das cotações e a

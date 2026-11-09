@@ -4,8 +4,8 @@ import { IconeMenu, Marca } from './icones';
 import { Rodape } from './rodape';
 import { NavLink } from './ui';
 
-// A casca do site (ADR 0035; docs/redesign-rallies/plano.md, c.2 e d.1): a landing, o Como funciona, os textos legais e a 404 (as telas de
-// entrar e criar conta têm a tela dividida, components/tela-dividida.tsx). O cabeçalho do Rallies: a marca à esquerda, os links no meio e a pílula de
+// A casca do site (ADR 0035): a landing, o Como funciona, os textos legais e a 404 (as telas de
+// entrar e criar conta moram na casca do app, no grupo (auth)). O cabeçalho do Rallies: a marca à esquerda, os links no meio e a pílula de
 // contorno "Entrar" à direita. O painel de admin, a carteira e a conta ficam na casca do app; o cabeçalho não lê a sessão (as páginas
 // públicas não a leem: protege o LCP da home e o cache de dados delas), então os links são os mesmos para quem entrou ou não.
 const NAV = [
@@ -27,7 +27,7 @@ export function SiteHeader() {
       <div className="cabecalho mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-(--calha) lg:grid lg:grid-cols-[1fr_auto_1fr]">
         <NavLink
           href="/"
-          className="inline-flex min-h-11 items-center gap-2 justify-self-start font-display text-base font-semibold text-ink"
+          className="inline-flex min-h-11 items-center gap-2 justify-self-start font-marca text-base font-semibold text-ink"
         >
           <Marca />
           Alvesting

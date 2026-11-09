@@ -9,8 +9,8 @@ import { abrirMenu } from './menu';
 // iphone-15 e desktop, sem rolagem horizontal em 360 px, a folha do menu dentro da largura, alvos de toque de pelo menos 44 px (os campos, os
 // radios e os botões de cada lançamento também), nenhum erro no console, o zod fora do JavaScript da tela e acessibilidade (axe) sem violação
 // séria ou crítica, e sem nenhuma violação de qualquer impacto em 360 px. Cada estado vale por si, porque é onde a tela mais muda: vazia, com
-// lançamentos, com os erros do formulário, editando, confirmando o apagar e com os valores nos tetos. O desktop também roda em 360 px: o que
-// conta é a largura, não o aparelho.
+// lançamentos, com o modal de lançar aberto, com o calendário aberto dentro dele, com os erros do formulário, editando, confirmando o apagar e
+// com os valores nos tetos. O desktop também roda em 360 px: o que conta é a largura, não o aparelho.
 //
 // Dois estados vêm da api FALSA (e2e/fixture-api.ts, o site da porta 4305), porque o banco sintético não os produz: o ticker sem barra ("sem
 // cotação"), o percentual que não cabe no inteiro seguro e uma posição de R$ 450.000.000.000,00. Ali o navegador não fala com a api (o site da
@@ -54,8 +54,33 @@ interface Screen {
 
 const firstCard = (page: Page) =>
   page.getByRole('region', { name: 'Lançamentos', exact: true }).getByRole('listitem').first();
-const submit = (page: Page) =>
-  page.getByRole('main').getByRole('button', { name: 'Lançar compra', exact: true }).click();
+// o modal de lançar abre pelo "Lançar compra" do cabeçalho dos lançamentos
+const openModal = (page: Page) =>
+  page
+    .getByRole('region', { name: 'Lançamentos', exact: true })
+    .getByRole('button', { name: 'Lançar compra', exact: true })
+    .click();
+const createForm = (page: Page) => page.getByRole('form', { name: 'Lançar uma compra' });
+const submit = async (page: Page) => {
+  await openModal(page);
+  await createForm(page).getByRole('button', { name: 'Lançar compra', exact: true }).click();
+};
+// o calendário entra com uma mola do Motion (fora do `getAnimations` que o `open` espera): mede depois que ele termina de aparecer
+const openCalendar = async (page: Page) => {
+  await openModal(page);
+  await createForm(page)
+    .getByRole('button', { name: /^Data da compra \(opcional\)/ })
+    .click();
+  await expect
+    .poll(() =>
+      page
+        .getByRole('dialog', { name: 'Calendário: Data da compra (opcional)' })
+        .evaluate(
+          (popover) => getComputedStyle(popover).opacity + getComputedStyle(popover).transform,
+        ),
+    )
+    .toMatch(/^1(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+};
 const openEdit = (page: Page) =>
   firstCard(page)
     .getByRole('button', { name: /^Editar/ })
@@ -69,6 +94,18 @@ const editing = (page: Page) => page.getByRole('form', { name: /^Editar lançame
 const SCREENS: Screen[] = [
   { name: 'vazia', lots: [] },
   { name: 'com lançamentos e posições', lots: LOTS },
+  {
+    name: 'com o modal de lançar aberto',
+    lots: LOTS,
+    prepare: openModal,
+    ready: (page) => page.getByRole('dialog', { name: 'Lançar uma compra' }),
+  },
+  {
+    name: 'com o calendário aberto no modal',
+    lots: LOTS,
+    prepare: openCalendar,
+    ready: (page) => page.getByRole('dialog', { name: 'Calendário: Data da compra (opcional)' }),
+  },
   {
     name: 'com todos os erros do formulário',
     lots: LOTS,

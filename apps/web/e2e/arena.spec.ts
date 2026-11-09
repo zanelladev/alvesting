@@ -153,7 +153,7 @@ async function expectCard(
 const newsStamp = (n: NewsItem) =>
   n.source.startsWith('cvm') ? brt(n.publishedAt).slice(0, 10) : brt(n.publishedAt);
 
-// A arena (/arena): o conteúdo que era da home, no desenho da Arena do Rallies (docs/redesign-rallies/plano.md, seção e). A landing da / não
+// A arena (/arena): o conteúdo que era da home, no desenho da Arena do Rallies (ADR 0035). A landing da / não
 // tem mais estas regiões.
 test.describe('arena', () => {
   test('mostra a temporada, as cotações com a data, os ciclos e o ranking do banco sintético', async ({
@@ -303,16 +303,26 @@ test.describe('arena', () => {
       ]);
     }
 
-    // no fim de cada linha à vista, o logo do laboratório (o Sorteio, a inicial) e o patrimônio final numa pílula; decorativo para o leitor
-    // de tela, que tem a tabela. Os rótulos não se encavalam: de cima para baixo, cada um começa depois de o de cima terminar.
+    // no fim de cada linha à vista, o logo do laboratório (o Sorteio e as referências, o ícone de cada uma; nenhuma inicial) e o patrimônio
+    // final numa pílula; decorativo para o leitor de tela, que tem a tabela. Os rótulos não se encavalam: de cima para baixo, cada um começa
+    // depois de o de cima terminar.
+    const icone: Record<string, string> = {
+      RANDOM: 'sorteio',
+      CDI: 'cdi',
+      BOVA11: 'bova11',
+      EQUAL_WEIGHT: 'igual-peso',
+    };
     const boxes: { y: number; height: number }[] = [];
     for (const s of drawn) {
       const label = chart.locator(`[data-rotulo="${s.competitor.slug}"]`);
       await expect(label).toBeVisible();
       await expect(label).toHaveText(brl(s.equityCents.at(-1)!));
       await expect(
-        label.locator(s.competitor.type === 'MODEL' ? '[data-lab]' : '[data-inicial]'),
+        label.locator(
+          s.competitor.type === 'MODEL' ? '[data-lab]' : `[data-ref="${icone[s.competitor.type]}"]`,
+        ),
       ).toHaveCount(1);
+      await expect(label.locator('[data-inicial]')).toHaveCount(0);
       boxes.push((await label.boundingBox())!);
     }
     await expect(chart.locator('ul[aria-hidden="true"] [data-rotulo]')).toHaveCount(drawn.length);
@@ -456,6 +466,44 @@ test.describe('arena', () => {
         ]),
       )
       .toEqual(['1']);
+  });
+
+  // O "i" da faixa do Monte Carlo explica a faixa (o pedido do Artur em 06/11/2026): o tooltip da Arc não abre no toque, e o popover nativo
+  // abre no toque (celular), no clique e no Enter (desktop). O balão fica inteiro na tela e fecha com o toque fora (celular) e com o Esc.
+  test('o "i" da faixa do Monte Carlo abre a explicação no toque e no clique, inteira na tela', async ({
+    page,
+  }, testInfo) => {
+    const celular = !testInfo.project.name.startsWith('desktop');
+    await page.goto('/arena');
+    const chart = region(page, 'Patrimônio');
+    const info = chart.getByRole('button', { name: 'O que é a faixa p5 a p95 do Monte Carlo' });
+    const balao = page.locator('#faixa-explicada');
+    await info.scrollIntoViewIfNeeded();
+    await expect(balao).toBeHidden();
+    const alvo = (await info.boundingBox())!;
+    expect(Math.min(alvo.width, alvo.height)).toBeGreaterThanOrEqual(44);
+    if (celular) await page.touchscreen.tap(alvo.x + alvo.width / 2, alvo.y + alvo.height / 2);
+    else await info.click();
+    await expect(balao).toBeVisible();
+    await expect(balao).toContainText('São 1.000 carteiras sorteadas');
+    const caixa = (await balao.boundingBox())!;
+    const tela = page.viewportSize()!;
+    expect(caixa.x).toBeGreaterThanOrEqual(0);
+    expect(caixa.x + caixa.width).toBeLessThanOrEqual(tela.width);
+    expect(caixa.y).toBeGreaterThanOrEqual(0);
+    if (celular) {
+      // o toque fora: na amostra da faixa, no começo do mesmo item da legenda (não é controle, e o balão fica acima dela)
+      const item = (await chart.locator('.mc-amostra').boundingBox())!;
+      await page.touchscreen.tap(item.x + item.width / 2, item.y + item.height / 2);
+    } else {
+      await page.keyboard.press('Escape');
+      await expect(balao).toBeHidden();
+      await info.focus();
+      await page.keyboard.press('Enter');
+      await expect(balao).toBeVisible();
+      await page.keyboard.press('Escape');
+    }
+    await expect(balao).toBeHidden();
   });
 
   // A série que a legenda mostra de novo se desenha da esquerda para a direita, num recorte que cresce em 250 ms (o "dado que muda" que o

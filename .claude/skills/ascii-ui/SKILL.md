@@ -6,9 +6,9 @@ when_to_use: "estilo ascii", "ascii-ui", "design da v1", "como o WAERK", "arte a
 
 # ascii-ui
 
-> **Desde 05/11/2026 as telas seguem o design do Rallies AI, nos dois temas** (`docs/TELAS.md`, seção 10; ADR 0035;
-> `docs/redesign-rallies/plano.md`): a casca, os tokens, as peças e o tipo descritos abaixo são os da onda anterior e valem só como
-> história. **Esta skill vale para a arte ASCII** (a escadaria do hero da landing e da tela dividida, e o urso da 404): o arquivo
+> **Desde 05/11/2026 as telas seguem o design do Rallies AI, nos dois temas** (`docs/TELAS.md`, seção 10; ADR 0035):
+> a casca, os tokens, as peças e o tipo descritos abaixo são os da onda anterior e valem só como
+> história. **Esta skill vale para a arte ASCII** (a escadaria do hero da landing e o urso da 404): o arquivo
 > pré-renderizado com brasa, a moldura escura em que ela mora nos dois temas, o quadro 0 e o laço (`references/arte.md` e a seção "ASCII e
 > arte" do checklist).
 

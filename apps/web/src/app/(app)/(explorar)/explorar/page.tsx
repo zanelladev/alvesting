@@ -17,7 +17,7 @@ import { versoesDosLogos } from '../../../../lib/logos';
 import { readTape } from '../../../../lib/quotes';
 import { withApiDown } from '../../../../lib/with-api-down';
 
-// O Explorar (docs/redesign-rallies/plano.md, f.1), no desenho do Discover do Rallies: o título, a busca de ações e as carteiras da arena em
+// O Explorar (ADR 0035), no desenho do Discover do Rallies: o título, a busca de ações e as carteiras da arena em
 // cartões (um por competidor da temporada, com o logo, o que ele é, o número de posições e o retorno), em duas grades, a dos modelos e a do
 // controle e das referências; e o universo da semana (os papéis do briefing do último ciclo, com o fechamento e o logo de cada um). A barra
 // "Explorar" fica ao lado (components/arena/explorar.tsx). Lê a api pelo cache de dados do site e é dinâmica, como as outras telas da arena.

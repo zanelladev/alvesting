@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import type { QueueMessage } from '@alvesting/contracts';
+import type { CycleMode, QueueMessage } from '@alvesting/contracts';
 import type { Env } from '../../../config/env.js';
 import { ALERT_LOG } from '../../../telemetry/alert-logs.js';
 import {
@@ -67,6 +67,9 @@ export interface CycleSchedulersDeps {
   // O sched-cycle recebe só estas duas variáveis da arena: a identidade dele não lê o prompt nem a chave do OpenRouter (ADR 0020).
   env: Pick<Env, 'PROMPT_ARENA_VERSION' | 'ARENA_MONTHLY_COST_CAP_USD'>;
   closer: Pick<CycleCloser, 'closeOverdue'>;
+  // O modo do ciclo que este agendador cria (ADR 0038). Sem ele, AO_VIVO: o sched-cycle de produção e o operador local só abrem ciclo na
+  // janela do próprio pregão. O arena:retroativo passa RETROATIVO, e o ensaio o escolhe por pregão (--retroativos K).
+  mode?: (date: IsoDate) => CycleMode;
 }
 
 // sched-cycle: 0 11 * * 1-5 UTC = 08:00 de seg a sex em Brasília (plano 6). Só publica mensagens (ADR 0007), uma `decide` por
@@ -192,6 +195,7 @@ export class CycleSchedulers {
       decisionAt,
       deadlineAt,
       state,
+      mode: this.deps.mode?.(date) ?? 'AO_VIVO',
     });
     if (cycle.status === 'SKIPPED') {
       const reason = cycle.skipReason ?? 'sem_briefing';

@@ -1,14 +1,17 @@
-// Produção (rg-alvesting-prod, East US 2). Nomes exatos do §5.3 do plano. Uma linha por parâmetro:
+// Produção (rg-alvesting-prod, Chile Central, ADR 0040). Nomes exatos do §5.3 do plano. Uma linha por parâmetro:
 // o infra/tests/check.mjs troca algumas delas para testar os dois perfis.
 //
-// Padrão = com Front Door (o recomendado se o crédito der). Para o econômico: profile = 'economico'.
+// Econômico (ADR 0039, 06/11/2026): sem Front Door e sem ACR, uns US$ 5 a 10 por mês, o que cabe nos US$ 100 do Azure for Students até
+// depois do Demo Day; o padrão (Front Door, US$ 72 a 83) acabaria com o crédito em umas 5 semanas. O site repassa /api/* à api interna.
+// Para voltar ao padrão (com crédito): profile = 'padrao' na linha abaixo, e a ordem de docs/INFRA.md, 8.1 (as imagens no ACR antes, o deploy
+// com writeDerivedSecrets=true para nascer o front-door-id, e a variável ALVESTING_PROFILE apagada do repositório, docs/DEPLOY.md, seção 3).
 //
 // Os valores abaixo são o regime de ROTINA (what-if da segunda execução, CI, qualquer deploy depois do
 // primeiro): nada é regravado. O primeiro deploy sobrescreve três na linha de comando (docs/INFRA.md, seção 6):
 //   --parameters deployApps=false writeDerivedSecrets=true deployBudget=true
 using 'main.bicep'
 
-param profile = 'padrao'
+param profile = 'economico'
 param nameSuffix = ''
 param deployApps = true
 param writeDerivedSecrets = false

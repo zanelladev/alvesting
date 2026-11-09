@@ -18,6 +18,12 @@ name: Deploy
 #     Idempotente.
 #  4. O ponto sem volta é o passo "Confirmar": depois dele a antiga é desativada e o "Desfazer" não faz mais nada (voltar de lá é
 #     `node scripts/deploy.mjs revert`, docs/DEPLOY.md, seção 6).
+#
+# PERFIL ECONÔMICO (variável do repositório ALVESTING_PROFILE = economico; ADR 0039). Sem ela (ou com `padrao`) os passos são os de sempre.
+#   images  publica no GHCR (ghcr.io/<dono em minúsculas>), com o GITHUB_TOKEN e o rótulo org.opencontainers.image.source; sem azure/login
+#   deploy  a mesma ordem e o mesmo "Desfazer", sem Front Door: a api verde é interna, e o runner não a alcança, então ela é provada pelas
+#           sondas da plataforma (probe-green: um portão MAIS FRACO que o do padrão); o web verde (ingress externo) leva o smoke e o
+#           Playwright mobile no endereço do label, que o deploy.mjs calcula (green-url); o smoke final e o SSE vão ao SITE_URL (o ca-web)
 on:
   push:
     branches: [main]
@@ -27,7 +33,7 @@ on:
   workflow_dispatch:
     inputs:
       images_only:
-        description: 'Só publica as imagens no ACR (primeiro deploy, antes da fase 2 da infra: docs/DEPLOY.md)'
+        description: 'Só publica as imagens no ACR, ou no GHCR no perfil econômico (primeiro deploy, antes da fase 2 da infra: docs/DEPLOY.md)'
         type: boolean
         default: false
 
@@ -55,21 +61,29 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      # só o perfil econômico publica no GHCR (o GITHUB_TOKEN escreve o pacote); o padrão não usa
+      packages: write
+    # o registro das imagens do econômico (ghcr.io/<dono em minúsculas>), para o job deploy; vazio no padrão
+    outputs:
+      registry: ${{ steps.ghcr.outputs.registry }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        if: ${{ vars.ALVESTING_PROFILE != 'economico' }}
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Entrar no ACR
+        if: ${{ vars.ALVESTING_PROFILE != 'economico' }}
         run: az acr login --name "$ACR_NAME"
 
       # Tag = SHA do commit: imutável, e é ela que o deploy e o rollback citam. Nada de `latest`.
       - name: Construir e publicar as imagens
+        if: ${{ vars.ALVESTING_PROFILE != 'economico' }}
         run: |
           for app in api web; do
             image="${REGISTRY}/alvesting-${app}:${IMAGE_TAG}"
@@ -77,6 +91,27 @@ jobs:
             docker push "$image"
             echo "publicada: $image" >> "$GITHUB_STEP_SUMMARY"
           done
+
+      # Perfil econômico: o GHCR, sem Azure (o Container Apps puxa a imagem pública, sem credencial no template). O dono vai em minúsculas
+      # (o nome de uma imagem não aceita maiúscula) e tem de ser o `ghcrOwner` da infra. O token entra pela entrada padrão, nunca em argumento;
+      # o rótulo liga o pacote ao repositório (docs.github.com, "Working with the Container registry"). O pacote nasce privado: torne-o
+      # público uma vez (docs/DEPLOY.md, seção 3), senão a Azure não o puxa.
+      - name: Entrar no GHCR e publicar as imagens (perfil econômico)
+        id: ghcr
+        if: ${{ vars.ALVESTING_PROFILE == 'economico' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          registry="ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          for app in api web; do
+            image="${registry}/alvesting-${app}:${IMAGE_TAG}"
+            docker build -f "apps/${app}/Dockerfile" \
+              --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" -t "$image" .
+            docker push "$image"
+            echo "publicada: $image" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo "registry=${registry}" >> "$GITHUB_OUTPUT"
 
   deploy:
     needs: images
@@ -89,7 +124,12 @@ jobs:
       id-token: write
 
     env:
-      # URL pública do Front Door (ou do domínio próprio), sem barra no fim. É onde o smoke final e o Playwright de produção batem.
+      # padrao (ou ausente) ou economico (ADR 0039): os passos de um perfil só têm o `if:` dele; o primeiro passo recusa outro valor
+      ALVESTING_PROFILE: ${{ vars.ALVESTING_PROFILE }}
+      # o registro das imagens: o GHCR que o job images usou no econômico, ou o ACR (o mesmo valor de sempre) no padrão
+      REGISTRY: ${{ needs.images.outputs.registry || format('{0}.azurecr.io', vars.ACR_NAME || 'cralvesting') }}
+      # URL pública do Front Door (ou do domínio próprio; no econômico, o ca-web), sem barra no fim. É onde o smoke final e o Playwright de
+      # produção batem.
       SITE_URL: ${{ vars.SITE_URL }}
       # O endpoint green do Front Door (saída greenSiteUrl da infra), sem barra no fim: leva aos labels green da api e do web, com o WAF e a
       # trava de origem de verdade, e é onde o Playwright prova a revisão nova ANTES de ela receber tráfego.
@@ -113,11 +153,24 @@ jobs:
             test -n "$2" || { echo "::error::falta a variável $1 do repositório (docs/DEPLOY.md, seção 3)"; exit 1; }
             case "$2" in https://*) ;; *) echo "::error::$1 precisa começar com https://"; exit 1 ;; esac
           }
-          check_url SITE_URL "$SITE_URL"
-          check_url SITE_GREEN_URL "$SITE_GREEN_URL"
-          # O Playwright pelo Front Door verde só prova a revisão NOVA se o endereço for o do endpoint green. Com o do site (uma cópia errada da
-          # variável) ele provaria a revisão antiga, que ainda tem os 100%, passaria, e o `promote` viraria código não provado pela borda.
-          test "${SITE_URL%/}" != "${SITE_GREEN_URL%/}" || { echo "::error::SITE_GREEN_URL não pode ser igual a SITE_URL: é o endereço do endpoint green (saída greenSiteUrl da infra, docs/DEPLOY.md, seção 3)"; exit 1; }
+          case "$ALVESTING_PROFILE" in
+            economico)
+              # Sem Front Door não há endpoint green: o web verde é provado no endereço do label, que o deploy.mjs calcula (green-url).
+              check_url SITE_URL "$SITE_URL"
+              ;;
+            '' | padrao)
+              check_url SITE_URL "$SITE_URL"
+              check_url SITE_GREEN_URL "$SITE_GREEN_URL"
+              # O Playwright pelo Front Door verde só prova a revisão NOVA se o endereço for o do endpoint green. Com o do site (uma cópia errada da
+              # variável) ele provaria a revisão antiga, que ainda tem os 100%, passaria, e o `promote` viraria código não provado pela borda.
+              test "${SITE_URL%/}" != "${SITE_GREEN_URL%/}" || { echo "::error::SITE_GREEN_URL não pode ser igual a SITE_URL: é o endereço do endpoint green (saída greenSiteUrl da infra, docs/DEPLOY.md, seção 3)"; exit 1; }
+              ;;
+            *)
+              # um valor torto rodaria os passos do padrão em silêncio
+              echo "::error::ALVESTING_PROFILE vale economico ou padrao (ou fica ausente), e não \"$ALVESTING_PROFILE\" (docs/DEPLOY.md, seção 3)"
+              exit 1
+              ;;
+          esac
 
       - name: Dependências do e2e
         run: |
@@ -150,13 +203,21 @@ jobs:
         run: node scripts/deploy.mjs create api
 
       - name: API, passo 2 - smoke no endereço do label green
+        if: ${{ vars.ALVESTING_PROFILE != 'economico' }}
         run: node scripts/deploy.mjs smoke-green api
 
       # No Front Door verde o web ainda é o do deploy anterior (o web novo só nasce depois): só os testes da api (@api).
       - name: API, passo 3 - Playwright (mobile) pelo Front Door verde
+        if: ${{ vars.ALVESTING_PROFILE != 'economico' }}
         env:
           BASE_URL: ${{ vars.SITE_GREEN_URL }}
         run: pnpm --filter @alvesting/web exec playwright test e2e/smoke.spec.ts --project=pixel-7 --project=iphone-15 --grep @api
+
+      # Perfil econômico: a api é interna (só o site a alcança) e o runner não chega ao label dela. O portão é a revisão pronta e saudável pelas
+      # sondas da plataforma, MAIS FRACO que o smoke e o Playwright do padrão; quem prova a api nova por HTTP é o Playwright do web verde.
+      - name: API, passo 2 (econômico) - esperar a revisão ficar pronta e saudável pelas sondas
+        if: ${{ vars.ALVESTING_PROFILE == 'economico' }}
+        run: node scripts/deploy.mjs probe-green api
 
       - name: API, passo 4 - virar o tráfego da api
         run: node scripts/deploy.mjs promote api
@@ -170,9 +231,21 @@ jobs:
 
       # A suíte inteira do smoke: o site verde (web novo) e a api (a nova, que já serve).
       - name: Web, passo 3 - Playwright (mobile) pelo Front Door verde
+        if: ${{ vars.ALVESTING_PROFILE != 'economico' }}
         env:
           BASE_URL: ${{ vars.SITE_GREEN_URL }}
         run: pnpm --filter @alvesting/web exec playwright test e2e/smoke.spec.ts --project=pixel-7 --project=iphone-15
+
+      # Perfil econômico: a suíte inteira do smoke direto no endereço do label do web (externo); o /api/* dele chega à api nova pelo repasse
+      # do site. O endereço vai pelo GITHUB_ENV (GREEN_URL) e só este passo o usa; o `${GREEN_URL:?}` derruba o passo se ele faltar (com o
+      # BASE_URL vazio, o Playwright subiria os servidores locais e provaria outra coisa).
+      - name: Web, endereço do label green (econômico)
+        if: ${{ vars.ALVESTING_PROFILE == 'economico' }}
+        run: node scripts/deploy.mjs green-url web >> "$GITHUB_ENV"
+
+      - name: Web, passo 3 (econômico) - Playwright (mobile) no endereço do label green
+        if: ${{ vars.ALVESTING_PROFILE == 'economico' }}
+        run: BASE_URL="${GREEN_URL:?}" pnpm --filter @alvesting/web exec playwright test e2e/smoke.spec.ts --project=pixel-7 --project=iphone-15
 
       - name: Web, passo 4 - virar o tráfego do web
         run: node scripts/deploy.mjs promote web
@@ -195,12 +268,12 @@ jobs:
       - name: Atualizar worker, decisões e agendadores
         run: node scripts/deploy.mjs roll-roles
 
-      # Medição, não portão (ADR 0017): o resultado do SSE pelo Front Door vai para o resumo do job.
+      # Medição, não portão (ADR 0017): o resultado do SSE pelo Front Door (no econômico, pelo repasse do site) vai para o resumo do job.
       - name: Teste de SSE pelo Front Door (informativo)
         continue-on-error: true
         run: |
           {
-            echo '### SSE pelo Front Door'
+            if [ "$ALVESTING_PROFILE" = economico ]; then echo '### SSE pelo site (perfil econômico)'; else echo '### SSE pelo Front Door'; fi
             echo '```'
             node scripts/sse-probe.mjs "${SITE_URL%/}/api/v1/health/stream" 2>&1 || echo "(código de saída $?)"
             echo '```'

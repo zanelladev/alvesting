@@ -4,13 +4,16 @@ import { parseBrl } from '@alvesting/contracts/portfolio-rules';
 import type { Reply } from './account-client';
 import {
   LOTS_PATH,
-  centsToInput,
+  centsText,
   checkLot,
   createdMessage,
   describeLot,
   lotFailure,
+  lotSummary,
+  pastedCents,
   removedMessage,
   savedMessage,
+  typedCents,
   alocacao,
   type LotDraft,
 } from './wallet-client';
@@ -181,29 +184,105 @@ describe('checkLot', () => {
   });
 });
 
-describe('centsToInput', () => {
-  it.each([
-    [355_000, '3550,00'],
-    [5, '0,05'],
-    [100, '1,00'],
-    [123_456, '1234,56'],
-    [100_000_000_000, '1000000000,00'],
-  ])('%i centavos viram %s, sem separador de milhar', (cents, text) => {
-    expect(centsToInput(cents)).toBe(text);
+// O campo de dinheiro do lançamento (o padrão dos bancos brasileiros): os centavos entram pela direita. O campo guarda os algarismos (os centavos,
+// sem os zeros da frente) e mostra o texto deles; cada tecla é lida do texto novo do campo.
+describe('o campo de dinheiro: os centavos entram pela direita', () => {
+  // o que acontece no campo quando a pessoa digita uma tecla no fim do que ele mostra
+  const press = (digits: string, key: string) => typedCents(centsText(digits) + key);
+
+  it('cada algarismo empurra os outros para a esquerda: 3, 35, 355 e 3.550 viram 0,03, 0,35, 3,55 e 35,50', () => {
+    const shown: string[] = [];
+    let digits = '';
+    for (const key of '3550') {
+      digits = press(digits, key)!;
+      shown.push(centsText(digits));
+    }
+    expect(shown).toEqual(['0,03', '0,35', '3,55', '35,50']);
   });
 
-  it('o que volta ao campo é lido de volta pela mesma regra de dinheiro: nenhum centavo se perde', () => {
+  it('o vazio mostra o marcador (o campo fica vazio), e o zero sozinho não entra', () => {
+    expect(centsText('')).toBe('');
+    expect(press('', '0')).toBe('');
+    expect(press('', '7')).toBe('7');
+  });
+
+  it('o Backspace tira o último algarismo (o texto perde o último caractere)', () => {
+    expect(typedCents('35,5')).toBe('355');
+    expect(typedCents('0,0')).toBe('');
+    expect(typedCents('')).toBe('');
+  });
+
+  it('o milhar aparece enquanto digita', () => {
+    expect(centsText('123456')).toBe('1.234,56');
+    expect(centsText('100000000000')).toBe('1.000.000.000,00');
+    expect(press('12345', '6')).toBe('123456');
+  });
+
+  it('só algarismos contam: a vírgula, o ponto e a letra não mudam nada', () => {
+    expect(press('355', ',')).toBe('355');
+    expect(press('355', '.')).toBe('355');
+    expect(press('355', 'a')).toBe('355');
+    // o dígito de outro alfabeto também não (o "٣" árabe)
+    expect(press('355', '٣')).toBe('355');
+  });
+
+  it('no máximo 12 algarismos: o 13º não entra (null: o campo fica como estava)', () => {
+    expect(press('99999999999', '9')).toBe('999999999999');
+    expect(press('999999999999', '9')).toBeNull();
+  });
+
+  it('colar passa pela regra do contrato (parseBrl): "35", "35,5", "1.234,56" e "R$ 35,50" viram os centavos', () => {
+    expect(pastedCents('35')).toBe('3500');
+    expect(pastedCents('35,5')).toBe('3550');
+    expect(pastedCents('1.234,56')).toBe('123456');
+    expect(pastedCents('R$ 35,50')).toBe('3550');
+    expect(pastedCents(`R$${NB}35,50`)).toBe('3550');
+    expect(pastedCents(' 12.5 ')).toBe('1250');
+  });
+
+  it('o que o parseBrl recusa, colado, não muda nada (null)', () => {
+    for (const text of ['1.234', '12,345', 'abc', '-5', '0,00', 'R$', '', '1.000.000.000,01']) {
+      expect(pastedCents(text), text).toBeNull();
+    }
+  });
+
+  it('o texto do campo é lido pela mesma regra do envio (o checkLot): nenhum centavo se perde', () => {
     for (const cents of [
       1, 9, 10, 99, 100, 101, 12_345, 355_000, 864_192, 99_999_999_999, 100_000_000_000,
     ]) {
-      expect(parseBrl(centsToInput(cents)), String(cents)).toEqual({ ok: true, cents });
+      expect(parseBrl(centsText(String(cents))), String(cents)).toEqual({ ok: true, cents });
     }
   });
+});
 
-  it('recusa o que não é centavo inteiro e não negativo', () => {
-    for (const cents of [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 2]) {
-      expect(() => centsToInput(cents)).toThrow(RangeError);
-    }
+// A linha acima dos botões do modal: o custo total no modo por ação e o preço médio no modo total, a regra da api (divRound: o mais próximo,
+// com o meio para longe do zero), em conta inteira.
+describe('lotSummary', () => {
+  it('no modo por ação, o custo total é a quantidade vezes o preço', () => {
+    expect(lotSummary('unit', 100, 3_550)).toEqual({ label: 'Custo total', cents: 355_000 });
+    expect(lotSummary('unit', 7, 123_456)).toEqual({ label: 'Custo total', cents: 864_192 });
+  });
+
+  it('no modo total, o preço médio por ação, arredondado no centavo com o meio para longe do zero', () => {
+    expect(lotSummary('total', 100, 355_000)).toEqual({
+      label: 'Preço médio por ação',
+      cents: 3_550,
+    });
+    // 100 ações por R$ 3.550,50: R$ 35,505 sobe para R$ 35,51
+    expect(lotSummary('total', 100, 355_050)!.cents).toBe(3_551);
+    // 3 ações por R$ 10,00: R$ 3,333... fica em R$ 3,33
+    expect(lotSummary('total', 3, 1_000)!.cents).toBe(333);
+    // 2 por R$ 0,01: meio centavo sobe para 1
+    expect(lotSummary('total', 2, 1)!.cents).toBe(1);
+    // o maior total pela menor divisão: inteiro, sem perder o centavo
+    expect(lotSummary('total', 2, 99_999_999_999)!.cents).toBe(50_000_000_000);
+  });
+
+  it('some sem valor e acima do teto do custo', () => {
+    expect(lotSummary('unit', 100, null)).toBeNull();
+    // 1.000.000 de ações a R$ 100.000,00: R$ 100 bilhões, acima do teto de R$ 1 bilhão
+    expect(lotSummary('unit', 1_000_000, 10_000_000)).toBeNull();
+    expect(lotSummary('total', 10, 100_000_000_001)).toBeNull();
   });
 });
 

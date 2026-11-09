@@ -152,4 +152,39 @@ describe('a auditoria acompanha o create e o start', () => {
       { exclusive: true },
     );
   });
+
+  it('o arquivo com data fixa (temporada-1.json) não é do season:create: o erro diz para usar o arena:retroativo', async () => {
+    const t = setup();
+    await expect(t.service.create({ slug: 'x', startDate: '2026-10-13' })).rejects.toThrow(
+      /arena:retroativo/,
+    );
+  });
+
+  // O arena:retroativo (ADR 0038): a Temporada 1 começa na data do arquivo (13/10/2026, que já passou) e fixa o SHA-256 do prompt.
+  it('a data fixa do arquivo vence o próximo pregão, e o SHA-256 do prompt segue para a gravação', async () => {
+    const t = setup();
+    const now = new Date('2026-11-06T15:00:00Z');
+    const started = await t.service.start('01K0000000000000000000000A', now, undefined, {
+      startDate: '2026-10-13',
+      promptSha256: 'f'.repeat(64),
+    });
+    expect(started.startDate).toBe('2026-10-13');
+    expect(t.repo.startSeason).toHaveBeenCalledWith(
+      '01K0000000000000000000000A',
+      '2026-10-13',
+      now,
+      undefined,
+      { promptSha256: 'f'.repeat(64) },
+    );
+  });
+
+  it('a data fixa tem de ser pregão: o feriado de 12/10 e o sábado são recusados antes de gravar', async () => {
+    const t = setup();
+    for (const day of ['2026-10-12', '2026-10-17']) {
+      await expect(
+        t.service.start('01K0000000000000000000000A', new Date(), undefined, { startDate: day }),
+      ).rejects.toThrow(`startDate: ${day} não é pregão da B3`);
+    }
+    expect(t.repo.startSeason).not.toHaveBeenCalled();
+  });
 });

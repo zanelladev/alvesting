@@ -155,7 +155,9 @@ export async function buildReport(input: ReportInput): Promise<BuiltReport> {
     out();
     out(`PREGÃO ${date} (semana ${isoWeek(date)})`);
     out(
-      `  briefing sha256 ${cycle?.briefing?.sha256 ?? '-'} (${cycle?.briefing?.bytes ?? 0} bytes) | prompt sha256 ${cycle?.promptVersion?.sha256 ?? '-'} | ciclo ${cycle?.status ?? '-'}`,
+      `  briefing sha256 ${cycle?.briefing?.sha256 ?? '-'} (${cycle?.briefing?.bytes ?? 0} bytes) | prompt sha256 ${cycle?.promptVersion?.sha256 ?? '-'} | ciclo ${cycle?.status ?? '-'}` +
+        // só o retroativo ganha a marca (--retroativos K): com o padrão, a linha é a de sempre
+        (cycle?.mode === 'RETROATIVO' ? ' | retroativo' : ''),
     );
     out('  decisões (08:00):');
     for (const decision of (cycle?.decisions ?? []).slice().sort(byCompetitor)) {

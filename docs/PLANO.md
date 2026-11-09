@@ -237,6 +237,9 @@ No formato da spec de produção da Cargoos (`cargoos-backend/specs/production-d
 Região: **East US 2** (mais barata, todos os serviços, cota de Azure OpenAI). Os POPs do Front Door no Brasil
 cortam a latência dos estáticos; Brazil South fica como evolução.
 
+> **07/11/2026:** a assinatura Azure for Students só libera cinco regiões, sem a East US 2 e sem a Brazil South. A produção foi para a
+> Chile Central (ADR 0040).
+
 ### 5.4 Balanceamento de carga
 
 | Camada | O que faz | Configuração |
@@ -777,7 +780,7 @@ Fechar a Temporada 1: conferir dados contra a B3, calcular o percentil de cada m
 4. **Prompt:** oculto na temporada e revelado no fim (recomendo) ou oculto para sempre.
 5. **Repositório:** repo novo `alvesting` (recomendo) ou branch órfã no `ainvesting`.
 6. **LLMs:** OpenRouter no cartão para a arena e Azure OpenAI no crédito para o chat (recomendo).
-7. **Visual:** estética crua do Alpha Arena (recomendo) ou ascii-ui da v1. **Decidido em 04/11/2026: o ascii-ui da v1, com o código da v2** (o pedido do Artur; ADR 0034). **Trocado em 05/11/2026 pelo design do Rallies AI, nos dois temas seguindo o sistema** (o pedido do Artur, "Quero que copie o Design do Rallies AI"; ADR 0035, `docs/redesign-rallies/plano.md`): uma landing pública com a escadaria ASCII no hero e o app (o trilho de ícones no desktop e a barra de abas no celular), o `/chat` pronto e desligado até o aval do orientador e os logos dos laboratórios ao lado dos modelos; do ascii-ui ficou a arte (a escadaria e o urso). Pendência dele antes de publicar o repositório: conferir os termos vigentes da API do Higgsfield, de onde vem a arte do hero.
+7. **Visual:** estética crua do Alpha Arena (recomendo) ou ascii-ui da v1. **Decidido em 04/11/2026: o ascii-ui da v1, com o código da v2** (o pedido do Artur; ADR 0034). **Trocado em 05/11/2026 pelo design do Rallies AI, nos dois temas seguindo o sistema** (o pedido do Artur, "Quero que copie o Design do Rallies AI"; ADR 0035): uma landing pública com a escadaria ASCII no hero e o app (o trilho de ícones no desktop e a barra de abas no celular), o `/chat` pronto e desligado até o aval do orientador e os logos dos laboratórios ao lado dos modelos; do ascii-ui ficou a arte (a escadaria e o urso). Pendência dele antes de publicar o repositório: conferir os termos vigentes da API do Higgsfield, de onde vem a arte do hero.
 8. **Confirmar padrões:** R$ 100 mil, 20 pregões, CDI no caixa, East US 2, filtro de liquidez.
 
 ---

@@ -1,7 +1,7 @@
 import { formatDate } from './format';
 
 // O que o navegador faz ao falar com as rotas /admin (etapa 10, parte 2; docs/TELAS.md, seção 8). Sempre na mesma origem: na Azure o
-// Front Door manda `/api/*` para a api, e em dev o `rewrites` do next.config.ts faz o mesmo, então o cookie da sessão (HttpOnly, SameSite=Lax) e
+// Front Door manda `/api/*` para a api (no perfil econômico e em dev, o repasse do próprio site, src/lib/api-proxy.ts), então o cookie da sessão (HttpOnly, SameSite=Lax) e
 // o `Origin` que a api confere nas mutações chegam sozinhos. Este módulo vai ao navegador: nada dele importa valor do pacote de contratos
 // (o índice leva o zod junto; o conta-layout.spec.ts e o admin-layout.spec.ts conferem que o zod não vai para a tela), e a leitura do
 // envelope é à mão. Os textos da tela, o que cada resposta quer dizer, são funções puras daqui.

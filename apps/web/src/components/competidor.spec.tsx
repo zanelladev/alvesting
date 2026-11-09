@@ -48,11 +48,29 @@ describe('Logo', () => {
     );
   });
 
-  it('o Sorteio e as referências levam a inicial, pelo atributo (fora do texto)', () => {
+  it('o Sorteio e as referências levam o ícone delas, pelo atributo (fora do texto)', () => {
     expect(html(<Logo competitor={sorteio} />)).toBe(
-      '<span aria-hidden="true" data-inicial="S" class="logo"></span>',
+      '<span aria-hidden="true" data-ref="sorteio" class="logo"></span>',
     );
-    expect(html(<Logo competitor={cdi} />)).toContain('data-inicial="C"');
+    expect(html(<Logo competitor={cdi} />)).toContain('data-ref="cdi"');
+    for (const [type, icone] of [
+      ['BOVA11', 'bova11'],
+      ['EQUAL_WEIGHT', 'igual-peso'],
+    ] as const) {
+      expect(html(<Logo competitor={{ ...cdi, type }} />)).toContain(`data-ref="${icone}"`);
+    }
+  });
+
+  it('o modelo de um laboratório sem logo leva a inicial', () => {
+    const semLogo = {
+      ...claude,
+      slug: 'mistral-large',
+      modelId: 'mistralai/mistral-large',
+      name: 'Mistral Large',
+    };
+    expect(html(<Logo competitor={semLogo} />)).toBe(
+      '<span aria-hidden="true" data-inicial="M" class="logo"></span>',
+    );
   });
 });
 
@@ -116,10 +134,10 @@ describe('Competidor', () => {
     expect(text(out)).toBe('Qwen3.8 Max (0902)');
   });
 
-  it('o modelo de verdade não leva a etiqueta; a referência leva a inicial e nenhuma etiqueta', () => {
+  it('o modelo de verdade não leva a etiqueta; a referência leva o ícone dela e nenhuma etiqueta', () => {
     expect(text(html(<Competidor competitor={real} />))).toBe('GPT-6.1 Sol');
     const out = html(<Competidor competitor={cdi} />);
-    expect(out).toContain('data-inicial="C"');
+    expect(out).toContain('data-ref="cdi"');
     expect(text(out)).toBe('CDI');
   });
 

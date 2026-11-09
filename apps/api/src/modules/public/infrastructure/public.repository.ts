@@ -5,6 +5,7 @@ import {
   seasonParamsSchema,
   type ArenaCurrent,
   type CompetitorDetail,
+  type CycleMode,
   type Equity,
   type FeedDecision,
   type LastCycle,
@@ -146,6 +147,8 @@ function positionView(row: PositionFields): PositionView {
 interface FeedRow {
   id: string;
   date: Date;
+  mode: CycleMode;
+  executedAt: Date;
   status: 'DECIDED' | 'FORCED_HOLD';
   holdReason: string | null;
   marketView: string | null;
@@ -297,7 +300,30 @@ export class PublicRepository {
     const season = await findPublicSeason(this.prisma, ref);
     if (!season) return null;
     const { asOf, rows } = await this.standings(season.id);
-    return { season: seasonSummary(season, asOf), asOf, rows };
+    return {
+      season: seasonSummary(season, asOf),
+      asOf,
+      cyclesByMode: await this.cyclesByMode(season.id, asOf),
+      rows,
+    };
+  }
+
+  // Quantos pregões do ranking (os ciclos até o último liquidado) foram rodados retroativos e quantos ao vivo (ADR 0038). Antes da primeira
+  // liquidação o ranking não tem pregão nenhum, e os dois são zero. O pregão sem ciclo (nenhum dos dois) conta como HOLD de todos na
+  // liquidação e fica de fora das duas contas.
+  private async cyclesByMode(
+    seasonId: string,
+    asOf: IsoDate | null,
+  ): Promise<Leaderboard['cyclesByMode']> {
+    const counts: Leaderboard['cyclesByMode'] = { RETROATIVO: 0, AO_VIVO: 0 };
+    if (asOf === null) return counts;
+    const groups = await this.prisma.cycle.groupBy({
+      by: ['mode'],
+      where: { seasonId, date: { lte: startOf(asOf) } },
+      _count: { _all: true },
+    });
+    for (const group of groups) counts[group.mode] = group._count._all;
+    return counts;
   }
 
   async equity(ref: string | undefined): Promise<Equity | null> {
@@ -488,7 +514,8 @@ export class PublicRepository {
         ? Prisma.empty
         : Prisma.sql`AND (c.date, d.id) < (${after[0]}::date, ${after[1]})`;
     const rows = await this.prisma.$queryRaw<FeedRow[]>(Prisma.sql`
-      SELECT d.id, c.date, d.status, d.hold_reason AS "holdReason", d.market_view AS "marketView", d.summary,
+      SELECT d.id, c.date, c.mode, c.executed_at AS "executedAt", d.status, d.hold_reason AS "holdReason",
+             d.market_view AS "marketView", d.summary,
              k.slug, k.name, k.kind, k.benchmark, k.provider, k.model_id AS "modelId"
       FROM decision d
       JOIN cycle c ON c.id = d.cycle_id
@@ -524,6 +551,8 @@ export class PublicRepository {
         const own = byDecision.get(row.id) ?? [];
         return {
           date: day(row.date),
+          mode: row.mode,
+          executedAt: row.executedAt.toISOString(),
           competitor: publicCompetitor(row),
           status: row.status,
           holdReason: row.holdReason as FeedDecision['holdReason'],
@@ -695,6 +724,8 @@ export class PublicRepository {
       Array<
         CompetitorFields & {
           date: Date;
+          mode: CycleMode;
+          executedAt: Date;
           action: 'BUY' | 'SELL' | 'HOLD';
           percent: Prisma.Decimal | null;
           confidence: Prisma.Decimal | null;
@@ -702,8 +733,8 @@ export class PublicRepository {
         }
       >
     >`
-      SELECT c.date, k.slug, k.name, k.kind, k.benchmark, k.provider, k.model_id AS "modelId",
-             i.action, i.percent, i.confidence, i.rationale
+      SELECT c.date, c.mode, c.executed_at AS "executedAt", k.slug, k.name, k.kind, k.benchmark, k.provider,
+             k.model_id AS "modelId", i.action, i.percent, i.confidence, i.rationale
       FROM decision_item i
       JOIN decision d ON d.id = i.decision_id
       JOIN cycle c ON c.id = d.cycle_id
@@ -713,6 +744,8 @@ export class PublicRepository {
       LIMIT 20`;
     return rows.map((row) => ({
       date: day(row.date),
+      mode: row.mode,
+      executedAt: row.executedAt.toISOString(),
       competitor: publicCompetitor(row),
       action: row.action,
       percent: row.percent?.toNumber() ?? null,
@@ -759,6 +792,8 @@ export class PublicRepository {
         decisionAt: true,
         deadlineAt: true,
         closedAt: true,
+        mode: true,
+        executedAt: true,
         briefing: { select: { sha256: true } },
         promptVersion: { select: { version: true, sha256: true } },
       },
@@ -778,6 +813,8 @@ export class PublicRepository {
       decisionAt: cycle.decisionAt.toISOString(),
       deadlineAt: cycle.deadlineAt.toISOString(),
       closedAt: cycle.closedAt?.toISOString() ?? null,
+      mode: cycle.mode,
+      executedAt: cycle.executedAt.toISOString(),
       prompt: cycle.promptVersion
         ? { version: cycle.promptVersion.version, sha256: cycle.promptVersion.sha256 }
         : null,

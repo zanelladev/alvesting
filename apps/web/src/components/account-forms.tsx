@@ -180,7 +180,7 @@ export function SignUpForm({
         <CheckField name="terms">{`Li e aceito os termos de uso (versão ${terms}).`}</CheckField>
         <ReadLink href="/termos">Ler os termos de uso</ReadLink>
         <CheckField name="privacy">
-          {`Li e aceito a política de privacidade (versão ${privacy}), inclusive o envio dos meus dados para servidores nos Estados Unidos (LGPD, art. 33).`}
+          {`Li e aceito a política de privacidade (versão ${privacy}), inclusive o envio dos meus dados para servidores no Chile e nos Estados Unidos (LGPD, art. 33).`}
         </CheckField>
         <ReadLink href="/privacidade">Ler a política de privacidade</ReadLink>
       </fieldset>

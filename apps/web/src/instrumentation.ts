@@ -2,6 +2,8 @@
 // importado aqui só no runtime Node (padrão da documentação do Next): o process.exit não vai para o bundle do Edge.
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    (await import('./instrumentation-node')).checkOriginLockEnv();
+    const { checkApiProxyEnv, checkOriginLockEnv } = await import('./instrumentation-node');
+    checkOriginLockEnv();
+    checkApiProxyEnv();
   }
 }

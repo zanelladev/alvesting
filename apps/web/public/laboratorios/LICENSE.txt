@@ -1,5 +1,6 @@
 Os seis arquivos desta pasta (openai.svg, anthropic.svg, google.svg, xai.svg, deepseek.svg e qwen.svg) são cópias, sem alteração no
-desenho, de icons/openai.svg, icons/claude.svg, icons/gemini.svg, icons/grok.svg, icons/deepseek.svg e icons/qwen.svg do pacote npm
+desenho, de icons/openai.svg, icons/claude-color.svg, icons/gemini-color.svg, icons/grok.svg, icons/deepseek-color.svg e
+icons/qwen-color.svg do pacote npm
 @lobehub/icons-static-svg 1.102.0 (https://github.com/lobehub/lobe-icons), com um comentário de procedência no topo. O pacote declara a
 licença MIT no package.json e no README ("Copyright © 2023 LobeHub. This project is MIT licensed."); o tarball não traz o arquivo
 LICENSE, e o texto abaixo é o da MIT (SPDX: MIT) com essa linha de copyright. A licença cobre os arquivos, não as marcas: os nomes e os

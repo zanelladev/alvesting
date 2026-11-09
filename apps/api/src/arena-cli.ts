@@ -17,7 +17,8 @@ import { loadTradingCalendar } from './modules/market-data/domain/trading-calend
 //   pnpm --filter @alvesting/api cycle:show <AAAA-MM-DD> [slug]    mostra o ciclo de um pregão (ou <id do ciclo>)
 const USAGE = `Uso:
   season:create <arquivo.json>        cria a temporada (DRAFT) com o elenco do arquivo, validando tudo. Exemplos versionados em
-                                      apps/api/seasons/ (o ensaio com provedores fake e o rascunho da Temporada 1)
+                                      apps/api/seasons/ (o ensaio com provedores fake). A Temporada 1 (temporada-1.json) começa numa
+                                      data fixa e se cria pelo arena:retroativo
   season:start <id>                   passa a temporada de DRAFT para RUNNING; a data de início é o próximo pregão
   cycle:show <AAAA-MM-DD> [slug]      mostra o ciclo do pregão (status, hashes do prompt e do briefing, decisões); com o slug da
                                       temporada se houver mais de uma. Também aceita o id do ciclo no lugar da data`;

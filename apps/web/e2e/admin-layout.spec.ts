@@ -148,10 +148,11 @@ for (const screen of SCREENS) {
           expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
         }
 
-        // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante
+        // a medida crua, sem arredondar (43,6 px não vira 44): só uma folga de 0,05 px para o ruído da conta de ponto flutuante. A caixa de
+        // marcar das confirmações mede pelo rótulo: ela é a nativa de 20 px, e o alvo de 44 px é o <label> inteiro (desde 06/11/2026)
         const small = await page.evaluate(() => {
           const selector =
-            'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"]';
+            'a[href], button, input:not([type="hidden"]):not([type="checkbox"]), select, textarea, summary, [role="button"], label:has(> input[type="checkbox"])';
           return [...document.querySelectorAll(selector)]
             .filter((element) => {
               const style = getComputedStyle(element);

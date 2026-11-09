@@ -27,6 +27,7 @@ function season(
     status,
     startDate,
     params: seasonParamsSchema.parse({ sessions, randomSeed: 'a', monteCarloSeed: 'b' }),
+    promptSha256: null,
   };
 }
 

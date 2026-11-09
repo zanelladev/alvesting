@@ -1,43 +1,42 @@
 import { LOGO_HEADERS } from '@alvesting/contracts';
 import { PHASE_PRODUCTION_BUILD, PHASE_PRODUCTION_SERVER } from 'next/constants.js';
 import { describe, expect, it } from 'vitest';
-import nextConfig, { devRewrites } from '../../next.config';
+import nextConfig, { DEV_API_URL, devApiProxy } from '../../next.config';
 
-// O navegador fala com uma origem só (docs/CONTA.md, seção 9). Na Azure o Front Door manda `/api/*` para a api e o resto para o site; o
-// site NÃO tem caminho de produção que faça isso. Em dev (site na 4300, api na 4310) quem faz é o `rewrites` do Next, ligado só na fase
-// do servidor de desenvolvimento: o build e o servidor de produção não o têm. Aqui também: a página de redefinição responde sem Referer.
+// O navegador fala com uma origem só (docs/CONTA.md, seção 9). Na Azure, no perfil padrão, o Front Door manda `/api/*` para a api e o resto
+// para o site; no econômico (ADR 0039) e no `pnpm dev` (site na 4300, api na 4310) quem faz é o próprio site, o repasse de src/lib/api-proxy.ts,
+// ligado por API_PROXY=on (no econômico, o Bicep a põe; em dev, a fase de desenvolvimento desta config). O build e o servidor de produção não
+// mexem nisso: lá vale o ambiente do processo. Aqui também: a página de redefinição responde sem Referer.
 // (A fase de desenvolvimento lê o .env.local da raiz, que guarda segredos: os testes não a chamam. Quem a prova é o `pnpm dev`, à mão.)
-describe('next.config: o roteamento de /api em dev', () => {
-  it('/api/* vai para o endereço interno da api', () => {
-    expect(devRewrites({ API_INTERNAL_URL: 'http://127.0.0.1:4310' })).toEqual([
-      { source: '/api/:path*', destination: 'http://127.0.0.1:4310/api/:path*' },
-    ]);
+describe('next.config: o repasse de /api em dev', () => {
+  it('liga o repasse do site e, sem endereço, aponta para a api do pnpm dev (4310)', () => {
+    const env: Record<string, string | undefined> = {};
+    devApiProxy(env);
+    expect(env).toEqual({ API_PROXY: 'on', API_INTERNAL_URL: DEV_API_URL });
+    expect(DEV_API_URL).toBe('http://127.0.0.1:4310');
   });
 
-  it('só a origem importa: barra no fim, caminho e query do endereço não entram', () => {
-    for (const base of ['http://127.0.0.1:4999/', 'http://127.0.0.1:4999/api/v1?x=1']) {
-      expect(devRewrites({ API_INTERNAL_URL: base })).toEqual([
-        { source: '/api/:path*', destination: 'http://127.0.0.1:4999/api/:path*' },
-      ]);
-    }
-  });
-
-  it('sem o endereço, vale o da api do pnpm dev (4310)', () => {
-    expect(devRewrites({})).toEqual([
-      { source: '/api/:path*', destination: 'http://127.0.0.1:4310/api/:path*' },
-    ]);
-  });
-
-  it('um endereço que não é http(s) é erro claro, e não um repasse para lugar nenhum', () => {
-    for (const base of ['banana', 'file:///etc/passwd', 'javascript:alert(1)']) {
-      expect(() => devRewrites({ API_INTERNAL_URL: base }), base).toThrow(/API_INTERNAL_URL/);
-    }
+  it('o endereço que já está no ambiente (do .env.local ou do shell) vale; em branco vale como ausente', () => {
+    const env: Record<string, string | undefined> = { API_INTERNAL_URL: 'http://127.0.0.1:4999' };
+    devApiProxy(env);
+    expect(env).toEqual({ API_PROXY: 'on', API_INTERNAL_URL: 'http://127.0.0.1:4999' });
+    const blank: Record<string, string | undefined> = { API_INTERNAL_URL: '', API_PROXY: 'off' };
+    devApiProxy(blank);
+    expect(blank).toEqual({ API_PROXY: 'on', API_INTERNAL_URL: DEV_API_URL });
   });
 
   it.each([[PHASE_PRODUCTION_BUILD], [PHASE_PRODUCTION_SERVER]])(
-    'fora do desenvolvimento (%s) o site não repassa nada: nenhum rewrites',
+    'fora do desenvolvimento (%s) a config não repassa nada nem mexe no ambiente: nenhum rewrites',
     (phase) => {
+      const before = {
+        API_PROXY: process.env.API_PROXY,
+        API_INTERNAL_URL: process.env.API_INTERNAL_URL,
+      };
       expect(nextConfig(phase).rewrites).toBeUndefined();
+      expect({
+        API_PROXY: process.env.API_PROXY,
+        API_INTERNAL_URL: process.env.API_INTERNAL_URL,
+      }).toEqual(before);
     },
   );
 });

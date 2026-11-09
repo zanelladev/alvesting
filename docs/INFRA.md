@@ -15,11 +15,14 @@ métricas próprias e os alertas (seção 5, `modules/alerts.bicep`); como o res
 fechou o endurecimento da infra: o segredo do login de menor privilégio da api no Postgres (`database-url-api`, seções 2.2, 2.6 e 2.7), o
 acesso ao Blob **por container** e ao Service Bus **por fila** (seção 3.2; ADR 0030), o blue/green com o label `green` e o endpoint green do
 Front Door (seção 2.5; `docs/DEPLOY.md`; ADR 0029) e o `postgresql-client-17` na imagem da api (seção 2.8); também sem implantação.
+**Em 06/11/2026 (ADR 0039) a produção passou ao perfil econômico** (`main.prod.bicepparam`): a api tem ingress interno e o site repassa `/api/*` a
+ela (uma origem só sem Front Door, seções 1.3 e 2.7), o pipeline publica no GHCR (`docs/DEPLOY.md`) e a temporada do Mac entra por uma execução do
+`job-migrate` (`docs/RUNBOOK.md`, 13.6). O passo a passo do zero, para quem nunca criou nada na Azure, é a seção 6.0. Também sem implantação.
 
 ```
 infra/
 ├─ main.bicep                  orquestra os módulos; perfil, nomes, imagens
-├─ main.prod.bicepparam        rg-alvesting-prod: profile = padrao, nomes do §5.3, regime de rotina
+├─ main.prod.bicepparam        rg-alvesting-prod: profile = economico (ADR 0039), nomes do §5.3, regime de rotina
 ├─ main.dev.bicepparam         rg-alvesting-dev: profile = economico, nomes com -dev, regime de rotina
 ├─ bicepconfig.json            what-if-short-circuiting em erro (o what-if precisa olhar dentro dos módulos)
 ├─ roles.bicep                 os GUIDs dos papéis internos da Azure, em um lugar só
@@ -45,7 +48,7 @@ infra/
    WAF: rate limit por IP · cache de /_next/static/* e das GET públicas da API · probe GET /health a cada 30 s
    /api/* ──▶ grupo api        /_next/static/*, /* ──▶ grupo web
         │  a origem só atende quem traz X-Azure-FDID = ID deste perfil (trava no código dos apps, etapa 3)
-┌───────┼──────────── East US 2 · rg-alvesting-prod ────────────────────────────────────────────┐
+┌───────┼──────────── Chile Central · rg-alvesting-prod ────────────────────────────────────────┐
 │ vnet-alvesting 10.10.0.0/16                                                                    │
 │ ┌─ snet-apps 10.10.0.0/23 · cae-alvesting (Consumption, ingress Envoy + Azure LB gerenciado) ─┐ │
 │ │ ca-web (1→5) ──SSR──▶ ca-api (1→5) ──chat──▶ oai-alvesting (opcional)                       │ │
@@ -56,8 +59,11 @@ infra/
 │ snet-postgres 10.10.2.0/24 (delegada) · psql-alvesting 17 B1ms · DNS privado · sem IP público   │
 │ kv-alvesting · stalvesting · cralvesting · log-alvesting + appi-alvesting · acs-alvesting       │
 └────────────────────────────────────────────────────────────────────────────────────────────────┘
- Perfil econômico: sem Front Door e sem ACR; o ingress do Container Apps é o balanceador e a api
- vai para outro subdomínio, com CORS.
+ Perfil econômico (a produção, ADR 0039): sem Front Door e sem ACR. O ingress do Container Apps é a borda:
+ Usuários (HTTPS) ──▶ ingress do ca-web (TLS) ──▶ ca-web ── /api/* (API_PROXY) ──▶ ca-api, ingress INTERNO
+                                                       └── SSR ─────────────────▶ (ca-api.internal.<domínio>)
+ A api não responde de fora do ambiente (o proxy dele dá 404) e não tem CORS: o navegador fala com uma origem só,
+ o site. As imagens vêm do GHCR (pacote público).
 ```
 
 ### 1.2 Recursos criados
@@ -84,12 +90,12 @@ infra/
 | Ambiente do Container Apps | `cae-alvesting` | Consumption, na `snet-apps`, ingress externo | `containerenv.bicep` | ambos |
 | Front Door | `afd-alvesting`, endpoints `alvesting` (o site) e `alvesting-green` (o blue/green, seção 2.5), `wafalvesting` | Standard, 2 endpoints, 4 grupos de origem (`web`, `api`, `web-green`, `api-green`) | `frontdoor.bicep` | padrão |
 | `ca-web` | `ca-web` | 0,25 vCPU / 0,5 GiB, 1→5 (0→5 no econômico), HTTP 50 | `containerapps.bicep` | ambos |
-| `ca-api` | `ca-api` | 0,25 vCPU / 0,5 GiB, 1→5 (0→5 no econômico), HTTP 30 | `containerapps.bicep` | ambos |
+| `ca-api` | `ca-api` | 0,25 vCPU / 0,5 GiB, 1→5 (0→5 no econômico), HTTP 30; ingress interno no econômico | `containerapps.bicep` | ambos |
 | `ca-worker-data` | `ca-worker-data` | 0,5 vCPU / 1 GiB, 0→3, KEDA por fila | `containerapps.bicep` | ambos |
 | `job-worker-decisions` | `job-worker-decisions` | 0,5 vCPU / 1 GiB, por evento, ≤ 10 execuções, 1500 s | `containerapps.bicep` | ambos |
 | Agendadores | `job-sched-news`, `-briefing`, `-cycle`, `-eod`, `-universe`, `-retention`, `-backup` | 0,25 vCPU / 0,5 GiB, cron UTC | `containerapps.bicep` | ambos |
 | Migrations | `job-migrate` | manual, 0,25 vCPU / 0,5 GiB | `containerapps.bicep` | ambos |
-| Orçamento | `budget-alvesting` | mensal, alertas em 50, 80 e 100% | `budget.bicep` | ambos |
+| Orçamento | `budget-alvesting` | anual, alertas em 50, 80 e 100% | `budget.bicep` | ambos |
 | Grupo de ações | `ag-alvesting` | e-mail (o do orçamento), esquema comum de alerta | `alerts.bicep` | ambos |
 | Alertas de métrica | `alvesting-dlq-qualquer-fila`, `alvesting-decisions-fila-parada`, `alvesting-banco-cpu`, `alvesting-banco-disco`, e no padrão `alvesting-front-door-origem-doente` e `alvesting-front-door-5xx` | Service Bus, PostgreSQL e Front Door; a cada 1 min, janela de 5 min (15 min na `decisions-fila-parada`) | `alerts.bicep` | 4 no econômico, 6 no padrão |
 | Alerta de log | `alvesting-sinais-da-aplicacao` | uma regra, onze sinais (dimensão `sinal`); a cada 5 min, janela de 15 min | `alerts.bicep` | ambos |
@@ -102,11 +108,13 @@ levam o sufixo do parâmetro `nameSuffix`: vazio em prod, `-dev` em dev. Se a Az
 | | Padrão (`profile = 'padrao'`) | Econômico (`profile = 'economico'`) |
 |---|---|---|
 | Borda | Front Door Standard + WAF + cache de estáticos | Nenhuma: o ingress do Container Apps (Envoy sobre o Azure LB) balanceia |
-| Mesmo domínio para web e api | Sim, pelo Front Door (sem CORS, cookie primário) | Não: `ca-web` e `ca-api` têm hosts próprios; a api libera por CORS só a origem da web |
+| Mesmo domínio para web e api | Sim, pelo Front Door (sem CORS, cookie primário) | Sim, pelo site: o `ca-web` repassa `/api/*` à api (`API_PROXY=on`, `src/proxy.ts`), que tem ingress **interno** e sem CORS (ADR 0039) |
 | Registro de imagens | ACR (`cralvesting`), pull por identidade | GHCR (`ghcr.io/<dono>/alvesting-*`); o pacote precisa ser público |
 | `ca-web` e `ca-api` | mínimo 1, máximo 5 | mínimo 0, máximo 5 |
-| Trava de origem | `FRONT_DOOR_ID` e `ORIGIN_LOCK=front-door` em web e api (seção 3.3) | Não existe |
-| Custo (plano §5.12) | ≈ US$ 72–83 por mês | ≈ US$ 5–10 por mês |
+| Trava de origem | `FRONT_DOOR_ID` e `ORIGIN_LOCK=front-door` em web e api (seção 3.3) | Não existe: a api não é alcançável de fora, e a entrada é só o site (seção 3.3) |
+| Pipeline (`docs/DEPLOY.md`) | ACR; a revisão nova provada pelo endpoint green do Front Door | `ALVESTING_PROFILE=economico`: GHCR; a api verde só pelas sondas, o web verde no endereço do label |
+| A temporada do Mac | (não previsto) | Uma execução do `job-migrate` com o `restore-cli` (`docs/RUNBOOK.md`, 13.6); o migrate lê o `backups` |
+| Custo (plano §5.12) | ≈ US$ 72–83 por mês | ≈ US$ 5–11 por mês (Chile Central, ADR 0040) |
 
 Trocar de perfil num ambiente que já existe: seção 8.1.
 
@@ -140,13 +148,13 @@ a acrescentar nesse mesmo argumento.
 | `postgresApiPassword` | `ALVESTING_PG_API_PASSWORD` | Senha do login de menor privilégio da api no Postgres (`alvesting_api`, ADR 0028), **pelo menos 32 caracteres**. Do ambiente, nunca de arquivo. Vai para o segredo `database-url-api`; quem a aplica no banco é o `db:roles` do `job-migrate` (seção 2.2). Gere com `openssl rand -base64 48 \| tr -d '/+=' \| cut -c1-40` |
 | `adminPrincipalId` | `ALVESTING_ADMIN_PRINCIPAL_ID` | Quem semeia segredos: recebe Key Vault Secrets Officer. Vazio = não atribui |
 | `budgetAlertEmail` | `ALVESTING_BUDGET_EMAIL` | E-mail do orçamento (50, 80 e 100%) e dos alertas de operação (grupo de ações `ag-alvesting`, seção 5) |
-| `budgetAmount` | 100 (prod), 20 (dev) | Orçamento mensal, na moeda da assinatura |
+| `budgetAmount` | 100 (prod), 20 (dev) | Orçamento anual (o crédito de estudante vale 12 meses), na moeda da assinatura |
 | `budgetStartDate` | `2026-11-01` | Primeiro dia de um mês; só vale com `deployBudget`. **Fixo**: um valor calculado quebraria o what-if. A Azure aceita o mês corrente (data passada dentro do mês) ou um dos 12 meses seguintes; fora disso, passe o primeiro dia do mês corrente na linha de comando |
 | `enableOpenAI` | `false` | Liga o Azure OpenAI (seção 8.3) |
 | `openaiModelName`, `openaiModelVersion`, `openaiCapacity` | `gpt-4.1-mini`, `2025-04-14`, 10 | Modelo do chat. **Confirme o catálogo e a cota antes de ligar** |
 | `customDomain` | `''` | Domínio próprio no Front Door (seção 8.4) |
 | `wafRateLimitPerMinute` | 600 | Requisições por IP e por minuto antes do WAF bloquear (o login, `/api/auth/*`, tem limite próprio de 30 por minuto, fixo no módulo) |
-| `location` | a do resource group | East US 2 |
+| `location` | a do resource group | Chile Central (ADR 0040) |
 
 As dez entradas de ambiente (`ALVESTING_PG_ADMIN_PASSWORD`, `ALVESTING_PG_API_PASSWORD`, `ALVESTING_BUDGET_EMAIL`,
 `ALVESTING_ADMIN_PRINCIPAL_ID`, `ALVESTING_API_TAG`, `ALVESTING_WEB_TAG`, `ALVESTING_PROMPT_ARENA_VERSION`,
@@ -213,7 +221,8 @@ comando (seção 6). O `check.mjs` prova que a rotina é o primeiro deploy menos
   logs no Log Analytics.
 - **`ca-web` e `ca-api`:** ingress externo com `allowInsecure: false`; probes de startup, readiness e liveness em
   `GET /health` (web na porta 3000, api na 8080, as mesmas do ingress; o `check.mjs` confere); escala por concorrência HTTP
-  (web 50, api 30); modo de revisão `Multiple`. A api tem CORS no ingress só no econômico. Cada um usa a **própria identidade**
+  (web 50, api 30); modo de revisão `Multiple`. No econômico a api tem ingress **interno** (`external: false`) e sem CORS, e o site repassa
+  `/api/*` a ela (`API_PROXY`, seção 2.7; ADR 0039). Cada um usa a **própria identidade**
   (seção 3.2); a do `ca-web`, que é o único exposto rodando o Next, tem `lifecycle: None`.
 - **`ca-worker-data`:** sem ingress, 0 a 3 réplicas, **uma regra KEDA `azure-servicebus` por fila** (`market`, `news`,
   `briefing`, `settlement`, `maintenance`), com `messageCount: 5` por réplica, autenticada pela **identidade do KEDA**
@@ -236,7 +245,9 @@ comando (seção 6). O `check.mjs` prova que a rotina é o primeiro deploy menos
 - **`job-migrate`:** manual (`az containerapp job start`), roda `sh -c 'node node_modules/prisma/build/index.js migrate deploy && node
   dist/db-roles-cli.js'`: as migrations e, só se deram certo, o login de menor privilégio da api no banco (seção 2.2; os dois são idempotentes). Lê o
   `database-url` (o administrador, que migra e cria o login) e o `database-url-api` (de onde o `db:roles` tira só a senha), e a identidade dele
-  (`id-alvesting-migrate`) é só da plataforma (`lifecycle: None`).
+  (`id-alvesting-migrate`) é só da plataforma (`lifecycle: None`). **No econômico** o mesmo job, com o comando trocado numa execução, restaura a
+  temporada (`node dist/restore-cli.js temporada <dump> <sha256>`, `docs/RUNBOOK.md`, 13.6): a identidade dele lê o container `backups` (só leitura)
+  e vale para o código (`lifecycle: Main`), com `AZURE_CLIENT_ID` e `STORAGE_BLOB_ENDPOINT`.
 - **Uma imagem da api para todos os papéis do back** (`alvesting-api`); cada papel só muda o comando. A web tem a própria imagem.
 
 ### 2.4 Service Bus (§5.5)
@@ -386,16 +397,18 @@ sem a chave do OpenRouter.
 
 Em texto puro (origem "valor") entram só endereços e flags (o `check.mjs` tem a lista fechada); segredo é sempre `secretRef` de
 um segredo do Key Vault (origem "segredo"), que o workload só recebe se a identidade dele o lê (seção 3.2). "Quando":
-`sempre`, só no perfil `padrão` (Front Door) ou só com `enableOpenAI`.
+`sempre`, só no perfil `padrão` (Front Door), só no `econômico` (o repasse de `/api` pelo site e a restauração da temporada, ADR 0039) ou só
+com `enableOpenAI`.
 
 | Variável | Workloads | Origem | Quando | Para quê |
 |---|---|---|---|---|
 | `NODE_ENV` | `ca-web`, `ca-api`, `ca-worker-data`, `job-worker-decisions`, `job-sched-*`, `job-migrate` | valor: `production` | sempre | Modo de produção (o `env.ts` da api e o Next) |
 | `LOG_LEVEL` | `ca-api`, `ca-worker-data`, `job-worker-decisions`, `job-sched-*` | valor: `info` | sempre | Nível do Pino |
-| `AZURE_CLIENT_ID` | `ca-api`, `ca-worker-data`, `job-worker-decisions`, `job-sched-*` | valor: client ID da identidade do próprio workload (`id-alvesting-api`, `-worker`, `-decisions` ou `-sched`, seção 3.2) | sempre | O `DefaultAzureCredential` com identidade atribuída pelo usuário precisa dele para saber qual token pedir; o worker e as decisões carregam também a do KEDA, que o código não usa. O web e o migrate não recebem: a identidade deles é só da plataforma |
+| `AZURE_CLIENT_ID` | `ca-api`, `ca-worker-data`, `job-worker-decisions`, `job-sched-*` | valor: client ID da identidade do próprio workload (`id-alvesting-api`, `-worker`, `-decisions` ou `-sched`, seção 3.2) | sempre | O `DefaultAzureCredential` com identidade atribuída pelo usuário precisa dele para saber qual token pedir; o worker e as decisões carregam também a do KEDA, que o código não usa. O web e o migrate não recebem: a identidade deles é só da plataforma (o migrate, só no econômico, recebe: linha mais abaixo) |
 | `KEY_VAULT_URL` | `ca-api`, `ca-worker-data`, `job-worker-decisions`, `job-sched-*` | valor: `https://kv-alvesting.vault.azure.net/` | sempre | Endereço do cofre. Nenhum workload lê o cofre pelo SDK hoje (os segredos chegam por referência); quem ler só alcança os segredos em que a identidade dele tem papel |
 | `SERVICEBUS_FQDN` | `ca-api`, `ca-worker-data`, `job-worker-decisions`, `job-sched-*` | valor: `sb-alvesting.servicebus.windows.net` | sempre | Namespace do Service Bus **por identidade, sem connection string**: `new ServiceBusClient(fqdn, new DefaultAzureCredential())`. A api, o worker e as decisões publicam e consomem; os agendadores só publicam |
 | `STORAGE_BLOB_ENDPOINT` | `ca-api`, `ca-worker-data`, `job-worker-decisions`, `job-sched-*` | valor: `https://stalvesting.blob.core.windows.net/` | sempre | Endpoint do Blob **por identidade, sem chave de conta**: `new BlobServiceClient(endpoint, new DefaultAzureCredential())`. Só o worker e as decisões têm papel de Blob, e cada um **só nos containers que usa** (seção 3.2); a api e os agendadores recebem o endereço e levariam 403 |
+| `AZURE_CLIENT_ID`, `STORAGE_BLOB_ENDPOINT` | `job-migrate` | valor: client ID da `id-alvesting-migrate` e `https://stalvesting.blob.core.windows.net/` | econômico | A restauração da temporada (`dist/restore-cli.js`, uma execução do `job-migrate` com o comando trocado: `docs/RUNBOOK.md`, 13.6; ADR 0039) lê o dump do container `backups` pela identidade do migrate, que só no econômico vale para o código (`lifecycle: Main`) e só lê esse container (seção 3.2). No padrão o migrate segue sem as duas |
 | `DATABASE_URL` | `ca-worker-data`, `job-worker-decisions`, `job-sched-*`, `job-migrate` | segredo `database-url` | sempre | Postgres privado com o login **administrador**, `sslmode=require` (seção 2.2), pool de 3 a 4 conexões por processo. O `ca-web` não consulta o banco |
 | `DATABASE_URL` | `ca-api` | segredo `database-url-api` | sempre | O login de **menor privilégio** da api (`alvesting_api`, ADR 0028), `sslmode=require`, pool de 3 a 4 conexões. Em produção a api **recusa subir** com outro usuário aqui (`requireApiLogin`): o segredo do administrador não pode ocupar o lugar dele em silêncio |
 | `API_DATABASE_URL` | `job-migrate` | segredo `database-url-api` | sempre | De onde o `db:roles` (rodado depois do `migrate deploy`, no mesmo job) tira a **senha** do login da api e o nome do usuário (tem de ser `alvesting_api`); quem cria o login é o `DATABASE_URL` do administrador |
@@ -403,7 +416,8 @@ um segredo do Key Vault (origem "segredo"), que o workload só recebe se a ident
 | `API_PORT` | `ca-api` | valor: `8080` | sempre | Porta do ingress e dos probes |
 | `PORT`, `HOSTNAME` | `ca-web` | valor: `3000` e `0.0.0.0` | sempre | Porta e interface do `server.js` standalone do Next |
 | `PUBLIC_URL` | `ca-web`, `ca-api` | valor: URL pública do site (domínio próprio, host do Front Door ou host do `ca-web`) | sempre | URL pública do site, para montar links absolutos |
-| `API_INTERNAL_URL` | `ca-web` | valor: `https://ca-api.<domínio do ambiente>` | sempre | O SSR da web lê a API pública direto pelo ingress (`apps/web/src/lib/api.ts`, `docs/API.md`), mandando o `X-Azure-FDID` com o próprio `FRONT_DOOR_ID` (seção 3.3) |
+| `API_INTERNAL_URL` | `ca-web` | valor: `https://ca-api.<domínio do ambiente>` no padrão; `https://ca-api.internal.<domínio do ambiente>` no econômico (o ingress interno da api, que só os apps do ambiente alcançam: Learn, "Communicate between container apps") | sempre | O SSR da web lê a API pública direto pelo ingress (`apps/web/src/lib/api.ts`, `docs/API.md`), mandando o `X-Azure-FDID` com o próprio `FRONT_DOOR_ID` (seção 3.3, só no padrão). No econômico é também para onde o site repassa o `/api/*` do navegador (`API_PROXY`, abaixo) |
+| `API_PROXY` | `ca-web` | valor: `on` | econômico | Uma origem só sem Front Door (ADR 0039): o site repassa `/api/*` à api pelo `API_INTERNAL_URL` (`apps/web/src/proxy.ts`), e é assim que os formulários da conta, a carteira e o link do e-mail (`PUBLIC_URL/api/auth/...`) chegam à api. Nunca leva `/api/v1/interno/*` (404, como o `BlockInterno` do WAF no padrão) e regrava o `X-Forwarded-For` com a entrada da direita, a que o ingress acrescentou (o limite de tentativas do login, seção 3.3). Corpo, `Origin`, `Set-Cookie` e os redirecionamentos passam como vieram. Sem ela o site não repassa nada (o padrão, em que o Front Door faz isso), e em produção ele recusa subir com outro valor ou sem um `API_INTERNAL_URL` http(s) |
 | `WEB_INTERNAL_URL` | `ca-worker-data` | valor: `https://ca-web.<domínio do ambiente>` | sempre | O worker pede a revalidação ao site depois da liquidação (`POST /interno/revalidar`, `docs/JOBS.md`, 4.2), com o `REVALIDATE_SECRET`. Em produção o worker só aceita `https` (ou o loopback), porque o Bearer vai nesse endereço; a chamada não segue redirecionamento |
 | `REVALIDATE_SECRET` | `ca-web`, `ca-worker-data` | segredo `revalidate-secret` | sempre | Autentica a revalidação do worker para o site (`Authorization: Bearer`, comparado em tempo constante; o `proxy.ts` do site deixa passar só `POST /interno/revalidar` com ele, seção 3.3). **Pelo menos 32 caracteres**: o worker recusa subir com um mais curto, e o site trata o curto como ausente. Sem ele a rota responde 503 |
 | `QUOTES_SECRET` | `ca-web`, `ca-api` | segredo `quotes-secret` | sempre | O segredo das rotas internas de cotações: a API pública não entrega cotação bruta (a licença da brapi proíbe entregar os Dados como feed, API ou base bruta), então o site lê as barras de `GET /api/v1/interno/barras/:ticker` e a fita da home de `GET /api/v1/interno/fita` pelo `API_INTERNAL_URL`, com `Authorization: Bearer <segredo>` (`apps/web/src/lib/quotes.ts`, módulo só do servidor: a variável não tem `NEXT_PUBLIC_`). A api o confere em tempo constante e responde 404, igual ao da rota que não existe, a quem não o traz; sem ele no ambiente as rotas ficam desligadas. **Pelo menos 32 caracteres** (a api recusa subir com um mais curto, e **em produção com o valor de dev do `.env.example`**; o site trata o curto como erro de configuração). O **mesmo** valor nos dois: quem girar um só derruba a leitura (a home mostra "não foi possível carregar os dados"; `docs/RUNBOOK.md`, seção 4). `docs/API.md`, seção 6 |
@@ -470,7 +484,9 @@ disso, o caminho muda em `containerapps.bicep` (os comandos estão no topo do ar
 ### 3.1 Rede (§5.6)
 
 - Banco sem IP público (2.2). Sem private endpoint em Key Vault, Storage, Service Bus ou ACR: é coisa dos tiers caros (fase 4).
-- Workers e agendadores não têm ingress. Só `ca-web` e `ca-api` são alcançáveis, e no padrão só passando pelo Front Door.
+- Workers e agendadores não têm ingress. Só `ca-web` e `ca-api` são alcançáveis, e no padrão só passando pelo Front Door. **No econômico só o
+  `ca-web`**: a api tem ingress interno, e de fora do ambiente o endereço dela (`ca-api.internal.<domínio>`) dá 404 (Learn, "Communicate between
+  container apps", de 31/03/2026, lida em 06/11/2026); o site é a única entrada (ADR 0039).
 - **Saída para a internet:** a sub-rede dos apps não tem NAT, firewall nem NSG, então a saída é livre. Além dos endereços da
   própria Azure, o `ca-worker-data` busca por HTTPS (443), com lista fixa no código (`docs/DADOS.md`): `brapi.dev` (as cotações,
   a única fonte; nada mais é baixado da B3), os feeds `www.infomoney.com.br`, `www.moneytimes.com.br`, `www.seudinheiro.com` e
@@ -505,7 +521,7 @@ que o workload faz, e **nenhuma lê o cofre inteiro**: o Key Vault Secrets User 
 | `id-alvesting-worker` | o **`ca-worker-data`** | Service Bus Data Sender e Receiver nas **cinco filas que consome** (`market`, `news`, `briefing`, `settlement`, `maintenance`; nada em `decisions`), Storage Blob Data Contributor **nos containers `briefings` e `backups`** (nunca no `llm-io`), AcrPull e o papel de purge do Front Door (`afd-alvesting`, padrão) |
 | `id-alvesting-decisions` | o **`job-worker-decisions`** | Service Bus Data Sender e Receiver **só na `decisions`**, Storage Blob Data Contributor **no `llm-io`** (IO bruto das LLMs) e Storage Blob Data **Reader** **no `briefings`** (lê o briefing congelado), e AcrPull (padrão) |
 | `id-alvesting-sched` | os **7 `job-sched-*`** | Service Bus Data **Sender** em **cinco filas** (só publicam, ADR 0007; `settlement` é do `eod`) e AcrPull (padrão). Sem Blob |
-| `id-alvesting-migrate` | só o **`job-migrate`**, e só a plataforma (`lifecycle: None`) | AcrPull (padrão) |
+| `id-alvesting-migrate` | só o **`job-migrate`**, e só a plataforma (`lifecycle: None`); no econômico também o código (`lifecycle: Main`), para a restauração da temporada | AcrPull (padrão) e, **só no econômico**, Storage Blob Data **Reader** no **`backups`** (ADR 0039) |
 | `id-alvesting-scale` | só as **regras de escala do KEDA** do worker e das decisões (`lifecycle: None`) | Azure Service Bus Data Owner **em cada uma das seis filas** (`sb-alvesting/queues/...`) |
 
 **O Service Bus por fila e o Blob por container (etapa 10, parte 4; ADR 0030).** Nenhum papel de Service Bus está no escopo do namespace e nenhum de Blob no da conta:
@@ -526,7 +542,7 @@ Bus entities" e "Assign an Azure role for access to blob data"). A matriz sai do
 |---|---|---|---|
 | `briefings` | worker | decisões | O worker grava o briefing congelado (`FreezeHandler`); as decisões o leem para montar o pedido (`BriefingArchive.read`) |
 | `llm-io` | decisões | | As decisões gravam o IO bruto (`LlmIoArchive`); **nada o lê pelo código**, então o worker, que parseia RSS, CSV e ZIP de terceiros, deixa de alcançá-lo (fecha o risco do item 4 abaixo) |
-| `backups` | worker | | O dump do `backup-verify`: envia, baixa de volta para restaurar, grava os metadados e apaga o que não passou na conferência |
+| `backups` | worker | migrate (só no econômico) | O dump do `backup-verify`: envia, baixa de volta para restaurar, grava os metadados e apaga o que não passou na conferência. O migrate só lê: o dump da temporada que o `restore-cli` restaura (`docs/RUNBOOK.md`, 13.6; ADR 0039) |
 
 A api e os agendadores não leem nem gravam Blob; o `id-alvesting-scale` não tem Blob. **Sem política de imutabilidade em nenhum container, de propósito (ADR 0030):** uma política travada impede apagar a conta de armazenamento
 até a retenção vencer (armadilha com crédito de estudante: o resource group de teste não se apaga), e o SHA-256 que o banco guarda de cada blob de `briefings` e `llm-io` já acusa a adulteração. Fica a exclusão
@@ -567,8 +583,12 @@ como foi enviado, com o texto do prompt da arena, um RCE no worker o leria por e
 gravam, e nada o lê), e a garantia de que o worker não lê o `prompt-arena` vale também pelo Blob. O **critério de aceite da etapa 6** continua valendo, com teste de
 canário: o `llm-io` grava o SHA-256 e a versão do prompt, nunca o texto (a regra 4 do `CLAUDE.md` vale para o Blob também). A api e os agendadores
 recebem `STORAGE_BLOB_ENDPOINT` mas não têm papel de Blob e levariam 403 (seção 2.7).
-Quem implanta e semeia (`adminPrincipalId`) recebe **Key Vault Secrets Officer** no cofre. Quem roda o deploy precisa ser
-**Owner** do resource group (cria atribuições de papel e a definição do papel de purge).
+Quem implanta e semeia (`adminPrincipalId`) recebe **Key Vault Secrets Officer** no cofre e, **só no econômico**, **Storage Blob Data Contributor**
+nos três containers (`backups`, `briefings` e `llm-io`, `modules/storage.bicep`): o envio do dump da temporada e a cópia do Blob do Azurite pelo
+`az storage blob upload --auth-mode login` (`docs/RUNBOOK.md`, 13.6). Ser Owner não basta para o dado do Blob: "Even though you are the account owner,
+you need explicit permissions to perform data operations" (Learn, "Authorize access to blob data with Azure CLI", lida em 06/11/2026). No padrão o
+papel continua à mão (RUNBOOK, 5.3). Quem roda o deploy precisa ser **Owner** do resource group (cria atribuições de papel e a definição do papel
+de purge).
 
 **GUIDs dos papéis internos** (moram só em `infra/roles.bicep`; fonte:
 <https://learn.microsoft.com/azure/role-based-access-control/built-in-roles>, conferida em 01/11/2026):
@@ -613,6 +633,16 @@ trava**: o SSR do site as chama pelo ingress do `ca-api` com o `X-Azure-FDID` (c
 e a trava vem antes (sem o `X-Azure-FDID` é 403, até com o segredo certo). O segredo é conferido em tempo constante e, sem ele ou com o errado, a resposta
 é um 404 igual ao da rota que não existe (a rota não se confirma a quem não a conhece). Elas ficam fora do Swagger, com `no-store`, fora da rota com
 cache do Front Door (o `check.mjs` lê o controlador e confere) e, pelo `/interno/` no caminho, bloqueadas pelo WAF na borda.
+
+**No perfil econômico não há trava** (ADR 0039): não há Front Door, e quem fecha a api é a rede. O ingress dela é interno (só os apps do ambiente a
+alcançam; de fora, 404), e o navegador só fala com o site, que repassa `/api/*` à api pelo endereço interno (`API_PROXY`, `src/lib/api-proxy.ts`). O
+repasse faz duas coisas da borda: **nunca leva `/api/v1/interno/*`** (404 igual ao da rota que não existe, como o `BlockInterno`; o caminho é conferido
+decodificado e sem diferença de caixa) e **regrava o `X-Forwarded-For`** com a entrada da direita, a que o ingress do site acrescentou ("If specified in
+initial request, it is appended to. Only the rightmost IP is provided by Azure Container Apps. Any other values must be validated by the user to
+prevent IP spoofing": Learn, "Ingress in Azure Container Apps", de 09/10/2026, lida em 06/11/2026). É o IP do limite de tentativas do login: o Better
+Auth só confia num `X-Forwarded-For` de um valor (`getIPFromHeader`, `node_modules/@better-auth/core/dist/utils/ip.mjs`, 1.7.15), e o ingress interno
+da api acrescenta o IP do site à direita; por isso a api sem o Front Door pula os saltos de endereço privado (`trustedProxies`, `auth.ts`). O site não
+tem WAF: o limite de 30 por minuto em `/api/auth/*` é o do Front Door, e no econômico vale só o do Better Auth (3 por 10 s no login, por réplica).
 
 **O que a infra entrega e o que ela NÃO prova.** A infra entrega o ID (segredo `front-door-id`, `FRONT_DOOR_ID`) e o sinal
 `ORIGIN_LOCK=front-door`. Quem recusa o pedido é o middleware da etapa 3, e **até ele existir nada na rede impede que se chame
@@ -756,7 +786,7 @@ documentação só restringe ao Premium as de CPU, memória e checkpoint, então
 | `brapi-cota-baixa` | sinal da aplicação | 2 | (da regra) | A cota restante da brapi (o `X-RateLimit-Remaining`, que vem com `X-RateLimit-Window: rolling-30d`) chegou à reserva de 500 requisições (de 15 mil por 30 dias): o `BrapiClient` parou e deixou o resto como falta (`brapi: a cota restante chegou à reserva; a busca parou e o resto ficou como falta`; campos `remaining` e `reserve`). O `eod` reagenda e conclui no prazo com o que tem. **O `RateLimit-Remaining` sem o `X` não é a cota**: é o do limitador de 20 por minuto (a lista, e às vezes o próprio histórico), com "20"; lido como cota, parou a carga do dev na 5ª requisição por engano (achado de 04/11/2026, `docs/DADOS.md`, seções 2 e 9) | Achar o consumo fora do plano (uns 7.900 por mês; carga em dobro, laço); a janela é móvel, então a cota volta sozinha em até 30 dias, ou trocar de plano. Se o sinal sai com o `remaining` em 20 logo no começo de uma carga, desconfie do cabeçalho (o cliente lê só o `X-RateLimit-Remaining`; o "20" é do outro limitador) antes de mexer no plano. RUNBOOK, seção 12.2 |
 | `barras-divergentes` | sinal da aplicação | 2 | (da regra) | A brapi trouxe, para um papel e um pregão que **já têm barra**, valor diferente do gravado (`barras divergentes: a brapi trouxe valor diferente do gravado e nada foi alterado`; campos `count` e `first`, com papel, data e campos). A barra gravada **não muda** | Conferir se é ajuste por provento ou desdobramento da brapi; evento corporativo já registrado? RUNBOOK, seção 12.3 |
 | `ciclo-pulado` | sinal da aplicação | 2 | (da regra) | O `sched-cycle` pulou o ciclo do pregão e **nenhum modelo será chamado** (`sched-cycle: ciclo pulado, nenhum modelo será chamado`; campos `date`, `season` e `reason`): `orcamento` (o teto mensal de LLM, `ARENA_MONTHLY_COST_CAP_USD`, estourou ou não está configurado; o alerta de orçamento do Azure não vê o gasto do OpenRouter) ou `sem_briefing` (o `freeze` das 07:30 não rodou). Alerta na primeira vez; vale também para o reprocesso do admin, que reavalia o ciclo pulado | `orcamento`: `GET /admin/costs` (o acumulado do mês contra o teto), subir o teto (parâmetro `arenaMonthlyCostCapUsd`, deploy da fase 2) ou esperar o mês virar. `sem_briefing`: reenviar o `freeze` da DLQ e usar "Reprocessar um ciclo" no painel, só até 5 minutos antes das 09:30 (`docs/API.md`, seção 8) |
-| `budget-alvesting` | orçamento (Cost Management) | n/a | mensal, 50, 80 e 100% | O gasto real passou de 50, 80 ou 100% do orçamento. O de 80% é o gatilho para trocar de perfil | Seção 6, "Parar o gasto", e a troca de perfil (8.1) |
+| `budget-alvesting` | orçamento (Cost Management) | n/a | anual, 50, 80 e 100% | O gasto real acumulado passou de 50, 80 ou 100% do orçamento, que é o crédito de 12 meses. O de 80% é o gatilho para trocar de perfil | Seção 6, "Parar o gasto", e a troca de perfil (8.1) |
 
 **Limitações conhecidas (e o que as cobre).**
 
@@ -851,6 +881,35 @@ segredo, porque os segredos do Artur só existem depois do seed e um papel não 
 primeira execução da fase 2 falhar com acesso negado ao Key Vault ou ao ACR, é o papel ainda propagando: espere uns minutos e
 repita (seção 11).
 
+### 6.0 O caminho do perfil econômico, do zero, em ordem (a produção; ADR 0039)
+
+Para quem nunca criou nada na Azure. A coluna "Quem" separa o que **você** faz (na sua máquina, no portal ou no GitHub) do que o **pipeline** faz
+sozinho. Os tempos são estimativas (nada disto rodou na Azure); o que cada comando cria está na coluna do meio. Os detalhes de cada passo estão
+nos passos 0 a 7 abaixo e no `docs/DEPLOY.md`; o que só a Azure confirma, na seção 11.
+
+| # | Quem | O que fazer | O que cria | Tempo |
+|---|---|---|---|---|
+| 1 | você | Ativar o **Azure for Students** (portal.azure.com, com o e-mail da faculdade) e anotar o ID da assinatura | A assinatura com US$ 100 | 10 min |
+| 2 | você | Na máquina: `az login`, `az account set --subscription "<id>"` e **`az account show`** (confira que é a assinatura do projeto, e não outra), `az bicep install --version v0.48.1`, o laço do `az provider register` e o `infra/scripts/verify-roles.sh` (passo 0) | Nada na assinatura além do registro dos provedores | 10 min |
+| 3 | você | `nvm use` (o Node padrão da máquina é o 20; o projeto pede o 26 do `.nvmrc`) e `node infra/tests/check.mjs` (passo 1): compila e confere a infra sem a Azure | Nada | 1 min |
+| 4 | você | O repositório no GitHub, **público**, com o histórico: `git remote add origin git@github.com:<dono>/alvesting.git` e `git push -u origin main`. Sem as variáveis de OIDC, os jobs de publicação são pulados e nada fica vermelho | O repositório; o CI roda (lint, testes, e2e) | 5 min (o CI, uns 20) |
+| 5 | você | As variáveis do passo 2, só no shell (as senhas do Postgres, o e-mail dos alertas, o seu Object ID, o controlador e o contato da privacidade) | Nada | 2 min |
+| 6 | você | **Fase 1** (passo 3): `az group create --name rg-alvesting-prod --location chilecentral` (uma das cinco regiões que a assinatura de estudante libera; ADR 0040) e o `az deployment group create` com `deployApps=false writeDerivedSecrets=true deployBudget=true` (o what-if antes) | A rede, o cofre, o Postgres (o mais lento), as filas, o Blob (com o seu papel de escrita nos três containers), o e-mail, a observabilidade, os alertas e o orçamento. Sem Front Door e sem ACR | 15 a 20 min |
+| 7 | você | Os segredos (passo 4): `infra/scripts/seed-secrets.sh kv-alvesting` (espere uns 5 min do papel do cofre antes) e a versão do `prompt-arena` em `ALVESTING_PROMPT_ARENA_VERSION` | Os segredos do Key Vault (o prompt vem só de arquivo) | 10 min |
+| 8 | você | A identidade do CI e o OIDC (`docs/DEPLOY.md`, seção 2): no econômico **só o papel Contributor** no resource group (não há ACR, então nada de AcrPush) | `id-alvesting-ci` e as duas credenciais federadas | 5 min |
+| 9 | você | As variáveis do repositório (`docs/DEPLOY.md`, seção 3): `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, **`ALVESTING_PROFILE=economico`** e `SITE_URL` (a saída `siteUrl` da fase 1: `https://ca-web.<domínio do ambiente>`). Sem `SITE_GREEN_URL`. E o ambiente `production` liberado só para a `main` | Nada na Azure | 5 min |
+| 10 | pipeline | Actions, *Deploy*, *Run workflow* com **`images_only`** marcado: o job `images` constrói as duas imagens e as publica no GHCR (`ghcr.io/<dono>/alvesting-{api,web}:<sha>`). Anote o SHA | Os dois pacotes no GHCR | 10 a 15 min |
+| 11 | você | Os **dois pacotes públicos**, uma vez (`docs/DEPLOY.md`, seção 3: na página de cada pacote, *Package settings*, *Change visibility*, *Public*). Sem isso a Azure não puxa a imagem | Nada | 2 min |
+| 12 | você | **Fase 2** (passo 6): `ALVESTING_API_TAG` e `ALVESTING_WEB_TAG` com o SHA e o `az deployment group create` com o `.bicepparam`, sem flags | O `ca-web`, o `ca-api` (interno), o worker, o job de decisões, os 7 agendadores, o `job-migrate` e os papéis de cada um nos segredos | 5 a 10 min |
+| 13 | você | `az containerapp job start -g rg-alvesting-prod -n job-migrate` e o `execution list` até `Succeeded` (passo 6) | As tabelas (as migrations) e o login `alvesting_api` no banco | 3 min |
+| 14 | pipeline | *Run workflow* de novo, com `images_only` **desmarcado** (ou qualquer push na `main`): o rollout do econômico (`docs/DEPLOY.md`, seção 1). Daqui em diante todo merge na `main` publica sozinho | A revisão nova de cada app, provada e virada | 15 a 20 min |
+| 15 | você | Conferir: `curl -fsS "$SITE/health"` e `curl -fsS "$SITE/api/v1/health"` (os dois pelo site: a api é interna), e abrir o site no celular | Nada | 2 min |
+| 16 | você | **A temporada** do Mac para a Azure (`docs/RUNBOOK.md`, 13.6): o dump, o envio ao Blob, a restauração pelo `job-migrate`, a conferência e o operador do Mac desligado | A Temporada 1 no Postgres e os arquivos dela no Blob | 30 min |
+| 17 | você | O primeiro admin (seção 8.6) | O papel `admin` na sua conta | 5 min |
+
+Tudo junto: umas 2 horas e meia, quase toda de espera. O orçamento avisa em 50, 80 e 100% do crédito, e o econômico gasta uns US$ 5 a 11 por mês
+(seção 9).
+
 ### Passo 0: pré-requisitos (uma vez)
 
 ```bash
@@ -872,6 +931,7 @@ infra/scripts/verify-roles.sh
 ### Passo 1: verificar o Bicep (sem Azure)
 
 ```bash
+nvm use                                # o Node 26 do .nvmrc (o padrão da máquina é o 20)
 node infra/tests/check.mjs             # compila e confere os invariantes; precisa do Bicep CLI (seção 13)
 ```
 
@@ -905,7 +965,7 @@ imagens (passos 4 a 6), e a fase 1 não precisa delas.
 ### Passo 3: resource group e fase 1
 
 ```bash
-az group create --name rg-alvesting-prod --location eastus2
+az group create --name rg-alvesting-prod --location chilecentral   # a região liberada mais perto do Brasil (ADR 0040)
 
 # Prévia (cria tudo, menos os apps):
 az deployment group what-if --resource-group rg-alvesting-prod --name alvesting \
@@ -915,7 +975,8 @@ az deployment group create --resource-group rg-alvesting-prod --name alvesting \
   --parameters infra/main.prod.bicepparam deployApps=false writeDerivedSecrets=true deployBudget=true
 ```
 
-Para o econômico, acrescente `profile=economico`. Em dev: `rg-alvesting-dev` e `infra/main.dev.bicepparam`.
+O `main.prod.bicepparam` já é o econômico (ADR 0039); para o padrão, acrescente `profile=padrao` (e veja a seção 8.1). Em dev: `rg-alvesting-dev`
+e `infra/main.dev.bicepparam` (também econômico).
 O Postgres leva uns 10 minutos. Se a Azure recusar o Postgres na região ("location is restricted"), veja a seção 11.
 
 `deployBudget=true` cria o orçamento, e a Azure só aceita `budgetStartDate` no mês corrente (data passada dentro do mês) ou em
@@ -953,9 +1014,10 @@ echo "$ALVESTING_PROMPT_ARENA_VERSION"      # 32 caracteres hexadecimais; em dev
 
 ### Passo 5: imagens
 
-Publicadas pelo pipeline da etapa 3 (`alvesting-api` e `alvesting-web`) no ACR `cralvesting` (padrão) ou no GHCR (econômico),
-com o **SHA do commit** como tag: não existe `latest` (`docs/DEPLOY.md`, "Primeiro deploy", passo 5). Anote o SHA. Sem imagem não
-há fase 2.
+Publicadas pelo pipeline da etapa 3 (`alvesting-api` e `alvesting-web`) no ACR `cralvesting` (padrão) ou no GHCR (econômico, com a variável do
+repositório `ALVESTING_PROFILE=economico`: `ghcr.io/<dono em minúsculas>/alvesting-*`), com o **SHA do commit** como tag: não existe `latest`
+(`docs/DEPLOY.md`, "Primeiro deploy", passo 5). Anote o SHA. Sem imagem não há fase 2. No econômico os dois pacotes nascem **privados** e precisam
+ficar públicos uma vez, antes da fase 2 (`docs/DEPLOY.md`, seção 3): o template não leva credencial de registro.
 
 ### Passo 6: fase 2
 
@@ -984,7 +1046,7 @@ az containerapp job execution list --resource-group rg-alvesting-prod --name job
 # o log da execução termina com "login alvesting_api pronto: membro de alvesting_api_group, statement_timeout de 10 s, limite de 24 conexões"
 
 SITE="$(az deployment group show -g rg-alvesting-prod -n alvesting --query properties.outputs.siteUrl.value -o tsv)"
-curl -fsS "$SITE/health" && curl -fsS "$SITE/api/v1/health"   # no econômico a api está no output apiFqdn
+curl -fsS "$SITE/health" && curl -fsS "$SITE/api/v1/health"   # nos dois perfis pelo site: no econômico a api é interna e o site a repassa
 ```
 
 ### Passo 7: o what-if da segunda execução (aceite)
@@ -1026,7 +1088,7 @@ Os `.bicepparam` valem `false` para os dois (rotina). Ligue só nestes casos:
 | Girar a senha do **administrador** do Postgres (8.2) | `writeDerivedSecrets=true` (regrava os segredos derivados com o mesmo valor, menos o `database-url`, que muda; os apps reiniciam). A do login da api (8.2) não precisa do flag: grava-se o `database-url-api` direto |
 | Ligar o Azure OpenAI (8.3) | `enableOpenAI=true` (nenhum segredo derivado: a conta não tem chave; o `prompt-chat` precisa existir antes) |
 | Passar do econômico para o padrão (8.1) | `profile=padrao writeDerivedSecrets=true` (o `front-door-id` nasce agora) |
-| Mudar o valor do orçamento | `deployBudget=true budgetAmount=<novo> budgetStartDate=<primeiro dia do mês corrente>` |
+| Mudar o valor do orçamento | `deployBudget=true budgetAmount=<novo> budgetStartDate=<primeiro dia do mês corrente>` (o ano do orçamento recomeça nessa data) |
 | Qualquer outro (CI, what-if do aceite, réplicas, tag de imagem, versão do prompt, domínio próprio) | nenhuma: os valores do `.bicepparam` |
 
 Esquecer `writeDerivedSecrets=true` na fase 1 ou ao passar para o padrão dá erro no deploy (o segredo que o app referencia não
@@ -1112,6 +1174,12 @@ ingress, e mude o DNS. Econômico para padrão cria o ACR e o Front Door; publiq
 GHCR para ACR, então haverá uma revisão nova de tudo. Para o padrão, passe também `writeDerivedSecrets=true` (nasce o
 `front-door-id`, que `ca-web` e `ca-api` referenciam); a trava de origem da etapa 3 precisa estar pronta (seção 3.3).
 
+**O pipeline acompanha o perfil** (`docs/DEPLOY.md`, seção 3; ADR 0039): para o econômico, a variável do repositório `ALVESTING_PROFILE=economico`
+e os pacotes do GHCR públicos; para o padrão, a variável apagada (ou `padrao`), a `SITE_GREEN_URL` (a saída `greenSiteUrl`) e a identidade do CI com
+o `AcrPush`. Na troca de econômico para padrão, a api passa de interna a externa e o site deixa de repassar `/api/*` (o Front Door assume); a ordem é
+a infra primeiro (com as imagens já no ACR) e o pipeline depois. Na volta, a api fica interna e a borda some: mude o DNS só depois de o site
+responder pelo endereço do `ca-web`.
+
 ### 8.2 Girar a senha do Postgres
 
 Gere outra, exporte `ALVESTING_PG_ADMIN_PASSWORD` e rode o deploy com `--parameters writeDerivedSecrets=true`. O mesmo deploy
@@ -1152,7 +1220,9 @@ projeto. O [RUNBOOK](RUNBOOK.md), seção 4.3, herda esta ordem.
 
 ### 8.3 Ligar o Azure OpenAI
 
-Só depois do aval do orientador (plano §12). Confira o catálogo e a cota **do tipo `DataZoneStandard`** (o tipo da implantação,
+Só depois do aval do orientador (plano §12). **Com a produção na Chile Central (ADR 0040), o `DataZoneStandard` não serve como está:**
+ele existe nas zonas de dados dos EUA e da UE, e a Chile Central não está em nenhuma; decida antes onde o modelo roda (e o que a política
+de privacidade diz). Confira o catálogo e a cota **do tipo `DataZoneStandard`** (o tipo da implantação,
 abaixo) (`az cognitiveservices usage list --location eastus2`, `az cognitiveservices model list --location eastus2`), ajuste
 `openaiModelName`/`openaiModelVersion`/`openaiCapacity`, semeie o `prompt-chat` (passo 4) e rode com `--parameters
 enableOpenAI=true` (a fase 2 inteira, com as tags do ar: passo 7). Não há `writeDerivedSecrets`: a conta **não tem chave**.
@@ -1223,6 +1293,7 @@ az containerapp job execution list -g $RG -n job-migrate -o table
 | Registrar um evento corporativo | `node` / `dist/settlement-cli.js event <TICKER> <AAAA-MM-DD> <tipo> <de:para>` (o painel também) |
 | **SQL pontual** (por exemplo, o `UPDATE` do `eod` em espera ao voltar uma revisão, `docs/DEPLOY.md`, seção 6) | `sh` / `-c` e, como **segundo argumento (um item só da lista `args`)**, `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "UPDATE job_run SET status = 'FAILED' WHERE status = 'WAITING'"` (no YAML do modelo é um escalar simples, sem escape; conferido com um `psql` de mentira: ele recebe a URL, `-v ON_ERROR_STOP=1`, `-c` e o SQL como um argumento só). O `psql` 17 vem com o `postgresql-client-17` da imagem (seção 2.8); o `DATABASE_URL` do job é o login **administrador**: só o que o RUNBOOK mandar. Não verificado na Azure |
 | **Criar uma temporada** | **não por aqui**: o arquivo JSON do `season:create` não está na imagem. Na Azure é `POST /api/v1/admin/seasons` (o painel `/admin`, "Nova temporada") com o mesmo arquivo |
+| **Restaurar a temporada do Mac** (só no econômico: a identidade do migrate lê o `backups`; ADR 0039) | `node` / `dist/restore-cli.js temporada <nome do dump no backups> <SHA-256 dele>`. O passo a passo inteiro é o `docs/RUNBOOK.md`, 13.6. O comando recusa o banco que já tem temporada, o SHA-256 que não bate e o dump que não é só de dados ou que traz as tabelas pessoais; restaura numa transação só e registra as contagens no log da execução |
 
 Só o **primeiro admin** (e o rebaixamento de um) precisam deste caminho; o resto se faz pelo painel (`docs/TELAS.md`, seção 8) depois de entrar com a conta promovida.
 
@@ -1246,14 +1317,16 @@ Cuidados:
 | Item | Padrão | Econômico |
 |---|---|---|
 | Front Door Standard | ~35 | 0 |
-| Container Apps | 12–16 | 1–3 |
-| PostgreSQL B1ms + 32 GB | ~16 | 0 se a franquia de 12 meses valer, senão ~16 |
+| Container Apps | 12–16 | 1–4 |
+| PostgreSQL B1ms + 32 GB | ~16 | 0 se a franquia de 12 meses valer, senão ~22 |
 | Service Bus Basic, ACR Basic, Storage, Key Vault, DNS privado, e-mail | ~8 | ~3 |
 | Log Analytics / App Insights (ingestão dentro dos 5 GB grátis, seção 5.5) | 0–3 | 0 |
 | Alertas do Azure Monitor (seção 5.6: 1 regra de log e 9 a 12 séries de métrica) | ~3,2 | ~3,0 |
-| **Total Azure** | **≈ 72–83** | **≈ 5–10** (≈ 21–26 sem a franquia do Postgres) |
+| **Total Azure** | **≈ 72–83** | **≈ 5–11** (≈ 27–33 sem a franquia do Postgres) |
 
-Com os US$ 100 do Azure for Students, o padrão dura cerca de 5 semanas (e o econômico, de 10 meses a mais de um ano). O alerta de 80% do orçamento é o gatilho para
+O econômico usa os preços da Chile Central de 07/11/2026 (ADR 0040): o Postgres B1ms a US$ 0,0238 por hora e a vCPU do Container Apps a
+US$ 0,000034 por segundo, uns 40% acima da East US 2, cujos preços o padrão ainda usa. Com os US$ 100 do Azure for Students, o padrão dura
+cerca de 5 semanas (e o econômico, de 9 meses a mais de um ano; uns 3 meses sem a franquia do Postgres). O alerta de 80% do orçamento é o gatilho para
 trocar de perfil.
 
 ---
@@ -1324,7 +1397,8 @@ demais não mudam o plano.
 | **Papel no escopo de um segredo (todos os workloads) não foi testado contra a Azure.** O Key Vault aceita RBAC por objeto (a Microsoft documenta o escopo de segredo), mas não se confirmou que (a) o ARM aceita o papel no escopo de um segredo **criado pelo plano de dados** (`az keyvault secret set`, que é o caso dos do Artur), nem que (b) a referência de segredo do Container Apps resolve só com isso, nem que (c) a referência **com versão** (`.../secrets/prompt-arena/<versão>`) é lida com o papel no escopo do segredo e não da versão | Se a fase 2 falhar com acesso negado que não passa com o tempo: o papel por `az role assignment create --scope .../secrets/<nome>` mostra se o problema é o ARM (a). **Plano B que preserva o que mais importa: um segundo cofre só com o que o job de decisões lê** (`prompt-arena` e `openrouter-api-key`; nome novo, por exemplo `kv-alvesting-arena`), com Key Vault Secrets User **no escopo desse cofre** só para a `id-alvesting-decisions`. É o escopo que a documentação do Container Apps manda usar (página "Manage secrets in Azure Container Apps", conferida em 01/11/2026: "Grant the Key Vault Secrets User role to the managed identity on your Key Vault"), então (a), (b) e (c) deixam de ser pressupostos para esses dois segredos; e o papel nasce na fase 1 (o escopo já existe) e propaga durante a pausa do seed, sem a corrida da fase 2. Pede mudar o `main.bicep`, o `seed-secrets.sh` (que hoje semeia num cofre só), a tabela da seção 2.6 e o `check.mjs`. Os outros segredos semeados (`better-auth-secret`, `google-oauth-client-secret`, `brapi-token`, `revalidate-secret`, `quotes-secret`) valem menos: se o papel no escopo deles também falhar, dê Key Vault Secrets User no `kv-alvesting` inteiro às identidades que os leem e registre a perda (com o prompt e a chave do OpenRouter no outro cofre, o `kv-alvesting` já não guarda o que o ADR 0020 mais protege). **Nunca** dê o papel do cofre do `prompt-arena` a outra identidade que não a de decisões: a api, exposta à internet, o leria. O `prompt-chat` também fica fora desse cofre pelo mesmo motivo (a api o leria junto com o `prompt-arena`); ele só entra na etapa 13, e se (a) falhar ganha cofre próprio. Só para (c), sem segundo cofre: tire a versão do URI do `prompt-arena` (perde-se a versão fixa; o `PROMPT_ARENA_VERSION` passa a ser só rótulo). **Depois do primeiro deploy, registre aqui o resultado de (a), (b), (c) e do `lifecycle: None`** |
 | **Diagnostic settings em API preview** (`2021-05-01-preview`) | Se a Azure recusar o template por causa dela, o cofre e o Front Door funcionam sem os dois recursos: apague `vaultAudit` (observability.bicep) e `wafLog` (frontdoor.bicep) e o teste correspondente, e configure o log à mão (`az monitor diagnostic-settings create`) até haver versão GA |
 | **Segredo semeado depois da fase 1 e `prompt-arena` ausente** | Sem o `prompt-arena` a fase 2 falha na criação do `job-worker-decisions` e no papel dele. Semeie (passo 4) e repita |
-| Postgres Flexible recusado na região (assinaturas novas, "location is restricted") | Pedir acesso no suporte ou trocar `location` (nada mais depende de East US 2) |
+| Postgres Flexible recusado na região (assinaturas novas, "location is restricted") | Pedir acesso no suporte ou trocar `location` (nada mais depende da região) |
+| A Chile Central é nova (ADR 0040): o template e o Postgres B1ms constam como disponíveis para a assinatura (07/11/2026), mas capacidade só a criação confirma | Falhou antes do Key Vault: apague o grupo e use a `canadacentral`. Depois do cofre, o nome `kv-alvesting` fica preso por 90 dias (purge protection) e a troca pede `nameSuffix` |
 | Orçamento não suportado no tipo da assinatura (Azure for Students) | Passar `deployBudget=false` na fase 1 (ou tirar o módulo `budget` do `main.bicep`) e monitorar em Cost Management |
 | `budgetStartDate` fora do que a Azure aceita: o mês corrente (data passada dentro do mês) ou um dos 12 meses seguintes. Sobre isso a Microsoft é explícita; já a recusa de uma regravação com a data antiga em outro mês não foi vista (por isso `deployBudget` só liga na fase 1) | Se a fase 1 cair num mês diferente de novembro de 2026, passe `budgetStartDate=AAAA-MM-01` do mês corrente |
 | Papel ainda propagando na fase 2 (erro de acesso ao Key Vault ou ao ACR). Mais provável na primeira execução: os papéis de segredo de todos os workloads são criados na própria fase 2 (~20) | Esperar uns minutos e repetir; o deploy é idempotente |
@@ -1341,7 +1415,11 @@ demais não mudam o plano.
 | Lock do Service Bus de 1 minuto com decisão de até 25 min | Resolvido no código: o `MessagingService` já passa `QUEUES[fila].lockRenewalMs` ao `createReceiver` (`maxAutoLockRenewalDurationInMs`; 26 minutos em `decisions`, 25 em `maintenance` por causa do `backup-verify`, 5 nas demais; ADR 0015 e 0028). Falta só o teste de integração com o emulador, que roda no CI |
 | **`terminationGracePeriodSeconds: 300` no `ca-worker-data` não foi testado contra a Azure** (a documentação dá 30 s de padrão e não cita um teto para o template) | Se a Azure recusar o valor, use o maior que ela aceitar e baixe o `DRAIN_TIMEOUT_MS` (`messaging.service.ts`) para 30 s a menos que ele. O que passar do prazo perde a trava, volta para a fila e a linha de `job_run` barra a repetição; o custo é um `eod` refeito |
 | SSE do chat bufferizado pelo Front Door (§5.15) | Teste da etapa 3; se falhar, subdomínio direto ao ingress da api |
-| Imagem do econômico no GHCR privado | O pacote precisa ser público (sem credencial no template) |
+| Imagem do econômico no GHCR privado | O pacote precisa ser público (sem credencial no template). Os dois pacotes nascem privados no primeiro publish (docs.github.com, "Configuring a package's access control and visibility": "the default visibility is private", e o pacote ligado ao repositório herda as permissões "but not the visibility"; a página "Publishing and installing a package with GitHub Actions" diz que herda a visibilidade: as duas lidas em 06/11/2026, e a primeira é a mais específica). Torne cada um público uma vez (`docs/DEPLOY.md`, seção 3); a API REST de pacotes não tem rota para a visibilidade, só para ler (`GET /users/{username}/packages/container/{package_name}`, campo `visibility`) |
+| **O repasse de `/api` pelo site e a api interna nunca rodaram na Azure** (econômico, ADR 0039). Não verificado: (a) o `ca-web` alcançar `https://ca-api.internal.<domínio>` (o certificado do ambiente vale para o `.internal.`; Learn diz que o TLS fecha); (b) de fora, o endereço interno dar 404; (c) o `X-Forwarded-For` que chega à api ser `<cliente>, <IP do site>` (o ingress acrescenta) e o IP do site ser privado, como o `trustedProxies` supõe (faixas RFC 1918, RFC 6598, loopback e ULA); (d) o `Set-Cookie` e os 302 voltarem pelo repasse como no e2e | O primeiro deploy prova (a), (b) e (d) pelo Playwright do web verde e pelo smoke (o login responde 401 e não 404; a rota interna, 404). Para (c): entre 4 vezes com a senha errada no site; a 4ª tem de dar 429 e outra rede (o 4G do celular) ainda 401. Se todo mundo tomar 429 junto, o IP do salto não é privado: veja o `X-Forwarded-For` que chega (um log temporário na api, sem o resto da requisição) e ponha a faixa dele no `PRIVATE_NETWORKS` de `auth.ts`. Depois do primeiro deploy, dá para estreitar a lista à sub-rede do ambiente |
+| **O portão da api no econômico é mais fraco** (o runner não alcança a api interna, ADR 0039): ela é provada só pelas sondas (`probe-green`), e o HTTP dela, pelo Playwright do web verde depois da virada da api | Aceito. Se a api nova errar uma rota, o Playwright do web verde reprova e o "Desfazer" devolve os dois apps, depois de alguns minutos com a api nova no ar |
+| **O repasse tem prazo de 30 s sem dados** (o `proxyTimeout` do Next, `node_modules/next/dist/server/lib/router-utils/proxy-request.js`: "we limit proxy requests to 30s by default") | Nenhuma rota de hoje chega perto (o login, a carteira e a exportação são curtos), e o SSE do `health/stream` manda dado antes disso. Para o chat (etapa 13, SSE longo), conferir: se cortar, `experimental.proxyTimeout` no `next.config.ts` |
+| **A restauração da temporada nunca rodou na Azure** (ADR 0039). Não verificado: (a) o `job start --yaml` com o comando trocado (o caminho da seção 8.6); (b) o `lifecycle: Main` dar o token da `id-alvesting-migrate` ao código e o `DefaultAzureCredential` achá-la pelo `AZURE_CLIENT_ID`; (c) o Storage Blob Data Reader no escopo do container `backups` bastar para o `download`; (d) o administrador do Flexible Server (que não é superusuário) fazer o `TRUNCATE` e os `COPY` (localmente, um dono sem superusuário fez, em 06/11/2026); (e) o disco efêmero do job (o dump vai para um arquivo temporário; o da temporada tem ~1 MB) | O log da execução diz o passo que falhou e a transação desfaz tudo. Se (b) ou (c) falharem (403 ou "ManagedIdentityCredential"), o papel ainda propagando (até 10 min) é o primeiro suspeito; depois, confira o `identitySettings` do job (`az containerapp job show --query properties.configuration.identitySettings`) |
 | Crédito acabando | Seção 6, "Parar o gasto" |
 
 ---
@@ -1378,6 +1456,8 @@ demais não mudam o plano.
 - [ ] O RBAC por fila e por container funciona (seção 3.2): o KEDA acorda o worker e as decisões, a api lê e reenvia a DLQ, o `backup-verify` envia e baixa o dump, e nenhuma operação dá 403 (seção 11; precisa da assinatura)
 - [ ] O blue/green de verdade (seção 2.5 e `docs/DEPLOY.md`): o primeiro deploy completo passa pelo endpoint green, o Playwright pelo green reprova de propósito num teste de falha forçada e o tráfego não muda, e `revert` volta uma revisão (precisa da assinatura)
 - [ ] Restore de teste executado (etapa 10)
+- [ ] **Perfil econômico (ADR 0039):** pelo site de produção, entrar, cadastrar, confirmar o e-mail, lançar na carteira e sair; `GET $SITE/api/v1/interno/fita` dá 404; a api não responde de fora (`curl https://ca-api.internal.<domínio>/health` dá 404 do ambiente); a 4ª senha errada seguida dá 429 só para quem errou (seção 11; precisa da assinatura)
+- [ ] A Temporada 1 restaurada na Azure com as contagens da origem e o operador do Mac desligado (`docs/RUNBOOK.md`, 13.6; precisa da assinatura)
 
 ---
 
@@ -1448,7 +1528,9 @@ e usa `bicep snapshot`, que avalia o template localmente para cada perfil, sem A
   pelo Node direto, de modo que mexer na lógica de um sinal reprova até a mudança deliberada dos dois lados; uma tabela de linhas de exemplo no formato do Pino, um caso positivo e um negativo por sinal e as bordas dos limiares, avaliada por um espelho em JS do `case()` e da razão de 5xx;
   frequência de 5 minutos), nenhum alerta com identidade e a linha de cada alerta e de cada sinal na tabela da seção 5.3;
 - Front Door, rotas, probe, WAF (três regras: o bloqueio de `/interno/` e dois rate limits, **nunca `RemoteAddr`**) e a trava de origem (`FRONT_DOOR_ID` e `ORIGIN_LOCK`) só no
-  padrão; o econômico sem Front Door, sem ACR, com GHCR e CORS;
+  padrão; o econômico sem Front Door, sem ACR, com GHCR, a api de ingress interno e sem CORS, o site com o repasse (`API_PROXY=on` e o
+  `API_INTERNAL_URL` interno) e a restauração da temporada (o migrate só LÊ o `backups`, com `lifecycle: Main`, e quem opera escreve nos três
+  containers; nada disso no padrão);
 - fase 1 (sem apps, sem tag e sem versão de prompt), domínio próprio e Azure OpenAI ligado (conta sem chave, implantação
   `DataZoneStandard`, papel Cognitive Services OpenAI User e `prompt-chat` só da api, nenhum `azure-openai-key`);
 - o `seed-secrets.sh` e o `verify-roles.sh` com um `az` falso (semeia o que falta, não sobrescreve, não imprime valor; o falso

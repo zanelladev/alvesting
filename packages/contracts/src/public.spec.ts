@@ -9,7 +9,10 @@ import {
   cycleRefSchema,
   decisionsQuerySchema,
   equitySchema,
+  feedDecisionSchema,
+  lastCycleSchema,
   leaderboardRowSchema,
+  leaderboardSchema,
   newsItemSchema,
   newsQuerySchema,
   nextCycleSchema,
@@ -240,6 +243,47 @@ describe('as respostas são estritas: o que não está no contrato não sai', ()
     expect(
       leaderboardRowSchema.safeParse({ ...row, competitor: { ...competitor, config: {} } }).success,
     ).toBe(false);
+  });
+
+  // O retroativo (ADR 0038): onde o ciclo aparece (a decisão do feed, o último ciclo da home), o modo e a hora real vêm junto, e o ranking diz
+  // quantos pregões foram de cada modo. Sem eles o site apresentaria um pregão retroativo como se fosse ao vivo.
+  it('a decisão do feed e o último ciclo da home levam o modo e a hora real; o ranking conta os pregões de cada modo', () => {
+    const decision = {
+      date: '2026-10-13',
+      mode: 'RETROATIVO',
+      executedAt: '2026-11-07T14:02:11.000Z',
+      competitor,
+      status: 'DECIDED',
+      holdReason: null,
+      marketView: 'neutro',
+      summary: 'Dia calmo.',
+      items: [],
+      dropped: [],
+    };
+    expect(feedDecisionSchema.parse(decision)).toEqual(decision);
+    const { mode: _mode, ...withoutMode } = decision;
+    expect(feedDecisionSchema.safeParse(withoutMode).success).toBe(false);
+    expect(feedDecisionSchema.safeParse({ ...decision, mode: 'ATRASADO' }).success).toBe(false);
+    const last = {
+      date: '2026-10-13',
+      status: 'CLOSED',
+      skipReason: null,
+      decisionAt: '2026-10-13T11:00:00.000Z',
+      deadlineAt: '2026-10-13T12:30:00.000Z',
+      closedAt: '2026-10-13T11:01:00.000Z',
+      mode: 'RETROATIVO',
+      executedAt: '2026-11-07T14:02:11.000Z',
+      prompt: null,
+      briefingSha256: null,
+      counts: { BUY: 0, SELL: 0, HOLD: 0 },
+    };
+    expect(lastCycleSchema.parse(last)).toEqual(last);
+    const { executedAt: _executedAt, ...withoutExecutedAt } = last;
+    expect(lastCycleSchema.safeParse(withoutExecutedAt).success).toBe(false);
+    const counts = leaderboardSchema.shape.cyclesByMode;
+    expect(counts.parse({ RETROATIVO: 17, AO_VIVO: 3 })).toEqual({ RETROATIVO: 17, AO_VIVO: 3 });
+    expect(counts.safeParse({ RETROATIVO: 17 }).success).toBe(false);
+    expect(counts.safeParse({ RETROATIVO: -1, AO_VIVO: 0 }).success).toBe(false);
   });
 
   it('o tipo do competidor é um dos cinco: modelo, Sorteio, igual-peso, CDI e BOVA11', () => {

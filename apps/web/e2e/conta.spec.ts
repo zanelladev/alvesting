@@ -74,7 +74,7 @@ test.describe('cadastro, verificação, entrar, conta, exportar, sair e excluir'
     await abrirMenu(page);
     await page.getByRole('banner').getByRole('link', { name: 'Conta', exact: true }).click();
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/entrar?proximo=%2Fconta`);
-    // o link da tela (a tela dividida tem a pílula "Criar conta" no banner também)
+    // o link da tela, que mora na casca do app (o banner tem a "Conta", e não a criação)
     await page.getByRole('main').getByRole('link', { name: 'Criar conta' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Criar conta' })).toBeVisible();
 
@@ -105,7 +105,7 @@ test.describe('cadastro, verificação, entrar, conta, exportar, sair e excluir'
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/verificar-email?retorno=1`);
     await expect(page.getByRole('heading', { level: 1, name: 'E-mail confirmado' })).toBeVisible();
 
-    // entrar leva à conta (o link da tela: o cabeçalho do site tem a pílula "Entrar" também)
+    // entrar leva à conta (o link da tela; no banner da casca do app fica a "Conta")
     await page.getByRole('main').getByRole('link', { name: 'Entrar', exact: true }).click();
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/entrar`);
     await signIn(page, address, PASSWORD);
@@ -724,14 +724,20 @@ test.describe('por toque', () => {
     await page.getByText(/^Li e aceito os termos de uso/).tap();
     await expect(terms).toBeChecked();
     await expect(terms).not.toHaveAttribute('aria-invalid', 'true');
-    // marcada, a caixa é um quadrado na cor da tinta com um X (não depende da cor para dizer que está marcada; o e2e roda no tema claro,
-    // ADR 0035, em que a tinta é a quase preta): o que uma medida de DOM não vê e o projeto não confere por captura de tela (a linha de base
-    // de uma plataforma não vale em outra)
-    const painted = await terms.evaluate((box) => ({
-      mark: getComputedStyle(box, '::before').content,
-      background: getComputedStyle(box).backgroundColor,
-    }));
-    expect(painted).toEqual({ mark: '"✕"', background: 'rgb(10, 10, 10)' });
+    // marcada, a caixa é a NATIVA de 20 px na cor da tinta, com o ✓ do sistema (não depende da cor para dizer que está marcada; o e2e roda
+    // no tema claro, ADR 0035, em que a tinta é a quase preta): o que uma medida de DOM não vê e o projeto não confere por captura de tela (a
+    // linha de base de uma plataforma não vale em outra). Nativa quer dizer sem `appearance: none`: o ✕ de antes, num `::before` do <input>,
+    // o Firefox não desenhava (globals.css, `.check`).
+    const painted = await terms.evaluate((box) => {
+      const style = getComputedStyle(box);
+      const rect = box.getBoundingClientRect();
+      return {
+        nativa: style.appearance !== 'none',
+        accent: style.accentColor,
+        size: [Math.round(rect.width), Math.round(rect.height)],
+      };
+    });
+    expect(painted).toEqual({ nativa: true, accent: 'rgb(10, 10, 10)', size: [20, 20] });
     await page.getByText(/^Li e aceito a política de privacidade/).tap();
     await expect(privacy).toBeChecked();
 

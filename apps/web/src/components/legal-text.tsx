@@ -126,7 +126,7 @@ export function LegalText({ text }: { text: string }) {
   const ids = ancoras(parts).map((item) => item.id);
   let secao = 0;
   return (
-    // a prosa até 65 caracteres por linha (max-w-prose), 16/1,6, com os subtítulos em 22 e 18 (docs/redesign-rallies/plano.md, f.5)
+    // a prosa até 65 caracteres por linha (max-w-prose), 16/1,6, com os subtítulos em 22 e 18 (ADR 0035)
     <div className="max-w-prose space-y-4 text-base leading-[1.6] break-words">
       {parts.map((block, index) => {
         switch (block.kind) {

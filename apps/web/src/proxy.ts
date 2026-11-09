@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { fail } from '@alvesting/contracts';
+import { forwardToApi } from './lib/api-proxy';
 import { REVALIDATE_PATH, hasValidRevalidateSecret } from './lib/cache';
 
 // Trava de origem (plano 5.4, ADR 0018): atrás do Front Door, o site só atende quem traz o X-Azure-FDID do nosso perfil.
@@ -23,6 +24,9 @@ import { REVALIDATE_PATH, hasValidRevalidateSecret } from './lib/cache';
 // Não é uma exceção, e vem depois da trava: o caminho com um "%" que não é percent-encoding (`/acoes/%`, `/modelos/%zz`) é 404, e
 // não o 500 sem corpo que o Next dá ao decodificar o parâmetro das rotas dinâmicas (sem log, e um scanner o repetiria às dezenas).
 // Quem não passa pela trava recebe 403 em qualquer caminho, torto ou não.
+//
+// Também depois da trava: o repasse de /api/* à api (src/lib/api-proxy.ts; ADR 0039), que só liga com API_PROXY=on (o perfil econômico, sem
+// Front Door, e o `pnpm dev`). Nunca leva /api/v1/interno/* e regrava o X-Forwarded-For com a entrada da direita.
 export function proxy(request: NextRequest) {
   const expected = process.env.FRONT_DOOR_ID?.toLowerCase();
   const { pathname } = request.nextUrl;
@@ -55,7 +59,10 @@ export function proxy(request: NextRequest) {
     });
   }
 
-  // O feed de decisões era da home, e foi para a /arena (docs/redesign-rallies/plano.md, c.3): o `/?filtro=` e o `/?cursor=` de antes (links
+  const toApi = forwardToApi(request);
+  if (toApi) return toApi;
+
+  // O feed de decisões era da home, e foi para a /arena (ADR 0035): o `/?filtro=` e o `/?cursor=` de antes (links
   // guardados, buscadores) levam ao mesmo feed, com a query inteira e 308 (o `#feed` o navegador mantém). Mora aqui, DEPOIS da trava, e não
   // no `redirects()` do next.config.ts, que roda antes do proxy e responderia sem o X-Azure-FDID: não é exceção à trava.
   const { searchParams } = request.nextUrl;

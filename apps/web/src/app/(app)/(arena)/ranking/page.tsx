@@ -17,7 +17,7 @@ import { versoesDosLogos } from '../../../../lib/logos';
 import { orNotFound } from '../../../../lib/page';
 import { withApiDown } from '../../../../lib/with-api-down';
 
-// O ranking completo (plano §3; no desenho do Rallies, docs/redesign-rallies/plano.md, e.6): a aba "Ranking" da área da arena, com a posição
+// O ranking completo (plano §3; no desenho do Rallies, ADR 0035): a aba "Ranking" da área da arena, com a posição
 // de cada competidor em cada pregão (o Bump Chart da beUI, pela mesma regra do ranking: lib/chart.ts, rankByDay), os modelos, o Sorteio e as
 // referências em tabelas separadas, com todas as métricas da liquidação e a tendência do patrimônio (a sparkline da beUI), e o que cada
 // coluna quer dizer. A barra "Carteiras" fica ao lado, como na arena. O "simulado" vai uma vez em cada contexto: na nota da tabela dos

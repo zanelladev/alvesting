@@ -3,7 +3,7 @@ import { Arte } from '../components/arte';
 import { SiteShell } from '../components/site-chrome';
 import { BUTTON, NavLink } from '../components/ui';
 
-// A página 404, uma só para o site inteiro (docs/redesign-rallies/plano.md, f.8): o endereço não existe, ou o dado ainda não foi publicado
+// A página 404, uma só para o site inteiro (ADR 0035): o endereço não existe, ou o dado ainda não foi publicado
 // (temporada, modelo, ciclo ou ação que a api não conhece). Diz o que fazer em vez de largar o leitor num beco. Nenhum dado entra aqui, então
 // o texto sai mesmo com a api fora do ar. O título no vazio e a arte embaixo, nunca atrás do texto: o urso derrubando as colunas (a página que
 // caiu, numa arena de bolsa), na moldura escura nos dois temas.
@@ -12,7 +12,7 @@ import { BUTTON, NavLink } from '../components/ui';
 // leva o quadro do urso (17 KB): só o quadro de espera, e o quadro 0 chega no navegador depois do load (components/arte.tsx). A casca fica
 // (a 404 desenhada no servidor precisa dela): um not-found por grupo com um pega-tudo `[...resto]` a tiraria da raiz, mas o `notFound()`
 // lançado por uma página sai do servidor como documento vazio no Next 16.4.3 (a 404 só aparece com JavaScript), e a URL que não existe
-// perderia o HTML (docs/redesign-rallies/relatorios/landing.md). Dinâmica, e não estática: o rodapé lê a data do último pregão das cotações
+// perderia o HTML. Dinâmica, e não estática: o rodapé lê a data do último pregão das cotações
 // (`connection()`), por streaming.
 export const metadata: Metadata = { title: 'Página não encontrada' };
 

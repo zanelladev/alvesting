@@ -89,17 +89,16 @@ export function loadDevEnv(
   }
 }
 
-// Só no `pnpm dev`: o navegador fala com uma origem só (docs/CONTA.md, seção 9). Na Azure o Front Door manda `/api/*` para a api e o
-// resto para o site; em dev o site (4300) e a api (4310) têm portas diferentes, e sem isto o cookie da sessão, o `Origin` que a api
-// confere e o link do e-mail (`PUBLIC_URL/api/auth/...`) não fecham. O `rewrites` repassa `/api/*` à api. Fica de fora do build e do
-// servidor de produção (`nextConfig` só o põe na fase de desenvolvimento): o site publicado nunca repassa nada à api, e o e2e usa um
-// Front Door imitado (apps/web/e2e/front-door.ts) em vez deste caminho.
-export function devRewrites(env: Record<string, string | undefined>) {
-  const base = env.API_INTERNAL_URL ?? 'http://127.0.0.1:4310';
-  if (!URL.canParse(base) || !/^https?:$/.test(new URL(base).protocol)) {
-    throw new Error('API_INTERNAL_URL inválida: o rewrites de /api em dev não sabe para onde ir');
-  }
-  return [{ source: '/api/:path*', destination: `${new URL(base).origin}/api/:path*` }];
+// Só no `pnpm dev`: o navegador fala com uma origem só (docs/CONTA.md, seção 9). Em dev o site (4300) e a api (4310) têm portas diferentes,
+// e sem um repasse o cookie da sessão, o `Origin` que a api confere e o link do e-mail (`PUBLIC_URL/api/auth/...`) não fecham. Quem repassa
+// `/api/*` é o mesmo código do perfil econômico (src/lib/api-proxy.ts, no proxy.ts; ADR 0039), ligado aqui por API_PROXY=on: o dev exercita o
+// caminho de produção (o bloqueio de /api/v1/interno/*, o X-Forwarded-For regravado). No build e na imagem nada disto roda: lá o repasse liga
+// pelo ambiente do processo (o Bicep põe API_PROXY só no econômico; no padrão quem manda /api/* à api é o Front Door).
+export const DEV_API_URL = 'http://127.0.0.1:4310';
+
+export function devApiProxy(env: Record<string, string | undefined> = process.env): void {
+  env.API_PROXY = 'on';
+  env.API_INTERNAL_URL ||= DEV_API_URL;
 }
 
 export default function nextConfig(phase: string): NextConfig {
@@ -107,5 +106,8 @@ export default function nextConfig(phase: string): NextConfig {
   loadDevEnv(
     ['.env.local', '.env.example'].map((name) => new URL(`../../${name}`, import.meta.url)),
   );
-  return { ...config, rewrites: () => Promise.resolve(devRewrites(process.env)) };
+  devApiProxy();
+  // sem o círculo "N" do Next no canto: todo canto da casca tem algo (o "Conta" do trilho, a barra de abas do celular, o
+  // "Entrar" da landing); os erros de compilação e de execução continuam aparecendo (documentação do devIndicators, Next 16)
+  return { ...config, devIndicators: false };
 }

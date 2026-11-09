@@ -93,6 +93,8 @@ const cycle = (date: string): CycleView | null => {
     seasonId: season.id,
     decisionAt: `${date}T11:00:00.000Z`,
     deadlineAt: `${date}T12:30:00.000Z`,
+    mode: 'AO_VIVO' as const,
+    executedAt: `${date}T11:00:00.000Z`,
   };
   if (date === '2026-11-04') {
     // um modelo decidiu com itens descartados; outro perdeu o prazo (HOLD forçado)
@@ -374,7 +376,12 @@ function route(
   if (rest === '/decisions') return ok({ rows: [], nextCursor: null } satisfies DecisionsPage);
   if (rest === '/news') return ok(news(url.searchParams.get('ticker')));
   if (rest === '/seasons/fixture/leaderboard') {
-    return ok({ season, asOf: null, rows: [] } satisfies Leaderboard);
+    return ok({
+      season,
+      asOf: null,
+      cyclesByMode: { RETROATIVO: 0, AO_VIVO: 0 },
+      rows: [],
+    } satisfies Leaderboard);
   }
   if (rest === '/seasons/fixture/equity')
     return ok({ season, dates: [], series: [] } satisfies Equity);
@@ -436,6 +443,8 @@ function route(
       decisions: [
         {
           date: '2026-11-06',
+          mode: 'AO_VIVO',
+          executedAt: '2026-11-06T11:00:00.000Z',
           competitor: fixtureModel,
           action: 'BUY',
           percent: 10,

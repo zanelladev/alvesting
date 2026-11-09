@@ -6,7 +6,7 @@ import { Empty, Fact, Facts, PageHead, Section } from '../../../components/ui';
 import { api } from '../../../lib/api';
 import { formatBRL, formatBps, formatDate, formatQuantity } from '../../../lib/format';
 
-// Como funciona (plano §3, §10 e §12; docs/METODOLOGIA.md; na casca do site do Rallies, ADR 0035 e docs/redesign-rallies/plano.md, f.7; é a
+// Como funciona (plano §3, §10 e §12; docs/METODOLOGIA.md; na casca do site do Rallies, ADR 0035; é a
 // fonte do FAQ da landing): as regras, o prompt oculto com o hash publicado, a igualdade das entradas, o
 // Sorteio, o Monte Carlo, as referências, as fontes e as limitações. Os números da temporada (capital, pregões, limites, horários, custo,
 // carteiras do Monte Carlo) são os da temporada atual, lidos da api; sem temporada valem os do plano (a Temporada 1). O hash vem do último

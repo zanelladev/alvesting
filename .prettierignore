@@ -5,6 +5,8 @@ dist
 playwright-report
 test-results
 .lighthouseci
+# relatórios de cobertura gerados pelo Vitest (`pnpm coverage`)
+coverage
 pnpm-lock.yaml
 apps/api/src/generated
 apps/api/prisma/migrations

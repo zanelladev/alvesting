@@ -56,7 +56,7 @@ test.describe('smoke', () => {
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
   });
 
-  // A faixa de cotações da arena (a /arena, para onde foi o conteúdo da home de antes; docs/redesign-rallies/plano.md, seção e) lê o BOVA11
+  // A faixa de cotações da arena (a /arena, para onde foi o conteúdo da home de antes; ADR 0035) lê o BOVA11
   // pela rota interna da api, com o segredo do site (docs/API.md, seção 6; ADR 0033). Se o segredo do site não for o da api, a rota responde
   // 404 e a arena vira a tela "Não foi possível carregar os dados", sem esta região. É o que a prova da revisão nova mostra antes de ela
   // receber tráfego. Banco sem barra (o primeiro deploy) diz "sem dado": o que conta é a faixa estar lá, e o crédito das cotações no rodapé.

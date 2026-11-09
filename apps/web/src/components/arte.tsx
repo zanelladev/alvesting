@@ -18,19 +18,14 @@ export const GRADES = {
   urso: { cols: 200, rows: 85, quadro0: null },
 } as const;
 
-// `laco={false}` (T2c; docs/redesign-rallies/plano.md, f.6): só o quadro 0 do HTML, sem o ArteViva (nada do arquivo inteiro). É da tela dividida
-// de entrar e criar conta, que mostra a escadaria só a partir de 1024 px, justamente onde o laço tocaria. Só serve à arte que traz o quadro 0 no
-// HTML (a escadaria): o do urso chega pelo ArteViva.
 export function Arte({
   nome,
   className = '',
   style,
-  laco = true,
 }: {
   nome: keyof typeof GRADES;
   className?: string;
   style?: CSSProperties;
-  laco?: boolean;
 }) {
   const grade = GRADES[nome];
   const sprite = `/ascii/arte/${nome}-q0.png`;
@@ -52,7 +47,7 @@ export function Arte({
         <div className="arte-ladrilho" />
         <pre className="arte-texto">{grade.quadro0}</pre>
       </div>
-      {laco ? <ArteViva nome={nome} quadro0={grade.quadro0 === null} /> : null}
+      <ArteViva nome={nome} quadro0={grade.quadro0 === null} />
     </div>
   );
 }

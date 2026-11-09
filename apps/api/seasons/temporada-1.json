@@ -1,9 +1,10 @@
 {
   "slug": "temporada-1",
-  "name": "Temporada 1 (rascunho: o elenco é decisão do Artur)",
+  "name": "Temporada 1",
+  "startDate": "2026-10-13",
   "params": {
     "capitalCents": 10000000,
-    "sessions": 20,
+    "sessions": 53,
     "maxPositions": 10,
     "maxOrdersPerCycle": 5,
     "buyPercentOfEquity": [5, 25],
@@ -22,8 +23,14 @@
       "name": "Claude Opus 5.5",
       "provider": "openrouter",
       "modelId": "anthropic/claude-opus-5.5",
-      "capabilities": { "jsonSchema": true, "reasoningEffort": true },
-      "pricingUsdPerMTok": { "input": "4", "output": "20" }
+      "capabilities": {
+        "jsonSchema": true,
+        "reasoningEffort": true
+      },
+      "pricingUsdPerMTok": {
+        "input": "4",
+        "output": "20"
+      }
     },
     {
       "kind": "MODEL",
@@ -31,8 +38,14 @@
       "name": "GPT-6.1 Sol",
       "provider": "openrouter",
       "modelId": "openai/gpt-6.1-sol",
-      "capabilities": { "jsonSchema": true, "reasoningEffort": true },
-      "pricingUsdPerMTok": { "input": "2", "output": "10" }
+      "capabilities": {
+        "jsonSchema": true,
+        "reasoningEffort": true
+      },
+      "pricingUsdPerMTok": {
+        "input": "2",
+        "output": "10"
+      }
     },
     {
       "kind": "MODEL",
@@ -40,8 +53,14 @@
       "name": "Gemini 4 Argon",
       "provider": "openrouter",
       "modelId": "google/gemini-4-argon",
-      "capabilities": { "jsonSchema": true, "reasoningEffort": true },
-      "pricingUsdPerMTok": { "input": "2", "output": "10" }
+      "capabilities": {
+        "jsonSchema": true,
+        "reasoningEffort": true
+      },
+      "pricingUsdPerMTok": {
+        "input": "2",
+        "output": "10"
+      }
     },
     {
       "kind": "MODEL",
@@ -49,8 +68,14 @@
       "name": "Grok 4.7",
       "provider": "openrouter",
       "modelId": "x-ai/grok-4.7",
-      "capabilities": { "jsonSchema": true, "reasoningEffort": true },
-      "pricingUsdPerMTok": { "input": "2", "output": "6" }
+      "capabilities": {
+        "jsonSchema": true,
+        "reasoningEffort": true
+      },
+      "pricingUsdPerMTok": {
+        "input": "2",
+        "output": "6"
+      }
     },
     {
       "kind": "MODEL",
@@ -58,8 +83,14 @@
       "name": "DeepSeek V4 Pro (0813)",
       "provider": "openrouter",
       "modelId": "deepseek/deepseek-v4-pro-0813",
-      "capabilities": { "jsonSchema": true, "reasoningEffort": false },
-      "pricingUsdPerMTok": { "input": "0.115", "output": "4" }
+      "capabilities": {
+        "jsonSchema": true,
+        "reasoningEffort": false
+      },
+      "pricingUsdPerMTok": {
+        "input": "0.1165",
+        "output": "4.66"
+      }
     },
     {
       "kind": "MODEL",
@@ -67,17 +98,37 @@
       "name": "Qwen3.8 Max (0902)",
       "provider": "openrouter",
       "modelId": "qwen/qwen3.8-max-0902",
-      "capabilities": { "jsonSchema": true, "reasoningEffort": true },
-      "pricingUsdPerMTok": { "input": "2", "output": "6" }
+      "capabilities": {
+        "jsonSchema": true,
+        "reasoningEffort": true
+      },
+      "pricingUsdPerMTok": {
+        "input": "2",
+        "output": "6"
+      }
     },
-    { "kind": "RANDOM", "slug": "sorteio", "name": "Sorteio" },
+    {
+      "kind": "RANDOM",
+      "slug": "sorteio",
+      "name": "Sorteio"
+    },
     {
       "kind": "BENCHMARK",
       "slug": "igual-peso",
       "name": "Igual-peso do universo (só preço)",
       "benchmark": "EQUAL_WEIGHT"
     },
-    { "kind": "BENCHMARK", "slug": "cdi", "name": "CDI", "benchmark": "CDI" },
-    { "kind": "BENCHMARK", "slug": "bova11", "name": "BOVA11 (contexto)", "benchmark": "BOVA11" }
+    {
+      "kind": "BENCHMARK",
+      "slug": "cdi",
+      "name": "CDI",
+      "benchmark": "CDI"
+    },
+    {
+      "kind": "BENCHMARK",
+      "slug": "bova11",
+      "name": "BOVA11 (contexto)",
+      "benchmark": "BOVA11"
+    }
   ]
 }

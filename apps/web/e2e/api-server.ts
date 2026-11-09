@@ -91,3 +91,17 @@ export const ADMIN_API_ENV = {
   PROMPT_ARENA_VERSION: '0123456789abcdef0123456789abcdef',
   ARENA_MONTHLY_COST_CAP_USD: '40',
 };
+
+// O perfil econômico (ADR 0039): sem Front Door, o navegador fala com o SITE, que repassa /api/* à api (API_PROXY=on, src/lib/api-proxy.ts), e
+// a api só é alcançada por ele. Três servidores, nas portas 4312 a 4314 (e2e/economico.spec.ts): a api, com NODE_ENV=test como a da conta (o
+// remetente falso), mas SEM a trava de origem (sem Front Door o IP do limite de tentativas vem do X-Forwarded-For); o site, o mesmo build com o
+// repasse ligado; e o ingress imitado do Container Apps (e2e/ingress.ts), em https, que termina o TLS e acrescenta o IP do cliente ao
+// X-Forwarded-For. O PUBLIC_URL da api é o do ingress: o cookie, o Origin e o link do e-mail saem dele.
+export const ECO_API_PORT = 4312;
+export const ECO_API_URL = `http://127.0.0.1:${ECO_API_PORT}`;
+export const ECO_WEB_PORT = 4313;
+export const ECO_WEB_URL = `http://127.0.0.1:${ECO_WEB_PORT}`;
+export const ECO_INGRESS_PORT = 4314;
+export const ECO_SITE_URL = `https://127.0.0.1:${ECO_INGRESS_PORT}`;
+export const ECO_OUTBOX_DIR = path.join(tmpdir(), 'alvesting-e2e-eco-outbox');
+export const ECO_BUS_DIR = path.join(tmpdir(), 'alvesting-e2e-eco-bus');

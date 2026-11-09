@@ -6,7 +6,7 @@ import { DecisionCard } from '../decisions';
 import { LeaderboardTable } from '../tables';
 import { Empty, NavLink, Strip, StripItem, isSimulated } from '../ui';
 
-// Os recortes de UI da landing (docs/redesign-rallies/plano.md, d.3 e d.5), no lugar das capturas do app que o Rallies põe sobre a pintura:
+// Os recortes de UI da landing (ADR 0035), no lugar das capturas do app que o Rallies põe sobre a pintura:
 // pedaços de tela de verdade, com o dado da api (nunca uma pintura, uma captura nem um número inventado). Onde não há dado ainda, o recorte diz
 // o que falta. O cartão é o `.recorte` (globals.css, o bloco da landing): o canvas que flutua, com a sombra do recorte do Rallies e o anel de
 // 1 px da elevação (a Regra Plana: sombra para o que eleva, sem fio por cima dela).

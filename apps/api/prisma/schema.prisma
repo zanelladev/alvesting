@@ -314,6 +314,15 @@ enum CycleStatus {
   @@map("cycle_status")
 }
 
+// Como o ciclo foi rodado (ADR 0038): AO_VIVO na janela das 08:00 às 09:30 do próprio pregão; RETROATIVO depois dela, pelo
+// arena:retroativo, com o relógio simulado no pregão e só com o que o pipeline ao vivo teria visto às 07:30 (docs/METODOLOGIA.md).
+enum CycleMode {
+  RETROATIVO
+  AO_VIVO
+
+  @@map("cycle_mode")
+}
+
 enum DecisionStatus {
   DECIDED
   // HOLD que o sistema impôs (prazo, prompt divergente, resposta inválida, falha); o motivo fica em hold_reason
@@ -350,6 +359,9 @@ model Season {
   createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   startedAt  DateTime?    @map("started_at") @db.Timestamptz(3)
   finishedAt DateTime?    @map("finished_at") @db.Timestamptz(3)
+  // o SHA-256 do texto do prompt com que a temporada começou (arena:retroativo, ADR 0038): o retroativo e o operador local recusam
+  // abrir ciclo com outro. Nulo na temporada iniciada pelo season:start ou pelo painel, que não leem o prompt
+  promptSha256 String?   @map("prompt_sha256") @db.Char(64)
 
   competitors Competitor[]
   cycles      Cycle[]
@@ -420,6 +432,11 @@ model Cycle {
   promptVersionId String?     @map("prompt_version_id") @db.VarChar(26)
   createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   closedAt        DateTime?   @map("closed_at") @db.Timestamptz(3)
+  // RETROATIVO ou AO_VIVO. decision_at, deadline_at e closed_at seguem o relógio do pregão (simulado no retroativo)
+  mode            CycleMode   @default(AO_VIVO)
+  // a hora REAL em que a linha nasceu: no retroativo é dias depois do pregão. Vem do relógio da máquina (o padrão), nunca do relógio do
+  // pregão, e a api não a escreve (privilégio por coluna)
+  executedAt      DateTime    @default(now()) @map("executed_at") @db.Timestamptz(3)
 
   season        Season         @relation(fields: [seasonId], references: [id])
   briefing      Briefing?      @relation(fields: [briefingId], references: [id], onDelete: Restrict)

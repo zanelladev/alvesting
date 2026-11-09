@@ -26,7 +26,9 @@
 //   id-alvesting-scale   só as regras de escala do KEDA do worker e das decisões
 // lifecycle None = "só a plataforma usa" (pull da imagem, referência de segredo, regra de escala): o token não fica
 // disponível ao código do container. Vale para o web, o migrate e a do KEDA. Os demais usam o SDK da Azure (Service
-// Bus, Blob, OpenAI): a identidade deles fica disponível e AZURE_CLIENT_ID diz ao DefaultAzureCredential qual é.
+// Bus, Blob, OpenAI): a identidade deles fica disponível e AZURE_CLIENT_ID diz ao DefaultAzureCredential qual é. A exceção do perfil
+// econômico (restoreFromBackups, ADR 0039): o migrate lê o dump da temporada no container `backups`, então a identidade dele vale para o
+// código (Main) e ele recebe AZURE_CLIENT_ID e STORAGE_BLOB_ENDPOINT.
 
 param location string
 param tags object
@@ -61,13 +63,14 @@ param promptArenaVersion string
 param arenaMonthlyCostCapUsd int
 @description('Nome do ACR para pull por identidade. Vazio = imagem pública (GHCR, perfil econômico).')
 param registryName string
+@description('Padrão: o Front Door é a borda, manda /api/* à api e as duas origens têm a trava. Sem ele (econômico) a api tem ingress INTERNO e o site repassa /api/* a ela (API_PROXY, apps/web/src/proxy.ts; ADR 0039).')
 param hasFrontDoor bool
 param webMinReplicas int
 param webMaxReplicas int
 param apiMinReplicas int
 param apiMaxReplicas int
-@description('Perfil econômico: a api fica em outro subdomínio e libera só a origem da web. No padrão o Front Door serve tudo no mesmo domínio.')
-param corsEnabled bool
+@description('Perfil econômico (ADR 0039): o job-migrate também restaura o dump da temporada (dist/restore-cli.js), lendo o container backups pela identidade dele (que por isso vale para o código, lifecycle Main, com AZURE_CLIENT_ID e STORAGE_BLOB_ENDPOINT). O papel de leitura no container é do storage.bicep.')
+param restoreFromBackups bool
 param publicUrl string
 @description('ID do endpoint do Front Door, para o purge. Só é lido com hasFrontDoor.')
 param frontDoorEndpointId string
@@ -231,14 +234,19 @@ resource schedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11
   name: identityNames.sched
 }
 
+resource migrateIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing = {
+  name: identityNames.migrate
+}
+
 // Variáveis em texto puro: só endereços e flags. Nada que pareça segredo (o infra/tests/check.mjs confere).
 // O AZURE_CLIENT_ID entra à parte, porque cada workload tem a identidade dele.
+var blobEndpoint = 'https://${storageAccountName}.blob.${environment().suffixes.storage}/'
 var backEnv = [
   { name: 'NODE_ENV', value: 'production' }
   { name: 'LOG_LEVEL', value: 'info' }
   { name: 'KEY_VAULT_URL', value: 'https://${keyVaultName}${environment().suffixes.keyvaultDns}/' }
   { name: 'SERVICEBUS_FQDN', value: '${serviceBusName}.servicebus.windows.net' }
-  { name: 'STORAGE_BLOB_ENDPOINT', value: 'https://${storageAccountName}.blob.${environment().suffixes.storage}/' }
+  { name: 'STORAGE_BLOB_ENDPOINT', value: blobEndpoint }
 ]
 var openAiEnv = openAiEnabled
   ? [
@@ -261,6 +269,11 @@ var accountEnv = concat(
 // X-Azure-FDID = FRONT_DOOR_ID, e em produção RECUSAM SUBIR se FRONT_DOOR_ID vier vazio (fail closed). Sem esta
 // variável um FRONT_DOOR_ID vazio pareceria "sem trava" e um erro de configuração a desligaria em silêncio.
 var originLockEnv = hasFrontDoor ? [{ name: 'ORIGIN_LOCK', value: 'front-door' }] : []
+// Uma origem só, sem Front Door (ADR 0039): o navegador chama /api/* no próprio site (os formulários da conta, a carteira, o link do e-mail),
+// e o site o repassa à api pelo endereço INTERNO dela (<app>.internal.<domínio>: Learn, "Communicate between container apps"), que só os apps
+// do ambiente alcançam. O SSR lê a api pelo mesmo endereço. No padrão quem faz o repasse é o Front Door, e a api tem o endereço externo.
+var apiInternalUrl = hasFrontDoor ? 'https://ca-api.${defaultDomain}' : 'https://ca-api.internal.${defaultDomain}'
+var apiProxyEnv = hasFrontDoor ? [] : [{ name: 'API_PROXY', value: 'on' }]
 
 // --- Web: Next standalone ------------------------------------------------------------------------
 resource web 'Microsoft.App/containerApps@2025-01-01' = {
@@ -291,10 +304,11 @@ resource web 'Microsoft.App/containerApps@2025-01-01' = {
               { name: 'NODE_ENV', value: 'production' }
               { name: 'PORT', value: string(webPort) }
               { name: 'HOSTNAME', value: '0.0.0.0' }
-              { name: 'API_INTERNAL_URL', value: 'https://ca-api.${defaultDomain}' }
+              { name: 'API_INTERNAL_URL', value: apiInternalUrl }
               { name: 'PUBLIC_URL', value: publicUrl }
             ],
             originLockEnv,
+            apiProxyEnv,
             envOf(webSecrets)
           )
           probes: probesOn(webPort)
@@ -310,6 +324,8 @@ resource web 'Microsoft.App/containerApps@2025-01-01' = {
 }
 
 // --- Api: NestJS (HTTP e chat SSE) ---------------------------------------------------------------
+// Sem Front Door (econômico) o ingress é INTERNO e sem CORS: o navegador nunca chama o host da api (o site repassa /api/*), e de fora do
+// ambiente o endereço dela dá 404 (Learn, "Ingress in Azure Container Apps"). Fecha a porta que o CORS deixava: a api direto na internet.
 resource api 'Microsoft.App/containerApps@2025-01-01' = {
   name: 'ca-api'
   location: location
@@ -321,21 +337,7 @@ resource api 'Microsoft.App/containerApps@2025-01-01' = {
     workloadProfileName: 'Consumption'
     configuration: {
       activeRevisionsMode: 'Multiple'
-      ingress: {
-        external: true
-        targetPort: apiPort
-        transport: 'auto'
-        allowInsecure: false
-        corsPolicy: corsEnabled
-          ? {
-              allowedOrigins: ['https://ca-web.${defaultDomain}']
-              allowedMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']
-              allowedHeaders: ['content-type']
-              allowCredentials: true
-              maxAge: 600
-            }
-          : null
-      }
+      ingress: { external: hasFrontDoor, targetPort: apiPort, transport: 'auto', allowInsecure: false }
       registries: registriesOf(registryName, idOf(identityNames.api))
       secrets: secretsOf(secretBase, idOf(identityNames.api), apiSecrets)
     }
@@ -563,6 +565,17 @@ resource schedulerJobs 'Microsoft.App/jobs@2025-01-01' = [
 // alvesting_api, define a senha dele (a do database-url-api, como resumo SCRAM) e o põe no papel de grupo que a migration criou. Os dois são
 // idempotentes, então repetir o job é seguro, e girar a senha da api é gravar o segredo novo e rodar o job de novo (docs/INFRA.md, 8.2).
 // `sh -c` (a imagem é a node:bookworm-slim, que tem o sh) em vez de um comando só: o Container Apps não encadeia dois comandos.
+// No econômico (restoreFromBackups) o mesmo job, com o comando trocado numa execução (docs/RUNBOOK.md, 13.6), restaura o dump da temporada:
+// a identidade dele lê o container `backups` (só leitura, storage.bicep) e vale para o código (Main), com AZURE_CLIENT_ID e o endereço do
+// Blob. O teto: o código do job (as migrations, o db:roles e a restauração, todos nossos) recebe o token de um papel que só lê dumps sem dado
+// pessoal; quem pode iniciar o job já lia o database-url do administrador (docs/INFRA.md, 3.2).
+var migrateRestoreEnv = restoreFromBackups
+  ? [
+      { name: 'AZURE_CLIENT_ID', value: migrateIdentity.properties.clientId }
+      { name: 'STORAGE_BLOB_ENDPOINT', value: blobEndpoint }
+    ]
+  : []
+
 resource migrate 'Microsoft.App/jobs@2025-01-01' = {
   name: 'job-migrate'
   location: location
@@ -577,7 +590,9 @@ resource migrate 'Microsoft.App/jobs@2025-01-01' = {
       replicaTimeout: 900
       replicaRetryLimit: 0
       manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }
-      identitySettings: platformOnly(idOf(identityNames.migrate))
+      identitySettings: restoreFromBackups
+        ? [{ identity: idOf(identityNames.migrate), lifecycle: 'Main' }]
+        : platformOnly(idOf(identityNames.migrate))
       registries: registriesOf(registryName, idOf(identityNames.migrate))
       secrets: secretsOf(secretBase, idOf(identityNames.migrate), migrateSecrets)
     }
@@ -592,7 +607,11 @@ resource migrate 'Microsoft.App/jobs@2025-01-01' = {
             'node node_modules/prisma/build/index.js migrate deploy && node dist/db-roles-cli.js'
           ]
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
-          env: concat([{ name: 'NODE_ENV', value: 'production' }], envOf(migrateSecrets))
+          env: concat(
+            [{ name: 'NODE_ENV', value: 'production' }],
+            migrateRestoreEnv,
+            envOf(migrateSecrets)
+          )
         }
       ]
     }
@@ -600,4 +619,5 @@ resource migrate 'Microsoft.App/jobs@2025-01-01' = {
 }
 
 output webFqdn string = web.properties.configuration.ingress.fqdn
+// no econômico, o endereço interno (<app>.internal.<domínio>), que só o site alcança
 output apiFqdn string = api.properties.configuration.ingress.fqdn

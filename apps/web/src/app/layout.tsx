@@ -3,8 +3,11 @@ import type { ReactNode } from 'react';
 import { themeScript } from '../components/beui/theme-selector';
 import './globals.css';
 
-// Uma sans só, a do sistema (ADR 0037; docs/DESIGN.md): nenhuma fonte baixada. A Geist dos títulos saiu (era um pedido de alta prioridade
-// no caminho crítico da home, docs/TELAS.md, seção 5), e o texto, os títulos, os números e os rótulos usam a mesma pilha do globals.css.
+// Uma sans só no texto, a do sistema (ADR 0037; docs/DESIGN.md). A Geist dos títulos saiu (era um pedido de alta prioridade no caminho
+// crítico da home, docs/TELAS.md, seção 5), e o texto, os títulos, os números e os rótulos usam a mesma pilha do globals.css.
+// A exceção é o nome da marca: a Exo 2 (a tipografia da logo, escolhida pelo Artur em 06/11/2026), só no "Alvesting" do cabeçalho, do topo
+// do app, da tela de entrar e do nome gigante do rodapé (o `font-marca`). Ela não passa pelo next/font: as nove letras do nome vêm em linha
+// no globals.css (1,7 KB), sem requisição no caminho do LCP.
 
 // O título da home é só "Alvesting"; as outras telas levam o nome delas na frente ("Ranking · Alvesting").
 // `formatDetection` desligado: o Safari do iPhone transforma uma corrida de dígitos em link de telefone, e os SHA-256 do ciclo e do
@@ -36,8 +39,8 @@ export const viewport: Viewport = {
 // `suppressHydrationWarning`: os atributos que o script escreve não são do React.
 const THEME_SCRIPT = `(${themeScript.toString()})()`;
 
-// O layout raiz não tem casca: cada grupo de rota tem a dele (o site em (site), a tela dividida em (entrar) e (auth), o app nas áreas de
-// (app); a 404 traz a do site).
+// O layout raiz não tem casca: cada grupo de rota tem a dele (o site em (site); o app nas áreas de (app) e, na área "conta", também em
+// (auth), as telas de entrar e criar conta; a 404 traz a do site).
 // Um layout raiz só (o html, o body e o script do tema) deixa a navegação suave entre os grupos funcionando.
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

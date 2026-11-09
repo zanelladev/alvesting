@@ -86,7 +86,15 @@ describe.skipIf(!ready)(title, () => {
     prisma = await openTestDatabase(testDatabaseUrl!);
     apiPrisma = await openApiTestDatabase(testDatabaseUrl!);
     blob = BlobServiceClient.fromConnectionString(storage!);
-    const result = await runEnsaio({ prisma, blob, seed: 1, sessions: SESSIONS, stocks: 12 });
+    // o 1º pregão como RETROATIVO (ADR 0038): cada rota que mostra o ciclo tem de dizer o modo e a hora real
+    const result = await runEnsaio({
+      prisma,
+      blob,
+      seed: 1,
+      sessions: SESSIONS,
+      stocks: 12,
+      retroactiveSessions: 1,
+    });
     expect(result.ok, 'o ensaio que semeia o banco tem de passar').toBe(true);
 
     seasonId = (await prisma.season.findFirstOrThrow({ where: { slug: 'ensaio' } })).id;
@@ -758,6 +766,49 @@ describe.skipIf(!ready)(title, () => {
         competitorDetailSchema,
       );
       expect(detail.competitor.slug).toBe('claude-opus-5-5');
+    });
+  });
+
+  // O retroativo (ADR 0038): o modo e a hora real saem onde o ciclo aparece, e o ranking conta os pregões de cada modo. Nada do retroativo pode
+  // parecer coletado ou decidido na hora.
+  describe('o modo do ciclo e a hora real em cada rota', () => {
+    it('o ciclo, o feed, a página do modelo, a página da ação e a home dizem o modo; o ranking conta os pregões de cada um', async () => {
+      const cycles = await prisma.cycle.findMany({
+        select: { date: true, mode: true, executedAt: true },
+      });
+      const real = new Map(cycles.map((c) => [iso(c.date), c.executedAt.toISOString()]));
+      expect(cycles.find((c) => iso(c.date) === FIRST)?.mode).toBe('RETROATIVO');
+
+      const first = await ok(`/api/v1/cycles/${FIRST}`, cycleViewSchema);
+      expect(first).toMatchObject({ mode: 'RETROATIVO', executedAt: real.get(FIRST) });
+      expect(await ok(`/api/v1/cycles/${LAST}`, cycleViewSchema)).toMatchObject({
+        mode: 'AO_VIVO',
+      });
+
+      const feed = await allPages('/api/v1/decisions', decisionsPageSchema, 50);
+      expect(feed.rows.length).toBe(SESSIONS * 6);
+      for (const row of feed.rows) {
+        expect(row.mode, row.date).toBe(row.date === FIRST ? 'RETROATIVO' : 'AO_VIVO');
+        expect(row.executedAt, row.date).toBe(real.get(row.date));
+      }
+
+      const model = await ok('/api/v1/competitors/claude-opus-5-5', competitorDetailSchema);
+      expect(model.decisions.find((d) => d.date === FIRST)?.mode).toBe('RETROATIVO');
+
+      const stock = await ok(`/api/v1/stocks/${newsTicker}`, stockDetailSchema);
+      for (const decision of stock.decisions) {
+        expect(decision.mode).toBe(decision.date === FIRST ? 'RETROATIVO' : 'AO_VIVO');
+      }
+
+      const current = await ok('/api/v1/arena/current', arenaCurrentSchema);
+      expect(current.lastCycle).toMatchObject({
+        date: LAST,
+        mode: 'AO_VIVO',
+        executedAt: real.get(LAST),
+      });
+
+      const board = await ok(`/api/v1/seasons/${seasonId}/leaderboard`, leaderboardSchema);
+      expect(board.cyclesByMode).toEqual({ RETROATIVO: 1, AO_VIVO: SESSIONS - 1 });
     });
   });
 

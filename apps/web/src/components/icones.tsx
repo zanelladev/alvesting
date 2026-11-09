@@ -74,11 +74,55 @@ export const IconeMenu = () => (
     <path className="menu-x" d="M5 5l10 10M15 5 5 15" />
   </Icone>
 );
+// Os do lançamento da carteira (no lugar do lucide-react das peças da Arc: o Plus, o Minus, o CalendarDays e os Chevron): o "+" do botão
+// "Lançar compra" e do campo de número, o "−" dele, o calendário do seletor de data e as setas (a do campo e as do mês).
+export const IconeAdicionar = (p: Tamanho) => (
+  <Icone {...p}>
+    <path d="M10 4.5v11M4.5 10h11" />
+  </Icone>
+);
+export const IconeSubtrair = (p: Tamanho) => (
+  <Icone {...p}>
+    <path d="M4.5 10h11" />
+  </Icone>
+);
+export const IconeCalendario = (p: Tamanho) => (
+  <Icone {...p}>
+    <rect x="3.5" y="4.5" width="13" height="12" rx="2" />
+    <path d="M3.5 8.5h13M7 3v3M13 3v3" />
+    <circle cx="7.25" cy="12.25" r=".75" fill="currentColor" stroke="none" />
+    <circle cx="10" cy="12.25" r=".75" fill="currentColor" stroke="none" />
+    <circle cx="12.75" cy="12.25" r=".75" fill="currentColor" stroke="none" />
+  </Icone>
+);
+export const IconeSetaBaixo = (p: Tamanho) => (
+  <Icone {...p}>
+    <path d="m6 8 4 4 4-4" />
+  </Icone>
+);
+export const IconeSetaEsquerda = (p: Tamanho) => (
+  <Icone {...p}>
+    <path d="m12 6-4 4 4 4" />
+  </Icone>
+);
+export const IconeSetaDireita = (p: Tamanho) => (
+  <Icone {...p}>
+    <path d="m8 6 4 4-4 4" />
+  </Icone>
+);
+// o "i" num círculo: o botão que abre a explicação de um termo (a faixa do Monte Carlo, `.info` no globals.css)
+export const IconeInfo = (p: Tamanho) => (
+  <Icone {...p}>
+    <circle cx="10" cy="10" r="7.25" />
+    <path d="M10 9.25v4.5" />
+    <circle cx="10" cy="6.5" r=".9" fill="currentColor" stroke="none" />
+  </Icone>
+);
 
-// A marca: o ladrilho com o glifo de alta vazado, na primária (o azul do logo, #14144C, no claro; o tom claro dele no escuro). O desenho é o
-// arquivo public/marca.svg, usado como máscara pelo CSS (.marca, no globals.css): trocar pelo logo do Artur é trocar esse arquivo (e o
-// app/icon.svg, o ícone do navegador). Decorativa: o nome "Alvesting" vem sempre ao lado, em texto (a WCAG 1.4.3 deixa o logotipo fora da
-// conta de contraste).
+// A marca: o touro do Artur (o Group.svg de 06/11/2026), na primária (o azul do logo, #14144C, no claro; o tom claro dele no escuro). O
+// desenho é o arquivo public/marca.svg, usado como máscara pelo CSS (.marca, no globals.css): trocar o logo é trocar esse arquivo (e o
+// app/icon.svg, o ícone do navegador). Decorativa: o nome "Alvesting" vem sempre ao lado, em texto, na Exo 2 da marca (`font-marca`; a
+// WCAG 1.4.3 deixa o logotipo fora da conta de contraste).
 export const Marca = ({ size = 18 }: { size?: number }) => (
   <span className="marca" style={{ width: size, height: size }} aria-hidden="true" />
 );

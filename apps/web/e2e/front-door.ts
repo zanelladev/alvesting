@@ -9,8 +9,9 @@ import path from 'node:path';
 // O Front Door imitado do e2e das telas da conta (docs/CONTA.md, seção 9; docs/INFRA.md, 2.5). Na Azure o navegador fala com uma origem só:
 // o Front Door manda `/api/*` para a api e `/*` para o site, escreve o `X-Azure-FDID` do perfil em toda requisição à origem e a
 // api e o site (com `FRONT_DOOR_ID`) recusam quem chega sem ele. Aqui o mesmo desenho, em umas 80 linhas de `node:https`, para o cookie, o
-// `Origin` e o link do e-mail do e2e se comportarem como em produção. Nada disto existe fora do e2e: o site não tem rota de proxy para a
-// api (em dev, é o `rewrites` do next.config.ts, só na fase de desenvolvimento).
+// `Origin` e o link do e-mail do e2e se comportarem como em produção no perfil padrão. Nada disto existe fora do e2e. No perfil econômico
+// (sem Front Door) quem manda `/api/*` à api é o próprio site (API_PROXY, src/lib/api-proxy.ts; ADR 0039), e o e2e dele é o economico.spec.ts,
+// atrás de um ingress imitado (e2e/ingress.ts), sem este arquivo.
 //
 // O que imita, do que a documentação do Front Door diz (Learn, "Protocol support for HTTP headers in Azure Front Door"):
 //   - serve https (o Front Door termina o TLS e fala com as origens por http ou https; aqui por http, na máquina), e é por isso que a api

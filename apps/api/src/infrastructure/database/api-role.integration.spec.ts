@@ -735,6 +735,26 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('O papel mínimo do Postgres 
         (id: string) =>
           `UPDATE "season" SET status = 'DRAFT', start_date = NULL, started_at = NULL WHERE id = '${id}'`,
       ],
+      // o prompt fixado (prompt_sha256) é do arena:retroativo, com o login administrador: a api não o escreve em estado nenhum
+      [
+        'criar o rascunho com o prompt já fixado',
+        false,
+        (_season: string) =>
+          `INSERT INTO "season" (id, slug, name, params, prompt_sha256)
+           VALUES ('${newId()}', 'fixado-${newId().toLowerCase()}', 'X', '{}', '${'a'.repeat(64)}')`,
+      ],
+      [
+        'fixar o prompt do rascunho',
+        false,
+        (id: string) =>
+          `UPDATE "season" SET prompt_sha256 = '${'b'.repeat(64)}' WHERE id = '${id}'`,
+      ],
+      [
+        'trocar o prompt fixado da temporada em andamento',
+        true,
+        (id: string) =>
+          `UPDATE "season" SET prompt_sha256 = '${'c'.repeat(64)}' WHERE id = '${id}'`,
+      ],
     ])('season: recusa %s', async (what, started, sql) => {
       await inApi(started, async ({ seasonId, probeIt }) => {
         refused(await probeIt(sql(seasonId)), /temporada/, what);
@@ -836,8 +856,44 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('O papel mínimo do Postgres 
               `UPDATE "cycle" SET status = 'CLOSED', skip_reason = NULL, closed_at = now() WHERE id = '${skipped}'`,
             ],
           ] as const) {
-            refused(await probeIt(sql), /ciclo/, what);
+            // Desde a migration `20261106120000_retroactive_cycles` o UPDATE da api é só das quatro colunas do reprocesso: prazo, hora da
+            // decisão, data e fechamento são recusados pelo PRIVILÉGIO, antes do gatilho; o gatilho segue recusando as quatro fora do estado
+            // pulado (pular o ciclo aberto, fechar o pulado)
+            refused(await probeIt(sql), /ciclo|permission denied for table cycle/, what);
           }
+
+          // o modo e a hora real (migration `20261106120000_retroactive_cycles`): a api os lê e nunca os escolhe. O UPDATE nem tem o
+          // privilégio dessas colunas; o INSERT nomeia as duas (o Prisma manda o padrão), e o gatilho só aceita o AO_VIVO e põe a hora do banco
+          for (const [what, sql] of [
+            [
+              'mudar o modo do ciclo pulado',
+              `UPDATE "cycle" SET mode = 'RETROATIVO' WHERE id = '${skipped}'`,
+            ],
+            [
+              'mudar a hora real do ciclo pulado',
+              `UPDATE "cycle" SET executed_at = now() WHERE id = '${skipped}'`,
+            ],
+          ] as const) {
+            expect(denied(await probeIt(sql)), what).toBe(true);
+          }
+          refused(
+            await probeIt(
+              `INSERT INTO "cycle" (id, season_id, date, status, skip_reason, decision_at, deadline_at, mode)
+               VALUES ('${newId()}', '${seasonId}', '2026-11-06', 'SKIPPED', 'sem_briefing', '2026-11-06T11:00:00Z', '2026-11-06T12:30:00Z', 'RETROATIVO')`,
+            ),
+            /ciclo/,
+            'criar o ciclo retroativo',
+          );
+          const backdated = newId();
+          await api.query(
+            `INSERT INTO "cycle" (id, season_id, date, status, skip_reason, decision_at, deadline_at, executed_at)
+             VALUES ('${backdated}', '${seasonId}', '2026-11-10', 'SKIPPED', 'sem_briefing', '2026-11-10T11:00:00Z', '2026-11-10T12:30:00Z', '2000-01-01T00:00:00Z')`,
+          );
+          const real = await api.query<{ mode: string; recent: boolean }>(
+            `SELECT mode::text AS mode, executed_at > now() - interval '1 minute' AS recent FROM "cycle" WHERE id = $1`,
+            [backdated],
+          );
+          expect(real.rows[0]).toEqual({ mode: 'AO_VIVO', recent: true });
 
           // criar: nada de ciclo fechado, nem de ciclo em temporada que não está em andamento
           refused(

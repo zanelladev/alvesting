@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { AVISO_DO_CHAT, ChatDesligado } from '../../../../components/chat/chat-desligado';
 import { Aviso } from '../../../../components/ui';
 
-// O chat (docs/redesign-rallies/plano.md, f.2): o desenho do Chat do Rallies, pronto e DESLIGADO. O chat é a etapa 13 e só começa depois do aval
+// O chat (ADR 0035): o desenho do Chat do Rallies, pronto e DESLIGADO. O chat é a etapa 13 e só começa depois do aval
 // do orientador (CLAUDE.md). A saudação é fixa (sem a hora do dia: a página nem precisa do relógio), e a caixa, as abas e as sugestões vêm
 // desativadas, com o aviso. Componente de servidor, sem leitura da api nem da sessão: a página não manda nada a lugar nenhum (chat.spec.ts).
 export const metadata: Metadata = { title: 'Chat' };

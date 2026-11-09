@@ -22,3 +22,24 @@ export function checkOriginLockEnv(env: NodeJS.ProcessEnv = process.env): void {
     process.exit(1);
   }
 }
+
+// O repasse de /api/* pelo site (src/lib/api-proxy.ts; ADR 0039), que o Bicep liga no perfil econômico com API_PROXY=on: também fail closed.
+// Um valor torto (`true`, `1`) desligaria o repasse em silêncio, e o login, o cadastro e a carteira dariam 404 com o /health verde; e sem um
+// API_INTERNAL_URL http(s) não há para onde repassar.
+export function checkApiProxyEnv(env: Record<string, string | undefined> = process.env): void {
+  const { API_PROXY, API_INTERNAL_URL } = env;
+  const usable =
+    API_INTERNAL_URL !== undefined &&
+    URL.canParse(API_INTERNAL_URL) &&
+    /^https?:$/.test(new URL(API_INTERNAL_URL).protocol);
+  const problem =
+    API_PROXY !== undefined && API_PROXY !== 'on'
+      ? 'API_PROXY inválido: o único valor aceito é on (ou a variável ausente)'
+      : API_PROXY === 'on' && !usable
+        ? 'API_PROXY=on exige API_INTERNAL_URL http(s), o endereço da api (docs/INFRA.md, 2.7)'
+        : undefined;
+  if (problem) {
+    console.error(`repasse de /api: ${problem}`);
+    process.exit(1);
+  }
+}

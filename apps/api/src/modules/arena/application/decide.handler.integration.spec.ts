@@ -112,6 +112,7 @@ describe.skipIf(!testDatabaseUrl)(
       readPortfolio?: ReadPortfolio;
       minCallMs?: number;
       clock?: () => Date;
+      wallClock?: () => Date;
       env?: { PROMPT_ARENA?: Secret | undefined; PROMPT_ARENA_VERSION?: string | undefined };
       gatewayEnv?: Record<string, string>;
       // o briefing congelado do pregão (o padrão é o sintético)
@@ -171,6 +172,7 @@ describe.skipIf(!testDatabaseUrl)(
               PROMPT_ARENA_VERSION: PROMPT_VERSION,
             },
           clock: options.clock ?? (() => NOW),
+          ...(options.wallClock ? { wallClock: options.wallClock } : {}),
           ...(options.minCallMs === undefined ? {} : { minCallMs: options.minCallMs }),
         });
       return {
@@ -208,6 +210,21 @@ describe.skipIf(!testDatabaseUrl)(
     });
 
     describe('o caminho feliz, com o provedor fake pelo SDK', () => {
+      // O arena:retroativo (ADR 0038): o relógio do handler é o do pregão simulado, e o meta do IO bruto guarda as horas REAIS de cada chamada.
+      it('o meta do IO bruto guarda as horas reais do pedido e da resposta HTTP, pelo relógio da máquina e não pelo do pregão', async () => {
+        const real = [new Date('2026-11-07T14:02:11.000Z'), new Date('2026-11-07T14:02:13.500Z')];
+        const w = await world({ wallClock: () => real.shift() ?? new Date(0) });
+        await expect(w.handler.execute(w.message(0))).resolves.toBe('decided');
+        const meta = JSON.parse(ioFile(w, 0, 'meta').toString('utf8')) as {
+          date: string;
+          http: Array<{ requestedAt: string; respondedAt: string }>;
+        };
+        expect(meta.date).toBe('2026-11-03');
+        expect(meta.http).toEqual([
+          { requestedAt: '2026-11-07T14:02:11.000Z', respondedAt: '2026-11-07T14:02:13.500Z' },
+        ]);
+      });
+
       it('grava a decisão com itens, uso, o que o provedor aplicou e o SHA-256 de cada arquivo do IO bruto', async () => {
         const w = await world();
         await expect(w.handler.execute(w.message(0))).resolves.toBe('decided');
@@ -500,8 +517,10 @@ describe.skipIf(!testDatabaseUrl)(
           (await prisma.promptVersion.findUniqueOrThrow({ where: { version: PROMPT_VERSION } }))
             .sha256,
         ).toBeNull();
-        // é erro, e não HOLD "prompt_divergente": o alerta da etapa 10 tem de enxergá-lo; na última entrega vira HOLD "falha"
-        await expect(w.handler.execute(w.message(0), LAST)).resolves.toBe('hold:falha');
+        // é erro, e não HOLD "prompt_divergente": o alerta da etapa 10 tem de enxergá-lo. Nem na última entrega vira HOLD (erro de
+        // configuração não é decisão do modelo): a mensagem vai para a DLQ e o par fica sem decisão
+        await expect(w.handler.execute(w.message(0), LAST)).rejects.toBeInstanceOf(LlmConfigError);
+        expect(await prisma.decision.count()).toBe(0);
       });
     });
 
@@ -1130,15 +1149,41 @@ describe.skipIf(!testDatabaseUrl)(
         expect(await repo.cycleById(w.cycle.id)).toMatchObject({ status: 'CLOSED' });
       });
 
-      it('erro de configuração (chave do OpenRouter ausente) segue a mesma regra', async () => {
-        const competitors = seasonFile().competitors.map((c) =>
+      // A exceção à regra: erro de configuração não é decisão do modelo (docs/ARENA.md, seção 5). A última entrega lança (a mensagem vai
+      // para a DLQ), o par fica sem decisão e o ciclo continua aberto: o retroativo para no pregão; ao vivo, a varredura grava "sem_resposta".
+      const paidCompetitors = () =>
+        seasonFile().competitors.map((c) =>
           c.kind === 'MODEL' && c.slug === 'fake-a'
             ? { ...c, provider: 'openrouter' as const, modelId: 'anthropic/claude-opus-5.5' }
             : c,
         );
-        const w = await world({ season: { competitors } });
+
+      it('erro de configuração (chave do OpenRouter ausente) não vira HOLD, nem na última entrega', async () => {
+        const w = await world({ season: { competitors: paidCompetitors() } });
         await expect(w.handler.execute(w.message(0), FIRST)).rejects.toThrow(/OPENROUTER_API_KEY/);
-        await expect(w.handler.execute(w.message(0), LAST)).resolves.toBe('hold:falha');
+        await expect(w.handler.execute(w.message(0), LAST)).rejects.toBeInstanceOf(LlmConfigError);
+        expect(await prisma.decision.count()).toBe(0);
+        expect(await prisma.jobRun.findFirstOrThrow()).toMatchObject({ status: 'FAILED' });
+        expect((await repo.cycleById(w.cycle.id))!.status).toBe('OPEN');
+      });
+
+      it('sem crédito no provedor (HTTP 402) também: a última entrega lança e nada de HOLD "falha"', async () => {
+        const w = await world({
+          season: { competitors: paidCompetitors() },
+          gatewayEnv: { OPENROUTER_API_KEY: 'chave-de-teste' },
+          fetch: () =>
+            Promise.resolve(
+              new Response(
+                JSON.stringify({ error: { code: 402, message: 'Insufficient credits' } }),
+                { status: 402, headers: { 'content-type': 'application/json' } },
+              ),
+            ),
+        });
+        await expect(w.handler.execute(w.message(0), LAST)).rejects.toThrow(
+          /recusou a chamada \(HTTP 402\)/,
+        );
+        expect(await prisma.decision.count()).toBe(0);
+        expect((await repo.cycleById(w.cycle.id))!.status).toBe('OPEN');
       });
 
       it('se nem o HOLD dá para gravar na última entrega, o erro sobe e a mensagem vai para a DLQ (a varredura fecha depois)', async () => {

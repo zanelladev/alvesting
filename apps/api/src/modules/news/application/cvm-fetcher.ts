@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { brasiliaDate } from '../../market-data/domain/dates.js';
+import { brasiliaDate, type IsoDate } from '../../market-data/domain/dates.js';
 import {
   CVM_HOST,
   FCA_COLUMNS,
@@ -31,6 +31,27 @@ const MAX_INFLATED_BYTES = { IPE: 128 * 1024 * 1024, FCA: 32 * 1024 * 1024 };
 // worker tem 1 GiB), e a busca falha sem repetir nada do conteúdo.
 const MAX_IPE_ROWS = 200_000;
 const MAX_WINDOW_DOCS = 5_000;
+
+// O que o arena:retroativo lê da CVM (ADR 0038): os documentos entregues em [from, to], cada um gravado como visto na hora em que o pipeline ao
+// vivo o teria visto (`seenAt`), e só os que já teriam sido vistos até `horizon` (o corte do último pregão que o retroativo vai rodar).
+export interface CvmBackfillWindow {
+  from: IsoDate;
+  to: IsoDate;
+  horizon: Date;
+  seenAt: (deliveredOn: IsoDate) => Date;
+}
+
+// Como uma leitura do IPE grava: a busca ao vivo é condicional, guarda os validadores e carimba o lote com a hora da gravação; o retroativo
+// lê sem condição, não toca nos validadores (eles são da busca ao vivo, que passaria a responder 304 a um arquivo que ela nunca leu) e carimba
+// cada documento com a hora da regra.
+interface IpeRead {
+  years: number[];
+  from: IsoDate;
+  to: IsoDate;
+  conditional: boolean;
+  saveState: boolean;
+  backfill?: Pick<CvmBackfillWindow, 'horizon' | 'seenAt'>;
+}
 
 export interface CvmResult {
   // instrumentos cujo CNPJ o FCA acrescentou ou corrigiu
@@ -77,11 +98,39 @@ export class CvmFetcher {
       );
       return { mappingChanged: 0, documents: 0, mapped: 0, created: 0 };
     }
-    const mapping = await this.refreshMapping(now, known);
-    const ingested = await this.ingest(now, mapping.read);
+    const mapping = await this.refreshMapping(now, known, true);
+    const ingested = await this.ingest(now, {
+      years: ipeYears(now),
+      from: ipeWindowStart(now),
+      to: brasiliaDate(now),
+      conditional: !mapping.read,
+      saveState: true,
+    });
     // por último: com o IPE já processado, o FCA pode ser dado como lido
     if (mapping.validators) await this.news.saveFetchState(mapping.key, mapping.validators, now);
     this.logger.log({ mappingChanged: mapping.changed, ...ingested }, 'CVM buscada');
+    return { mappingChanged: mapping.changed, ...ingested };
+  }
+
+  // O arena:retroativo (ADR 0038): o FCA e o IPE do ano lidos sem condição, uma vez, e os documentos da janela gravados com a hora em que o
+  // pipeline ao vivo os teria visto. Nada de fetch_state: os validadores continuam os da busca ao vivo (a do operador local).
+  async backfill(window: CvmBackfillWindow, now: Date): Promise<CvmResult> {
+    const known = await this.news.knownTickers();
+    if (known.size === 0) {
+      throw new Error('CVM: nenhum instrumento conhecido (prepare o banco da temporada antes)');
+    }
+    const mapping = await this.refreshMapping(now, known, false);
+    const first = Number(window.from.slice(0, 4));
+    const last = Number(window.to.slice(0, 4));
+    const ingested = await this.ingest(now, {
+      years: first === last ? [last] : [first, last],
+      from: window.from,
+      to: window.to,
+      conditional: false,
+      saveState: false,
+      backfill: window,
+    });
+    this.logger.log({ mappingChanged: mapping.changed, ...ingested }, 'CVM lida para o retroativo');
     return { mappingChanged: mapping.changed, ...ingested };
   }
 
@@ -118,10 +167,11 @@ export class CvmFetcher {
   private async refreshMapping(
     now: Date,
     known: ReadonlySet<string>,
+    conditional: boolean,
   ): Promise<{ changed: number; read: boolean; key: string; validators?: Validators }> {
     const year = Number(brasiliaDate(now).slice(0, 4));
     const key = `cvm-fca:${year}`;
-    const outcome = await this.download('FCA', year, now, key, true);
+    const outcome = await this.download('FCA', year, now, key, conditional);
     if (outcome.status !== 'ok') return { changed: 0, read: false, key };
 
     const pairs: FcaPair[] = [];
@@ -143,16 +193,15 @@ export class CvmFetcher {
 
   private async ingest(
     now: Date,
-    force: boolean,
+    read: IpeRead,
   ): Promise<Pick<CvmResult, 'documents' | 'mapped' | 'created'>> {
-    const from = ipeWindowStart(now);
-    const today = brasiliaDate(now);
+    const { from, to } = read;
     let documents = 0;
     let mapped = 0;
     let created = 0;
-    for (const year of ipeYears(now)) {
+    for (const year of read.years) {
       const key = `cvm-ipe:${year}`;
-      const outcome = await this.download('IPE', year, now, key, !force);
+      const outcome = await this.download('IPE', year, now, key, read.conditional);
       if (outcome.status !== 'ok') continue;
 
       // as linhas são lidas em fluxo e só as da janela ficam na memória
@@ -171,7 +220,11 @@ export class CvmFetcher {
         const doc = cvmDocument(record);
         if (!doc) continue;
         accepted += 1;
-        if (doc.deliveredOn >= from && doc.deliveredOn <= today) {
+        if (
+          doc.deliveredOn >= from &&
+          doc.deliveredOn <= to &&
+          (!read.backfill || read.backfill.seenAt(doc.deliveredOn) <= read.backfill.horizon)
+        ) {
           docs.push(doc);
           if (docs.length > MAX_WINDOW_DOCS) {
             throw new Error(
@@ -196,12 +249,25 @@ export class CvmFetcher {
       }
 
       const tickers = await this.news.tickersByCnpj([...new Set(docs.map((doc) => doc.cnpj))]);
-      const drafts = docs
-        .map((doc) => cvmDraft(doc, tickers.get(doc.cnpj) ?? [], now))
-        .filter((draft): draft is NewsDraft => draft !== null);
-      created += await this.news.saveNews(drafts, seenNow(now));
+      const pairs = docs.flatMap((doc) => {
+        const draft = cvmDraft(doc, tickers.get(doc.cnpj) ?? [], now);
+        return draft ? [{ doc, draft }] : [];
+      });
+      const drafts: NewsDraft[] = pairs.map((pair) => pair.draft);
+      if (read.backfill) {
+        // um lote por dia de entrega, em ordem de data, cada um com a hora em que o pipeline ao vivo o teria visto
+        const byDay = new Map<IsoDate, NewsDraft[]>();
+        for (const { doc, draft } of pairs) {
+          byDay.set(doc.deliveredOn, [...(byDay.get(doc.deliveredOn) ?? []), draft]);
+        }
+        for (const [day, batch] of [...byDay].sort(([a], [b]) => (a < b ? -1 : 1))) {
+          created += await this.news.saveNews(batch, read.backfill.seenAt(day));
+        }
+      } else {
+        created += await this.news.saveNews(drafts, seenNow(now));
+      }
       // só agora: validador guardado antes faria uma falha acima pular o arquivo na próxima busca
-      await this.news.saveFetchState(key, outcome.validators, now);
+      if (read.saveState) await this.news.saveFetchState(key, outcome.validators, now);
       this.logger.log({ year, rows, accepted, inWindow: docs.length }, 'IPE lido');
       documents += docs.length;
       mapped += drafts.length;

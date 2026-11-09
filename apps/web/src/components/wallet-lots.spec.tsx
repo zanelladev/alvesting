@@ -5,9 +5,10 @@ import type { Lot } from '@alvesting/contracts';
 import { Avisos } from './avisos';
 import { WalletLots } from './wallet-lots';
 
-// Os lançamentos e o formulário da carteira, renderizados no servidor (o HTML que chega ao navegador antes do JavaScript): o que o leitor de
-// tela e o teclado do celular recebem, e o que a tela faz sem JavaScript. O comportamento com JavaScript (conferir, enviar, editar, apagar com a
-// confirmação, o foco depois de cada ação) os e2e conferem no navegador, em pixel-7, iphone-15 e desktop (apps/web/e2e/carteira.spec.ts).
+// Os lançamentos e o modal da carteira, renderizados no servidor (o HTML que chega ao navegador antes do JavaScript): o que o leitor de tela e o
+// teclado do celular recebem, e o que a tela faz sem JavaScript. O comportamento com JavaScript (abrir e fechar o modal, conferir, enviar,
+// editar, apagar com a confirmação, o foco depois de cada ação, o − e o +, o calendário) os e2e conferem no navegador, nos seis projetos
+// (apps/web/e2e/carteira.spec.ts).
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const html = renderToStaticMarkup;
@@ -39,9 +40,11 @@ function inputs(markup: string) {
       type: attr('type'),
       id: attr('id'),
       inputMode: attr('inputMode'),
-      max: attr('max'),
       maxLength: attr('maxLength'),
       autoCapitalize: attr('autoCapitalize'),
+      role: attr('role'),
+      value: attr('value'),
+      placeholder: attr('placeholder'),
     };
   });
 }
@@ -55,28 +58,82 @@ describe('a carteira vazia', () => {
     expect(out).not.toContain('<ul');
   });
 
-  it('o formulário de lançar é nomeado pelo título da seção e nasce desativado: sem JavaScript não se envia nada', () => {
-    expect(out).toMatch(/<form[^>]*aria-labelledby="lancar-titulo"/);
+  it('o formulário de lançar mora no modal (o <dialog>, fechado), é nomeado pelo título dele e nasce desativado: sem JavaScript não se envia nada', () => {
+    expect(out).toMatch(/<dialog aria-labelledby="lancamento-titulo" class="[^"]*"><div/);
+    expect(out).not.toMatch(/<dialog[^>]*\sopen/);
+    expect(out).toContain('<h2 id="lancamento-titulo"');
+    expect(out).toMatch(/<h2 id="lancamento-titulo"[^>]*>Lançar uma compra<\/h2>/);
+    expect(out).toMatch(/<form[^>]*aria-labelledby="lancamento-titulo"/);
     expect(out).toMatch(/<form[^>]*method="post"/);
     expect(out).toMatch(/<form[^>]*noValidate/);
     expect(out).toContain('<fieldset disabled=""');
-    expect(out).toContain('id="lancar-titulo"');
-    expect(out).toContain('>Lançar compra</button>');
-    expect(out).not.toContain('Cancelar edição');
+    // o envio na primária e o "Cancelar" na cinza; o ✕ do canto, de 44 px, com nome
+    expect(out).toContain('<button type="submit" class="btn btn-primary">Lançar compra</button>');
+    expect(out).toContain('<button type="button" class="btn">Cancelar</button>');
+    expect(out).toMatch(/<button type="button" class="[^"]*fechar[^"]*" aria-label="Fechar">/);
   });
 
-  it('o teclado do celular: números para a quantidade, números com vírgula para o valor, caixa alta para o ticker', () => {
-    const [ticker, quantity, unit, total, value, date] = inputs(out);
+  it('o "Lançar compra" que abre o modal fica no cabeçalho da seção, na primária com o "+", desativado até o JavaScript chegar', () => {
+    expect(out).toMatch(
+      /<h2 id="lancamentos-titulo"[^>]*>Lançamentos<\/h2><div[^>]*><button type="button" class="btn btn-primary" disabled=""><svg[^>]*>.*?<\/svg>Lançar compra<\/button><noscript><span class="muted">Lançar uma compra precisa de JavaScript\.<\/span><\/noscript>/,
+    );
+  });
+
+  it('o teclado do celular: números para a quantidade e para o valor, caixa alta para o ticker; a quantidade e a data vão em campos escondidos', () => {
+    const [ticker, quantity, quantityValue, unit, total, value, date] = inputs(out);
     expect(ticker).toMatchObject({ name: 'ticker', maxLength: '12', autoCapitalize: 'characters' });
     expect(ticker!.tag).toMatch(/class="[^"]*\buppercase\b/);
-    expect(quantity).toMatchObject({ name: 'quantity', inputMode: 'numeric' });
+    // o Number field da Arc: um campo de texto com o papel de spinbutton e o teclado de números, sem nome (o inteiro vai no escondido)
+    expect(quantity).toMatchObject({
+      type: 'text',
+      role: 'spinbutton',
+      inputMode: 'numeric',
+      value: '1',
+    });
+    expect(quantity!.name).toBeUndefined();
+    expect(quantityValue).toMatchObject({ name: 'quantity', type: 'hidden', value: '1' });
     expect(unit).toMatchObject({ name: 'mode', type: 'radio' });
     expect(total).toMatchObject({ name: 'mode', type: 'radio' });
-    expect(value).toMatchObject({ name: 'value', inputMode: 'decimal' });
-    // um campo de texto com teclado de números, e não type="number": a vírgula, o ponto de milhar e o "e" do expoente não valem
-    expect(quantity!.type).toBe('text');
-    expect(value!.type).toBe('text');
-    expect(date).toMatchObject({ name: 'boughtOn', type: 'date', max: '2026-11-09' });
+    // os centavos entram pela direita: só algarismos, o teclado de números de qualquer celular (e não type="number")
+    expect(value).toMatchObject({
+      name: 'value',
+      type: 'text',
+      inputMode: 'numeric',
+      placeholder: '0,00',
+    });
+    // a data é o gatilho do calendário (um botão) e o AAAA-MM-DD num escondido, vazio sem data
+    expect(date).toMatchObject({ name: 'boughtOn', type: 'hidden', value: '' });
+    expect(inputs(out)).toHaveLength(7);
+  });
+
+  it('a quantidade começa em 1, com o − e o + em português, e o − parado no mínimo (com o foco, para a pressão mostrar o limite)', () => {
+    expect(out).toMatch(/aria-label="Diminuir quantidade" aria-disabled="true"/);
+    expect(out).toMatch(/aria-label="Aumentar quantidade"><span/);
+    expect(out).toMatch(
+      /aria-valuenow="1" aria-valuetext="1" aria-valuemin="1" aria-valuemax="1000000"/,
+    );
+    expect(plain(out)).toContain('Ações inteiras: use − e + ou digite.');
+  });
+
+  it('o valor tem o "R$" dentro do campo, à vista e fora do que o leitor de tela lê (o rótulo diz "em reais")', () => {
+    expect(out).toMatch(
+      /<span aria-hidden="true" class="[^"]*moeda[^"]*">R\$<\/span><input [^>]*name="value"/,
+    );
+  });
+
+  it('a data é o gatilho do calendário: o rótulo e "Sem data" dão o nome dele, e a dica fica ligada a ele', () => {
+    const trigger =
+      /<button id="([^"]+)" type="button" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="([^"]+)"[^>]*>/.exec(
+        out,
+      );
+    expect(trigger, 'o gatilho da data').not.toBeNull();
+    const [label, shown] = trigger![2]!.split(' ');
+    expect(out).toMatch(
+      new RegExp(`<label id="${label}"[^>]*>Data da compra \\(opcional\\)</label>`),
+    );
+    expect(out).toMatch(new RegExp(`<span id="${shown}" class="[^"]*srOnly[^"]*">Sem data</span>`));
+    expect(trigger![0]).toMatch(/aria-describedby="[^"]+"/);
+    expect(plain(out)).toContain('Pode ficar em branco. Não pode ser no futuro.');
   });
 
   it('o modo de preço são dois radios nativos num grupo com legenda, o "preço por ação" já marcado', () => {
@@ -90,8 +147,19 @@ describe('a carteira vazia', () => {
     expect(radios.map((r) => r.tag.match(/value="([^"]*)"/)![1])).toEqual(['unit', 'total']);
     expect(plain(out)).toContain('Preço por ação');
     expect(plain(out)).toContain('Valor total pago');
-    // o alvo de toque do radio (44 px) e o desenho redondo estão na classe
-    expect(radios.every((r) => /class="radio"/.test(r.tag))).toBe(true);
+    // o controle segmentado: as duas metades na trilha (o desenho e a pílula que desliza estão no módulo CSS)
+    expect(out).toMatch(
+      /<div class="[^"]*segmentado[^"]*"><label class="[^"]*opcao[^"]*"><input type="radio"/,
+    );
+  });
+
+  it('o "valor total pago" explica-se ao leitor de tela como a descrição do radio, e à vista na dica do campo de valor (sem tooltip)', () => {
+    const total = inputs(out).find((input) => input.tag.includes('value="total"'))!;
+    const id = /aria-describedby="([^"]+)"/.exec(total.tag)![1]!;
+    expect(out).toMatch(
+      new RegExp(`<span id="${id}" class="sr-only">O total da nota desta compra`),
+    );
+    expect(out).not.toContain('termo');
   });
 
   it('o grupo do modo avisa, ligado a ele por aria-describedby, que trocar a opção apaga o valor digitado', () => {
@@ -109,7 +177,7 @@ describe('a carteira vazia', () => {
   });
 
   it('todo campo tem rótulo (por id, ou o radio dentro do próprio rótulo), e o rótulo do valor diz que é o preço de UMA ação (o modo inicial)', () => {
-    for (const input of inputs(out).filter((i) => i.type !== 'radio')) {
+    for (const input of inputs(out).filter((i) => i.type !== 'radio' && i.type !== 'hidden')) {
       expect(input.id, input.tag).toBeTruthy();
       expect(out, `rótulo de ${input.name}`).toMatch(
         new RegExp(`<label[^>]*for="${input.id!.replace(/[^\\w-]/g, '.')}"`),
@@ -117,14 +185,14 @@ describe('a carteira vazia', () => {
     }
     // o radio fica DENTRO do rótulo: o texto inteiro é o alvo de toque, e o leitor de tela lê "Preço por ação, botão de opção"
     expect(out).toMatch(
-      /<label[^>]*><input type="radio"[^>]*value="unit"\/><span[^>]*>Preço por ação<\/span><\/label>/,
+      /<label[^>]*><input type="radio"[^>]*value="unit"\/><span>Preço por ação<\/span><\/label>/,
     );
     expect(out).toMatch(
-      /<label[^>]*><input type="radio"[^>]*value="total"\/><span[^>]*>Valor total pago<\/span><\/label>/,
+      /<label[^>]*><input type="radio"[^>]*value="total"\/><span>Valor total pago<\/span><\/label>/,
     );
-    expect(out).toMatch(/>Preço por ação \(R\$\)<\/label>/);
+    expect(out).toMatch(/>Preço por ação<span class="sr-only"> em reais<\/span><\/label>/);
     expect(plain(out)).toContain(
-      'O preço de uma ação, em reais, com vírgula nos centavos. Ex.: 35,50.',
+      'O preço de uma ação. Os centavos entram pela direita: 3550 vira 35,50.',
     );
     expect(out).toMatch(/>Ticker<\/label>/);
     expect(out).toMatch(/>Quantidade<\/label>/);
@@ -150,8 +218,9 @@ describe('a carteira vazia', () => {
     );
   });
 
-  it('sem lançamentos não há atalho para o formulário: ele está logo abaixo do aviso', () => {
-    expect(out).not.toContain('href="#lancar"');
+  it('o formulário mora no modal, e não no fim da página: nenhum atalho para ele', () => {
+    expect(out).not.toContain('#lancar');
+    expect(out).not.toContain('id="lancar"');
   });
 });
 
@@ -182,17 +251,16 @@ describe('os lançamentos', () => {
     expect(cards[0]).toContain('data-lot="01JABCDEFGHJKMNPQRSTVWXYZ0"');
   });
 
-  it('não mostra o empty state, e o formulário de lançar segue na página', () => {
+  it('não mostra o empty state, e o formulário de lançar segue no modal', () => {
     expect(plain(out)).not.toContain('Você ainda não lançou');
-    expect(out).toContain('>Lançar compra</button>');
+    expect(out).toContain('<button type="submit" class="btn btn-primary">Lançar compra</button>');
   });
 
-  it('um atalho antes da lista leva ao formulário de lançar, que fica depois dela (no celular, a 21ª compra não pede rolar tudo)', () => {
-    const link = out.indexOf('<a href="#lancar"');
-    expect(link).toBeGreaterThan(-1);
-    expect(out.slice(link)).toMatch(/^<a href="#lancar"[^>]*>Ir para o formulário de lançar<\/a>/);
-    expect(link).toBeLessThan(out.indexOf('<ul'));
-    expect(out).toContain('id="lancar"');
+  it('o "Lançar compra" fica no cabeçalho da seção, antes da lista (no celular, a 21ª compra não pede rolar tudo), e o modal depois dela', () => {
+    const opener = out.indexOf('<button type="button" class="btn btn-primary" disabled=""');
+    expect(opener).toBeGreaterThan(-1);
+    expect(opener).toBeLessThan(out.indexOf('<ul'));
+    expect(out.indexOf('<ul')).toBeLessThan(out.indexOf('<dialog'));
   });
 
   it('editar e apagar são botões de 44 px com o nome do lançamento, desativados até o JavaScript chegar (sem ele não fazem nada)', () => {

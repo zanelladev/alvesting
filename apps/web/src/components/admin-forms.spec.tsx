@@ -90,12 +90,12 @@ describe('cada formulário', () => {
     const decide = `decide:${'0'.repeat(26)}:${'1'.repeat(26)}`;
     const resubmit = html(<ResubmitDlqForm queue="decisions" messageId={decide} labelledBy="x" />);
     expect(resubmit).toMatch(
-      new RegExp(`<span class="min-w-0 pt-2\\.5">Confirmo: reenviar a mensagem ${decide} para`),
+      new RegExp(`<span class="min-w-0">Confirmo: reenviar a mensagem ${decide} para`),
     );
     const slug = 'a'.repeat(64);
     const start = html(<StartSeasonForm id="x" slug={slug} labelledBy="x" />);
     expect(start).toMatch(
-      new RegExp(`<span class="min-w-0 pt-2\\.5">Confirmo: iniciar a temporada ${slug}\\.`),
+      new RegExp(`<span class="min-w-0">Confirmo: iniciar a temporada ${slug}\\.`),
     );
   });
 

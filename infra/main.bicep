@@ -1,8 +1,9 @@
 // Alvesting v2: infra na Azure (plano §5 e §6). Documentação: docs/INFRA.md.
 //
 //   Padrão    Front Door Standard + WAF, ACR, web e api com mínimo 1            (≈ US$ 72–83 por mês)
-//   Econômico sem Front Door (o ingress do Container Apps balanceia, com CORS), sem ACR (imagens do
-//             GHCR), web e api com mínimo 0                                      (≈ US$ 5–10 por mês)
+//   Econômico sem Front Door (o ingress do Container Apps balanceia; a api é interna e o site repassa
+//             /api/* a ela: uma origem só, ADR 0039), sem ACR (imagens do GHCR), web e api com
+//             mínimo 0; é o perfil em que a produção nasce                       (≈ US$ 5–10 por mês)
 //
 // Ordem do primeiro deploy (um segredo que o Artur preenche à mão não pode ser criado pelo Bicep, e o
 // Container App não sobe se o segredo referenciado não existe):
@@ -177,19 +178,25 @@ module network 'modules/network.bicep' = {
 // Cada identidade só nos containers e nas filas que o código dela usa, no escopo do próprio container e da própria fila. O porquê de cada
 // linha está em docs/INFRA.md (3.2), e o infra/tests/check.mjs escreve a matriz à mão a partir do código, sem olhar este arquivo.
 //   Blob    briefings: o worker grava, as decisões leem · llm-io: as decisões gravam · backups: o worker grava, lê de volta e
-//           apaga. As cotações não vão ao Blob (a brapi é a fonte, o banco é o cache; ADR 0032). A api, os agendadores, o migrate e o web não têm Blob.
+//           apaga. As cotações não vão ao Blob (a brapi é a fonte, o banco é o cache; ADR 0032). A api, os agendadores e o web não têm Blob;
+//           o migrate, só no econômico (abaixo).
 //   Fila    a api: as seis (o admin lê e reenvia a DLQ de qualquer uma, e publica o `decide` e o `settle`) · o worker: as cinco que
 //           consome (nelas agenda a nova tentativa, e o `settle` do `eod` cai na settlement) · as decisões: só a decisions · os
 //           agendadores só publicam, em cinco (a settlement é do `eod`) · o KEDA lê a profundidade de cada uma (Data Owner)
 var allQueues = ['market', 'news', 'briefing', 'decisions', 'settlement', 'maintenance']
 var workerQueues = ['market', 'news', 'briefing', 'settlement', 'maintenance']
 var schedulerQueues = ['market', 'news', 'briefing', 'decisions', 'maintenance']
-var blobGrants = [
-  { container: 'briefings', identity: names.identity.worker, role: 'contributor' }
-  { container: 'briefings', identity: names.identity.decisions, role: 'reader' }
-  { container: 'llm-io', identity: names.identity.decisions, role: 'contributor' }
-  { container: 'backups', identity: names.identity.worker, role: 'contributor' }
-]
+//   Só no econômico, a produção (ADR 0039): o migrate LÊ o backups (a restauração da temporada, dist/restore-cli.js) e quem opera
+//           (adminPrincipalId) escreve nos três (o envio do dump e a cópia do Blob do Azurite: docs/RUNBOOK.md, 13.6).
+var blobGrants = concat(
+  [
+    { container: 'briefings', identity: names.identity.worker, role: 'contributor' }
+    { container: 'briefings', identity: names.identity.decisions, role: 'reader' }
+    { container: 'llm-io', identity: names.identity.decisions, role: 'contributor' }
+    { container: 'backups', identity: names.identity.worker, role: 'contributor' }
+  ],
+  isStandard ? [] : [{ container: 'backups', identity: names.identity.migrate, role: 'reader' }]
+)
 var queueGrants = flatten([
   map(allQueues, queue => { queue: queue, identity: names.identity.api, role: 'sender' })
   map(allQueues, queue => { queue: queue, identity: names.identity.api, role: 'receiver' })
@@ -210,6 +217,7 @@ module storage 'modules/storage.bicep' = {
     location: location
     tags: tags
     grants: blobGrants
+    operatorPrincipalId: isStandard ? '' : adminPrincipalId
   }
   dependsOn: [identities]
 }
@@ -365,7 +373,7 @@ module apps 'modules/containerapps.bicep' = if (deployApps) {
     webMaxReplicas: 5
     apiMinReplicas: isStandard ? 1 : 0
     apiMaxReplicas: 5
-    corsEnabled: !isStandard
+    restoreFromBackups: !isStandard
     publicUrl: 'https://${publicHost}'
     frontDoorEndpointId: frontDoor.?outputs.endpointId ?? ''
     openAiEnabled: enableOpenAI
@@ -389,7 +397,8 @@ output edgeHostname string = edgeHost
 // O endereço do endpoint green do Front Door (a variável SITE_GREEN_URL do repositório, docs/DEPLOY.md, seção 3). Só no perfil padrão.
 output greenSiteUrl string = isStandard ? 'https://${greenEdgeHost}' : ''
 output webFqdn string = webHost
-output apiFqdn string = apiHost
+// no econômico, o endereço interno: só o site alcança a api (ADR 0039)
+output apiFqdn string = isStandard ? apiHost : 'ca-api.internal.${containerEnv.outputs.defaultDomain}'
 output keyVaultName string = keyVault.outputs.name
 output registryServer string = isStandard ? registryHost : ''
 output serviceBusNamespace string = serviceBus.outputs.name

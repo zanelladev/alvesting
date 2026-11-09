@@ -4,7 +4,7 @@
 - **Data:** 05/11/2026
 - **Origem:** o pedido do Artur ("Quero que copie o Design do Rallies AI": rallies.ai, `/discover`, `/arena` e `/chat") e as decisões dele
   (os dois temas seguindo o sistema; uma landing pública com a escadaria no hero e o app; o `/chat` pronto e desligado; os logos dos
-  laboratórios ao lado dos modelos); o plano da onda, `docs/redesign-rallies/plano.md` (a tarefa T0, que mediu o Rallies deslogado); as seis
+  laboratórios ao lado dos modelos); o plano da onda (a tarefa T0, que mediu o Rallies deslogado; saiu do repositório em 09/11/2026, com os relatórios e as capturas da onda); as seis
   decisões da seção j do plano, tomadas pelo coordenador com a recomendação de cada uma (valem até o Artur dizer outra coisa)
 - **Substitui:** as partes visuais do ADR 0034 (os tokens do ascii-ui, a casca de um cabeçalho só, a moldura de linhas, a cápsula, o foco
   âmbar e a Geist 500). Ficam do 0034: a arte como arquivo (o quadro 0 no HTML, o laço só a partir de 1024 px, a procedência e a pendência
@@ -85,8 +85,7 @@ LCP da home, que já tem pouca folga (mediana de 2,39 s contra o teto de 2,5 s).
   dois tamanhos e o tema que trocou de verdade) e os testes de tela que conferem o tema (a moldura e o cartão da landing, a moldura do urso
   da 404), sem dobrar a suíte. Mudaram de expectativa: o cabeçalho de antes (a cápsula e a folha com sete
   links) virou a casca do app e a do site; a moldura de linhas saiu; a caixa de marcar e o radio marcados pintam a tinta do claro
-  (`rgb(10, 10, 10)`) e o radio vazio, o branco; quem clicava "Conta" no cabeçalho da home passa pela casca do app. A lista completa, com o
-  motivo de cada um, está em `docs/redesign-rallies/relatorios/fundacao.md`.
+  (`rgb(10, 10, 10)`) e o radio vazio, o branco; quem clicava "Conta" no cabeçalho da home passa pela casca do app.
 - **O LCP da home.** A fonte trocou de peso (a Geist 600, 13.456 B no subset latin, contra 13.336 B da 500) e nada entrou no caminho
   crítico: os logos são máscara CSS (imagem de prioridade baixa, pedida só onde um logo aparece). A medida está no relatório da fundação.
 - **Cor fixa não segue o tema.** Hexadecimal em atributo de SVG ou em `style` fica invisível num dos temas (o gráfico do patrimônio pintava
@@ -99,8 +98,7 @@ LCP da home, que já tem pouca folga (mediana de 2,39 s contra o teto de 2,5 s).
 
 ## Nota de 05/11/2026 (fase 2 e fechamento da onda)
 
-O que as tarefas da fase 2 e o fechamento decidiram, e que muda ou completa as decisões acima (os relatórios em
-`docs/redesign-rallies/relatorios/`: `landing.md`, `arena.md`, `conta.md` e `fechamento.md`):
+O que as tarefas da fase 2 e o fechamento decidiram, e que muda ou completa as decisões acima:
 
 - **A tela dividida em dois grupos.** A de entrar mora em `(entrar)` e as outras quatro da conta em `(auth)`, cada grupo com o seu layout e o
   seu `error.tsx`: a pílula do canto troca com a tela ("Criar conta" na de entrar, "Entrar" nas outras), e um layout não sabe o caminho
@@ -128,3 +126,11 @@ O que as tarefas da fase 2 e o fechamento decidiram, e que muda ou completa as d
 - **O "simulado" uma vez por contexto** (a onda do design premium, ADR 0037): a etiqueta ao lado de todo nome, da decisão 5, virou a nota no
   cabeçalho da faixa, da tabela e da barra das carteiras, a etiqueta junto do título na página do modelo e o aviso de página na arena e no
   ciclo; visível e discreta, nunca uma etiqueta em cada nome.
+- **Os logos coloridos** (06/11/2026, pedido do Artur): a decisão 5 trocou de desenho, não de regra. Entram as versões coloridas (`-color`)
+  do mesmo pacote, onde ele as tem (o Claude, o Gemini, o DeepSeek e o Qwen; o GPT e o Grok só existem em preto), como imagem num círculo
+  branco nos dois temas com o contorno de 1 px, o mesmo do logo das ações; a procedência e os SHA-256 novos em `docs/DEPENDENCIAS.md`.
+- **Entrar e criar conta na casca do app** (06/11/2026, pedido do Artur: "a tela de login deve ser um menu do app, aparecendo a
+  sidebar/navbar"): a tela dividida saiu. Entrar e as outras quatro telas da conta moram num grupo só, `(auth)`, na casca do app, na área da
+  conta (a "Conta" marcada), com o formulário numa coluna de até 448 px no centro do principal; `components/tela-dividida.tsx` e o
+  `laco={false}` da `Arte`, que só ela usava, saíram. No mesmo pedido, a caixa de marcar virou a nativa de 20 px (o alvo de 44 px é o
+  rótulo, como o do radio), e a conta virou um grid (`docs/CONTA.md`, seção 9).

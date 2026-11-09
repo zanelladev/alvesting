@@ -98,8 +98,9 @@ describe('buildRequestBody: os parâmetros iguais para todos', () => {
         // strict:false de propósito: o contrato tem campo opcional (confidence) e o modo estrito exige todos obrigatórios
         json_schema: { name: 'llm_decision', strict: false, schema: decisionJsonSchema },
       },
-      // só no OpenRouter: provedores que respeitam os parâmetros e não guardam nem treinam com os dados
-      provider: { require_parameters: true, data_collection: 'deny' },
+      // só no OpenRouter: provedores que respeitam os parâmetros, não guardam nem treinam com os dados e não estão na lista
+      // dos que falharam na prova real (a Wafer, no DeepSeek)
+      provider: { require_parameters: true, data_collection: 'deny', ignore: ['wafer'] },
     });
   });
 
@@ -166,7 +167,11 @@ describe('LlmGateway pelo SDK da OpenAI: OpenRouter', () => {
     expect(seen[0]!.url).toBe('https://openrouter.ai/api/v1/chat/completions');
     expect(seen[0]!.headers.get('authorization')).toBe(`Bearer ${KEY}`);
     expect(seen[0]!.body.messages[0]).toEqual({ role: 'system', content: SYSTEM });
-    expect(seen[0]!.body.provider).toEqual({ require_parameters: true, data_collection: 'deny' });
+    expect(seen[0]!.body.provider).toEqual({
+      require_parameters: true,
+      data_collection: 'deny',
+      ignore: ['wafer'],
+    });
   });
 
   it('devolve o texto, o usage, o custo informado pelo provedor e o que ele aplicou', async () => {
@@ -442,9 +447,33 @@ describe('LlmGateway: erros que não carregam texto do provedor', () => {
 
     // só o que tem cara de identificador: texto livre, maiúscula, espaço e tamanho não entram; o código numérico do OpenRouter
     // repete o status e também fica de fora
-    for (const code of ['Texto livre com SEGREDO', 'x'.repeat(41), '', 402, null, { a: 1 }]) {
-      const error = await failing({ code, message: 'SEGREDO' }, 402);
-      expect(error.message).toBe('Chamada ao provedor openrouter falhou: http (HTTP 402)');
+    for (const code of ['Texto livre com SEGREDO', 'x'.repeat(41), '', 400, null, { a: 1 }]) {
+      const error = await failing({ code, message: 'SEGREDO' }, 400);
+      expect(error.message).toBe('Chamada ao provedor openrouter falhou: http (HTTP 400)');
+    }
+  });
+
+  it('401 (chave recusada) e 402 (sem crédito) viram LlmConfigError: é configuração, não falha do modelo, e nunca vira HOLD', async () => {
+    for (const status of [401, 402]) {
+      const { fetch } = capture(
+        () =>
+          new Response(
+            JSON.stringify({
+              error: { code: status, message: 'SEGREDO-NO-CORPO Insufficient credits' },
+            }),
+            { status, headers: { 'content-type': 'application/json' } },
+          ),
+      );
+      const error = await new LlmGateway(env(), { fetch })
+        .call({ competitor: openrouter, system: SYSTEM, turns, timeoutMs: 60_000 })
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(LlmConfigError);
+      expect((error as Error).message).toBe(
+        `O provedor openrouter recusou a chamada (HTTP ${status}): a chave foi recusada ou está sem crédito. ` +
+          'A decisão não vira HOLD; recarregue ou troque a chave e rode de novo',
+      );
+      expect(JSON.stringify(error, Object.getOwnPropertyNames(error))).not.toContain('SEGREDO');
+      expect((error as Error).cause).toBeUndefined();
     }
   });
 

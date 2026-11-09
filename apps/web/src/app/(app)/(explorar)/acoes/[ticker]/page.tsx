@@ -26,7 +26,7 @@ import { withApiDown } from '../../../../../lib/with-api-down';
 // cabeçalho com o logo, o ticker, o nome, o último fechamento e a variação (a Regra do Glifo), a data do dado e o crédito; as velas no visual
 // do Candlestick Chart da beUI (components/velas.tsx), num painel que fica preso no topo enquanto a coluna do lado rola; e, ao lado no
 // desktop (abaixo no celular), quem tem a ação entre os modelos, o que eles decidiram sobre ela e as notícias dela. A barra "Explorar" fica
-// ao lado (docs/redesign-rallies/plano.md, f.1). As colunas dependem do lugar que o principal tem (uma consulta de contêiner, e não da
+// ao lado (ADR 0035). As colunas dependem do lugar que o principal tem (uma consulta de contêiner, e não da
 // janela: a partir de 1280 px a barra come 300 px dele).
 //
 // As barras não vêm da API pública (ela não entrega cotação bruta; a licença da brapi proíbe): saem da rota interna, com o segredo do servidor

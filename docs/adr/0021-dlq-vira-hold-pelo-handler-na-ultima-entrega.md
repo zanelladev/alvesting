@@ -36,6 +36,13 @@ não via nem o número da tentativa.
 - O handler passou a receber um segundo argumento; o `MessagingService.receiveOne` (uma mensagem por execução) devolve o que de fato
   aconteceu com a mensagem (`complete`, `retry`, `deadletter`, `abandon` ou `empty`).
 
+**Nota de 06/11/2026: o erro de configuração fica de fora.** Chave ausente, recusada (HTTP 401) ou sem crédito (HTTP 402), prompt ausente
+ou sem canário (`LlmConfigError`) não viram HOLD `falha` na última entrega: o handler lança, a mensagem vai para a DLQ e o par fica sem
+decisão. O motivo é a Temporada 1 com crédito justo: sem a exceção, um crédito que acabasse no meio do `arena:retroativo` gravaria HOLD em
+todos os pregões seguintes (a chamada recusada não custa, e o teto da execução nunca dispararia), e rodar de novo não refaz par já decidido.
+O retroativo agora para no pregão antes da liquidação; ao vivo, a varredura continua gravando `sem_resposta` no prazo, e o operador local
+confere o saldo antes de abrir o ciclo (`docs/ARENA.md`, seção 5).
+
 ## Alternativas consideradas
 
 - **Só a varredura.** Mais simples, e cobre tudo, mas o HOLD só apareceria depois do prazo mais a folga, e a liquidação das 21:30 dependeria

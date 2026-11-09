@@ -49,7 +49,7 @@ function positionCells(p: Position): string[] {
   ];
 }
 
-// a coluna da carteira, na ordem do Today do Rallies (docs/redesign-rallies/plano.md, f.3): o valor estimado, o resultado e o custo total
+// a coluna da carteira, na ordem do Today do Rallies (ADR 0035): o valor estimado, o resultado e o custo total
 function summaryValues(t: Totals): string[] {
   const priced = t.valueCents !== null;
   return [
@@ -86,18 +86,66 @@ const readText = (locator: Locator) =>
     }),
   );
 
-// Os campos do formulário (o de lançar e o de editar são o mesmo): o escopo é o formulário.
+// Os campos do formulário (o de lançar e o de editar são o mesmo, no modal): o escopo é o formulário. A quantidade é o Number field da Arc
+// (um spinbutton com o − e o +), o valor é o campo de dinheiro (o "R$" no campo, os centavos pela direita; o rótulo troca com o modo, com o
+// "em reais" para o leitor de tela) e a data é o gatilho do calendário da Arc (o nome é o rótulo e a data que ele mostra).
 const fields = (scope: Locator) => ({
   ticker: scope.getByLabel('Ticker', { exact: true }),
-  quantity: scope.getByLabel('Quantidade', { exact: true }),
+  quantity: scope.getByRole('spinbutton', { name: 'Quantidade', exact: true }),
+  more: scope.getByRole('button', { name: 'Aumentar quantidade', exact: true }),
+  less: scope.getByRole('button', { name: 'Diminuir quantidade', exact: true }),
   unit: scope.getByRole('radio', { name: 'Preço por ação' }),
   total: scope.getByRole('radio', { name: 'Valor total pago' }),
-  // o rótulo troca com o modo ("Preço por ação (R$)" / "Valor total pago (R$)")
-  value: scope.getByRole('textbox', { name: /^(Preço por ação|Valor total pago) \(R\$\)$/ }),
-  date: scope.getByLabel('Data da compra (opcional)', { exact: true }),
+  value: scope.getByRole('textbox', { name: /^(Preço por ação|Valor total pago) em reais$/ }),
+  date: scope.getByRole('button', { name: /^Data da compra \(opcional\)/ }),
+  // os campos escondidos que levam a quantidade e a data ao envio (o que o checkLot lê)
+  sentQuantity: scope.locator('input[type="hidden"][name="quantity"]'),
+  sentDate: scope.locator('input[type="hidden"][name="boughtOn"]'),
 });
 
+// O modal de lançar e de editar (o <dialog> do navegador). O formulário mora nele e tem o nome do título dele; o "Lançar compra" do cabeçalho
+// dos lançamentos (a primária) e o da coluna do resumo (a pílula cinza) o abrem.
+const modal = (page: Page) =>
+  page.getByRole('dialog', { name: /^(Lançar uma compra|Editar lançamento de)/ });
 const createForm = (page: Page) => page.getByRole('form', { name: 'Lançar uma compra' });
+const launch = (page: Page) =>
+  region(page, 'Lançamentos').getByRole('button', { name: 'Lançar compra', exact: true });
+// o da coluna da carteira vem antes no documento (com o modal fechado, os botões dele estão fora da conta)
+const launchSide = (page: Page) =>
+  page.getByRole('main').getByRole('button', { name: 'Lançar compra', exact: true }).first();
+async function openCreate(page: Page): Promise<Locator> {
+  await launch(page).click();
+  await expect(createForm(page)).toBeVisible();
+  return createForm(page);
+}
+
+// O modo é o controle segmentado: o radio nativo fica embaixo do texto da metade (escondido à vista), e quem vê toca o texto, que o marca
+// pelo <label>. O teclado chega ao radio pelo Tab e troca pelas setas (o teste do teclado).
+const choose = (scope: Locator, mode: 'unit' | 'total') =>
+  scope.getByText(mode === 'unit' ? 'Preço por ação' : 'Valor total pago', { exact: true }).click();
+
+// "quinta-feira, 15 de outubro de 2026": o nome inteiro de cada dia do calendário (o que o leitor de tela lê)
+const dayName = (iso: string) => {
+  const [year, month, day] = iso.split('-').map(Number) as [number, number, number];
+  return new Date(year, month - 1, day).toLocaleDateString('pt-BR', { dateStyle: 'full' });
+};
+// hoje em Brasília (o último dia que o calendário deixa escolher; a página o calcula igual)
+const todayInBrasilia = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+const calendarOf = (scope: Locator) =>
+  scope.getByRole('dialog', { name: 'Calendário: Data da compra (opcional)' });
+
+// A data no calendário da Arc: o gatilho abre, o ano e o mês vão pelos <select> do título, e o dia é tocado pelo nome inteiro.
+async function pickDate(scope: Locator, iso: string): Promise<void> {
+  const [year, month] = iso.split('-').map(Number) as [number, number];
+  await fields(scope).date.click();
+  const calendar = calendarOf(scope);
+  await calendar.getByRole('combobox', { name: 'Ano' }).selectOption(String(year));
+  await calendar.getByRole('combobox', { name: 'Mês' }).selectOption(String(month - 1));
+  await calendar.getByRole('gridcell', { name: dayName(iso), exact: true }).click();
+  await expect(calendar).toHaveCount(0);
+  await expect(fields(scope).sentDate).toHaveValue(iso);
+}
 
 interface Typed {
   ticker: string;
@@ -107,15 +155,15 @@ interface Typed {
   boughtOn?: string;
 }
 
-// O modo vem ANTES do valor: trocar de modo apaga o que foi digitado no valor (o mesmo número quer dizer outra coisa no outro modo).
+// O modo vem ANTES do valor: trocar de modo apaga o que foi digitado no valor (o mesmo número quer dizer outra coisa no outro modo). O valor
+// digitado entra pela direita: os algarismos contam, a vírgula e o ponto não ("35,50" e "3550" dão R$ 35,50).
 async function fill(scope: Locator, lot: Typed): Promise<void> {
   const f = fields(scope);
   await f.ticker.fill(lot.ticker);
   await f.quantity.fill(lot.quantity);
-  if (lot.mode === 'total') await f.total.check();
-  if (lot.mode === 'unit') await f.unit.check();
+  if (lot.mode) await choose(scope, lot.mode);
   await f.value.fill(lot.value);
-  if (lot.boughtOn !== undefined) await f.date.fill(lot.boughtOn);
+  if (lot.boughtOn !== undefined) await pickDate(scope, lot.boughtOn);
 }
 
 async function expectPositions(page: Page, request: APIRequestContext): Promise<void> {
@@ -249,7 +297,7 @@ test.describe('quem pode abrir a carteira', () => {
 });
 
 test.describe('lançar uma compra', () => {
-  test('a carteira vazia explica o que é e mostra o formulário, o aviso e nenhuma tabela', async ({
+  test('a carteira vazia explica o que é, abre o modal de lançar e mostra o aviso e nenhuma tabela', async ({
     page,
     request,
     ip,
@@ -272,35 +320,50 @@ test.describe('lançar uma compra', () => {
     await settled(lotCards(page)).toHaveCount(0);
     await settled(region(page, 'Resumo')).toHaveCount(0);
     await settled(region(page, 'Posições')).toHaveCount(0);
-    // sem lançamentos o formulário está logo abaixo: não há atalho para ele
+    // o formulário mora no modal: nenhum atalho para o fim da página, e o "Lançar compra" na primária, no cabeçalho dos lançamentos
     await expect(region(page, 'Lançamentos').getByRole('link')).toHaveCount(0);
+    await expect(page.locator('a[href="#lancar"], #lancar')).toHaveCount(0);
+    await expect(launch(page)).toHaveClass(/\bbtn-primary\b/);
+    await expect(createForm(page)).toHaveCount(0);
 
-    // o painel "Perguntar" (o chat desligado; docs/redesign-rallies/plano.md, f.3): a frase e o link para o /chat, e nada para digitar nem tocar
+    // o painel "Perguntar" (o chat desligado; ADR 0035): a frase e o link para o /chat, e nada para digitar nem tocar
     const ask = region(page, 'Perguntar');
     await expect(ask).toContainText('O chat sobre a sua carteira ainda está desligado');
     await expect(ask.getByRole('link', { name: 'Abrir o chat' })).toHaveAttribute('href', '/chat');
     await expect(ask.getByRole('button')).toHaveCount(0);
     await expect(ask.getByRole('textbox')).toHaveCount(0);
 
-    // o formulário: o modo "preço por ação" já vem marcado, a data é opcional e o campo de valor diz o que pede
-    const f = fields(createForm(page));
-    await expect(createForm(page)).toBeVisible();
+    // o formulário, no modal: o modo "preço por ação" já vem marcado, a quantidade começa em 1, a data é opcional e o campo de valor diz o que
+    // pede
+    const form = await openCreate(page);
+    const f = fields(form);
+    await expect(modal(page)).toHaveAccessibleName('Lançar uma compra');
     await expect(f.unit).toBeChecked();
     await expect(f.total).not.toBeChecked();
+    await expect(f.quantity).toHaveValue('1');
+    await expect(f.sentQuantity).toHaveValue('1');
     // trocar a opção apaga o valor digitado, e o grupo avisa (o leitor de tela lê a dica ao entrar no grupo)
     await expect(
-      createForm(page).getByRole('group', { name: 'Como você vai informar o valor?' }),
+      form.getByRole('group', { name: 'Como você vai informar o valor?' }),
     ).toHaveAccessibleDescription('Ao trocar a opção, o valor digitado é apagado.');
+    // o teclado de números do celular nos dois (os centavos entram pela direita: só algarismos)
     await expect(f.quantity).toHaveAttribute('inputmode', 'numeric');
-    await expect(f.value).toHaveAttribute('inputmode', 'decimal');
-    await expect(f.date).toHaveAttribute('type', 'date');
+    await expect(f.value).toHaveAttribute('inputmode', 'numeric');
+    // a data é o gatilho do calendário, e nasce sem data
+    await expect(f.date).toHaveAccessibleName(/Sem data$/);
+    await expect(f.date).toHaveAttribute('aria-haspopup', 'dialog');
+    await expect(f.sentDate).toHaveValue('');
+    await expect(f.value).toHaveAccessibleName('Preço por ação em reais');
     await expect(f.value).toHaveAccessibleDescription(/O preço de uma ação/);
-    await f.total.check();
-    await expect(f.value).toHaveAccessibleName('Valor total pago (R$)');
-    await expect(f.value).toHaveAccessibleDescription(/O total que você pagou/);
+    // a explicação do "valor total pago": à vista na dica do campo de valor no modo total, e a descrição do radio
+    await expect(f.total).toHaveAccessibleDescription(/O total da nota desta compra/);
+    await choose(form, 'total');
+    await expect(f.total).toBeChecked();
+    await expect(f.value).toHaveAccessibleName('Valor total pago em reais');
+    await expect(f.value).toHaveAccessibleDescription(/O total da nota desta compra/);
 
     // quem não sabe o código da ação busca na lista da arena, noutra aba (o formulário preenchido não se perde)
-    const search = region(page, 'Lançar uma compra').getByRole('link', {
+    const search = modal(page).getByRole('link', {
       name: /^Buscar uma ação/,
     });
     await expect(search).toHaveAttribute('href', '/acoes');
@@ -315,7 +378,7 @@ test.describe('lançar uma compra', () => {
   }) => {
     await signedIn(page, request, ip, 'carteira-modos');
     await page.goto('/carteira');
-    const form = createForm(page);
+    const form = await openCreate(page);
     const f = fields(form);
 
     // por ação: 100 ações a R$ 35,50
@@ -329,7 +392,8 @@ test.describe('lançar uma compra', () => {
     await form.getByRole('button', { name: 'Lançar compra' }).click();
     const first = notice(page, 'Compra lançada: 100 MOVE3, custo total R$ 3.550,00.');
     await settled(first).toBeVisible();
-    // o aviso recebe o foco: o botão que enviou ficou desativado, e no celular o aviso fica longe do formulário
+    // o modal fecha, e o aviso recebe o foco: o botão que enviou sumiu com o modal, e no celular o aviso fica longe dele
+    await settled(modal(page)).toHaveCount(0);
     await settled(first).toBeFocused();
     await settled(lotCards(page)).toHaveCount(1);
     await expect(lotCards(page).first().locator('dd')).toHaveText([
@@ -337,15 +401,13 @@ test.describe('lançar uma compra', () => {
       'R$ 3.550,00',
       '15/10/2026',
     ]);
-    // com lançamentos há um atalho para o formulário, que fica depois da lista inteira
-    await expect(
-      region(page, 'Lançamentos').getByRole('link', { name: 'Ir para o formulário de lançar' }),
-    ).toHaveAttribute('href', '#lancar');
-    // o formulário volta limpo, pronto para o próximo
+    // com lançamentos, o "Lançar compra" segue no cabeçalho da seção, antes da lista, e abre o formulário limpo, pronto para o próximo
+    await openCreate(page);
     await expect(f.ticker).toHaveValue('');
-    await expect(f.quantity).toHaveValue('');
+    await expect(f.quantity).toHaveValue('1');
     await expect(f.value).toHaveValue('');
     await expect(f.unit).toBeChecked();
+    await expect(f.date).toHaveAccessibleName(/Sem data$/);
 
     // valor total: os mesmos 100 MOVE3 com o total de R$ 3.550,00
     await fill(form, {
@@ -392,13 +454,15 @@ test.describe('lançar uma compra', () => {
     }) => {
       await signedIn(page, request, ip, 'carteira-par');
       await page.goto('/carteira');
-      const form = createForm(page);
       let saved = 0;
       for (const [mode, value] of [
         ['unit', pair.unit],
         ['total', pair.total],
       ] as const) {
+        const form = await openCreate(page);
         await fill(form, { ticker: 'SINA3', quantity: String(pair.quantity), mode, value });
+        // o que se digitou com a vírgula e o milhar é o que o campo mostra (os centavos entram pela direita)
+        await expect(fields(form).value).toHaveValue(value);
         await form.getByRole('button', { name: 'Lançar compra' }).click();
         // os dois avisos são iguais (é o ponto do teste): espera a lista ter mais um cartão antes de olhar o foco do aviso
         saved += 1;
@@ -417,6 +481,10 @@ test.describe('lançar uma compra', () => {
     });
   }
 
+  // Os campos novos não deixam escrever o que a regra recusaria: a quantidade é inteira e fica entre 1 e 1.000.000 (o Number field), o valor só
+  // tem algarismos (os centavos pela direita) e a data só sai do calendário, até hoje. Sobram, para o formulário recusar no campo, o ticker
+  // vazio, o valor vazio e o produto acima do teto (o "1.234" ambíguo, as 3 casas e a data futura não se digitam mais: a regra do contrato
+  // segue nos testes de unidade do checkLot e do parseBrl, e a da data, no teste de integração da api).
   test('os erros ficam no campo, em português, com o foco no primeiro e nada é enviado', async ({
     page,
     request,
@@ -424,7 +492,7 @@ test.describe('lançar uma compra', () => {
   }) => {
     await signedIn(page, request, ip, 'carteira-erros');
     await page.goto('/carteira');
-    const form = createForm(page);
+    const form = await openCreate(page);
     const f = fields(form);
     const submit = form.getByRole('button', { name: 'Lançar compra' });
     // "nada é enviado": nenhum pedido de lançamento sai do navegador (a api também recusaria estes valores, então só a contagem prova)
@@ -433,40 +501,28 @@ test.describe('lançar uma compra', () => {
       if (sent.method() === 'POST' && sent.url().endsWith('/api/v1/me/portfolio/lots')) posts += 1;
     });
 
-    // tudo vazio: um erro por campo, o foco no primeiro
+    // tudo vazio: um erro por campo que falta, o foco no primeiro (a quantidade já começa em 1)
     await submit.click();
     await expect(f.ticker).toBeFocused();
     await expect(f.ticker).toHaveAttribute('aria-invalid', 'true');
     await expect(f.ticker).toHaveAccessibleDescription(/Informe o ticker/);
-    await expect(f.quantity).toHaveAccessibleDescription(/Informe a quantidade/);
+    await expect(f.value).toHaveAttribute('aria-invalid', 'true');
     await expect(f.value).toHaveAccessibleDescription(/Informe o valor/);
+    await expect(f.quantity).not.toHaveAttribute('aria-invalid', 'true');
     expect((await wallet(page.request)).lots).toEqual([]);
 
     // corrigir o campo apaga o erro dele na hora; os outros ficam
     await f.ticker.fill('MOVE3');
     await expect(f.ticker).not.toHaveAttribute('aria-invalid', 'true');
-    await expect(f.quantity).toHaveAttribute('aria-invalid', 'true');
+    await expect(f.value).toHaveAttribute('aria-invalid', 'true');
 
-    // a quantidade é inteira (o ponto de milhar não vale), e o valor não adivinha o que "1.234" quer dizer
-    await f.quantity.fill('1.000');
-    await f.value.fill('1.234');
-    await submit.click();
-    await expect(f.quantity).toBeFocused();
-    await expect(f.quantity).toHaveAccessibleDescription(/Use só números inteiros/);
-    await expect(f.value).toHaveAccessibleDescription(/Escreva 1\.234,00 ou 1234/);
-
-    await f.quantity.fill('100');
-    await f.value.fill('12,345');
+    // o produto passa do teto: 1.000.000 de ações a R$ 100.000,00 (R$ 100 bilhões); o resumo some acima do teto
+    await f.quantity.fill('1000000');
+    await f.value.fill('10000000');
+    await expect(f.value).toHaveValue('100.000,00');
+    await expect(form.locator('[data-resumo]')).toHaveCount(0);
     await submit.click();
     await expect(f.value).toBeFocused();
-    await expect(f.value).toHaveAccessibleDescription(/no máximo 2 casas/);
-    // no modo "por ação", a saída para um preço com mais casas é o total
-    await expect(f.value).toHaveAccessibleDescription(/Valor total pago/);
-
-    // o produto passa do teto: 1.000.000 de ações a R$ 100.000,00 (R$ 100 bilhões)
-    await f.quantity.fill('1000000');
-    await f.value.fill('100.000,00');
-    await submit.click();
     await expect(f.value).toHaveAccessibleDescription(
       /O custo total passa de R\$\s1\.000\.000\.000,00/,
     );
@@ -474,35 +530,34 @@ test.describe('lançar uma compra', () => {
     expect((await wallet(page.request)).lots).toEqual([]);
   });
 
-  test('o que só a api sabe (ação desconhecida, data futura) também sai no campo certo, e o formulário segue usável', async ({
+  // A data futura não se escolhe mais (o calendário para em hoje, em Brasília: o teste do calendário); quem prova que a api a recusa é o
+  // `apps/api/src/modules/portfolio/presentation/portfolio.integration.spec.ts` ("a data da compra não pode ser futura (em Brasília): hoje
+  // passa, amanhã não", e o do PATCH com a data futura).
+  test('o que só a api sabe (a ação desconhecida) também sai no campo certo, e o formulário segue usável', async ({
     page,
     request,
     ip,
   }) => {
     await signedIn(page, request, ip, 'carteira-api');
     await page.goto('/carteira');
-    const form = createForm(page);
+    const form = await openCreate(page);
     const f = fields(form);
-    const future = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
 
     await fill(form, {
       ticker: 'ZZZZ9',
       quantity: '10',
       mode: 'unit',
       value: '10,00',
-      boughtOn: future,
     });
     await form.getByRole('button', { name: 'Lançar compra' }).click();
-    // dois campos recusados pela api; o foco vai ao primeiro, e o formulário volta a poder ser enviado
+    // o campo recusado pela api; o foco vai a ele, e o formulário volta a poder ser enviado
     await settled(f.ticker).toBeFocused();
     await expect(f.ticker).toHaveAccessibleDescription(/Não encontramos esta ação/);
-    await expect(f.date).toHaveAccessibleDescription(/não pode ser no futuro/);
     await expect(form.getByRole('button', { name: 'Lançar compra' })).toBeEnabled();
     expect((await wallet(page.request)).lots).toEqual([]);
 
-    // a pessoa corrige os dois e o lançamento entra, sem recarregar a página
+    // a pessoa corrige e o lançamento entra, sem recarregar a página
     await f.ticker.fill('SINA3');
-    await f.date.fill('');
     await form.getByRole('button', { name: 'Lançar compra' }).click();
     await settled(notice(page, 'Compra lançada: 10 SINA3, custo total R$ 100,00.')).toBeVisible();
     await settled(lotCards(page)).toHaveCount(1);
@@ -517,7 +572,7 @@ test.describe('lançar uma compra', () => {
   }) => {
     await signedIn(page, request, ip, 'carteira-falhas');
     await page.goto('/carteira');
-    const form = createForm(page);
+    const form = await openCreate(page);
     const f = fields(form);
     await fill(form, { ticker: 'MOVE3', quantity: '5', mode: 'unit', value: '10,00' });
 
@@ -571,7 +626,7 @@ test.describe('lançar uma compra', () => {
   test('o duplo clique em Lançar compra manda um pedido só', async ({ page, request, ip }) => {
     await signedIn(page, request, ip, 'carteira-duplo');
     await page.goto('/carteira');
-    const form = createForm(page);
+    const form = await openCreate(page);
     const f = fields(form);
     const held = await hold(page, '**/api/v1/me/portfolio/lots', 'POST');
     await fill(form, { ticker: 'MOVE3', quantity: '5', mode: 'unit', value: '10,00' });
@@ -580,6 +635,11 @@ test.describe('lançar uma compra', () => {
     await expect(form.getByRole('button', { name: 'Enviando…' })).toBeDisabled();
     await expect(f.ticker).toBeDisabled();
     expect(held.calls()).toBe(1);
+    // com o pedido no ar o modal não fecha: o ✕ e o "Cancelar" ficam desativados, e o Esc não o fecha
+    await expect(modal(page).getByRole('button', { name: 'Fechar', exact: true })).toBeDisabled();
+    await expect(form.getByRole('button', { name: 'Cancelar', exact: true })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(modal(page)).toBeVisible();
 
     held.release();
     await settled(notice(page, 'Compra lançada: 5 MOVE3, custo total R$ 50,00.')).toBeVisible();
@@ -597,30 +657,314 @@ test.describe('lançar uma compra', () => {
   }) => {
     await signedIn(page, request, ip, 'carteira-restaurada');
     await page.goto('/carteira');
-    const form = createForm(page);
+    const form = await openCreate(page);
     const f = fields(form);
     await fill(form, { ticker: 'MOVE3', quantity: '5', mode: 'total', value: '100,00' });
-    await expect(f.value).toHaveAccessibleName('Valor total pago (R$)');
+    await expect(f.value).toHaveAccessibleName('Valor total pago em reais');
 
+    // os campos do modal moram no React: a restauração faz o formulário nascer de novo, no começo
     await page.evaluate(() =>
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })),
     );
     await expect(f.ticker).toHaveValue('');
+    await expect(f.quantity).toHaveValue('1');
     await expect(f.value).toHaveValue('');
     await expect(f.unit).toBeChecked();
     await expect(f.total).not.toBeChecked();
-    await expect(f.value).toHaveAccessibleName('Preço por ação (R$)');
+    await expect(f.value).toHaveAccessibleName('Preço por ação em reais');
     await expect(f.value).toHaveAccessibleDescription(/O preço de uma ação/);
 
     // um pageshow que NÃO é de uma restauração (a carga normal) não mexe em nada
-    await f.total.check();
+    await choose(form, 'total');
     await f.value.fill('100,00');
     await page.evaluate(() =>
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false })),
     );
     await expect(f.total).toBeChecked();
     await expect(f.value).toHaveValue('100,00');
-    await expect(f.value).toHaveAccessibleName('Valor total pago (R$)');
+    await expect(f.value).toHaveAccessibleName('Valor total pago em reais');
+  });
+});
+
+// O modal do lançamento (docs/TELAS.md, seção 9): o <dialog> do navegador, com as peças da Arc (o Number field, o Date picker e o Calendar) e o
+// campo de dinheiro nosso. Abre pelos dois "Lançar compra" e pelo "Editar"; fecha pelo Esc, pelo ✕ e pelo "Cancelar", com o foco de volta em
+// quem abriu; não fecha no clique fora; o rascunho de lançar sobrevive a fechar.
+test.describe('o modal de lançar', () => {
+  test('abre pelos dois botões e fecha pelo Esc, pelo ✕ e por "Cancelar", com o foco de volta em quem abriu', async ({
+    page,
+    request,
+    ip,
+  }) => {
+    await signedIn(page, request, ip, 'carteira-modal');
+    await addLot(page.request, { ticker: 'MOVE3', quantity: 10, mode: 'unit', valueCents: 1_000 });
+    await page.goto('/carteira');
+    const side = region(page, 'Resumo').getByRole('button', { name: 'Lançar compra', exact: true });
+    await expect(side).not.toHaveClass(/\bbtn-primary\b/);
+    for (const [opener, close] of [
+      [launch(page), 'esc'],
+      [side, 'x'],
+      [launch(page), 'cancelar'],
+      [side, 'esc'],
+    ] as const) {
+      await opener.click();
+      const form = createForm(page);
+      await expect(modal(page)).toBeVisible();
+      await expect(fields(form).ticker).toBeFocused();
+      // a página atrás não rola com o modal aberto
+      expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflowY)).toBe(
+        'hidden',
+      );
+      if (close === 'esc') await page.keyboard.press('Escape');
+      if (close === 'x')
+        await modal(page).getByRole('button', { name: 'Fechar', exact: true }).click();
+      if (close === 'cancelar')
+        await form.getByRole('button', { name: 'Cancelar', exact: true }).click();
+      await expect(modal(page)).toHaveCount(0);
+      await expect(opener).toBeFocused();
+    }
+    // o clique fora (no véu) não fecha: é um formulário com o que a pessoa digitou
+    await launch(page).click();
+    await expect(modal(page)).toBeVisible();
+    await page.mouse.click(4, 4);
+    await expect(modal(page)).toBeVisible();
+    expect((await wallet(page.request)).lots).toHaveLength(1);
+    // os botões ficam inteiros à vista sem rolar, presos no pé do corpo que rola, mesmo com a dica longa do modo total (num notebook de 900 px
+    // de altura eles ficavam abaixo da dobra); o `toBeInViewport` conta o recorte do corpo
+    const form = createForm(page);
+    await choose(form, 'total');
+    await expect(form.getByRole('button', { name: 'Lançar compra', exact: true })).toBeInViewport({
+      ratio: 1,
+    });
+    await expect(form.getByRole('button', { name: 'Cancelar', exact: true })).toBeInViewport({
+      ratio: 1,
+    });
+  });
+
+  test('o rascunho de lançar sobrevive a fechar e abrir de novo, e o formulário nasce limpo depois de um lançamento', async ({
+    page,
+    request,
+    ip,
+  }) => {
+    await signedIn(page, request, ip, 'carteira-rascunho');
+    await page.goto('/carteira');
+    const form = await openCreate(page);
+    const f = fields(form);
+    await fill(form, { ticker: 'MOVE3', quantity: '7', mode: 'total', value: '7000' });
+    await page.keyboard.press('Escape');
+    await expect(modal(page)).toHaveCount(0);
+    await launchSide(page).click();
+    await expect(f.ticker).toHaveValue('MOVE3');
+    await expect(f.quantity).toHaveValue('7');
+    await expect(f.total).toBeChecked();
+    await expect(f.value).toHaveValue('70,00');
+    await form.getByRole('button', { name: 'Lançar compra' }).click();
+    await settled(notice(page, 'Compra lançada: 7 MOVE3, custo total R$ 70,00.')).toBeFocused();
+    await openCreate(page);
+    await expect(f.ticker).toHaveValue('');
+    await expect(f.quantity).toHaveValue('1');
+    await expect(f.unit).toBeChecked();
+    await expect(f.value).toHaveValue('');
+  });
+
+  test('a quantidade só inteira: o − e o + andam de 1 em 1 (o − parado em 1), os algarismos rolam, "1,5" não dá meia ação e "1000" aparece "1.000"', async ({
+    page,
+    request,
+    ip,
+  }) => {
+    await signedIn(page, request, ip, 'carteira-quantidade');
+    await page.goto('/carteira');
+    const form = await openCreate(page);
+    const f = fields(form);
+    await expect(f.quantity).toHaveValue('1');
+    await expect(f.less).toBeDisabled();
+    // o algarismo que gira: a opacidade fora de 0 e 1 em algum quadro depois do toque no +
+    const rolling = f.quantity.evaluate(
+      (input) =>
+        new Promise<number>((resolve) => {
+          const control = input.closest('div[class*="control"]')!;
+          const start = performance.now();
+          let moving = 0;
+          const tick = () => {
+            const glyphs = [...control.querySelectorAll<HTMLElement>('[class*="glyph"]')];
+            moving = Math.max(
+              moving,
+              glyphs.filter((g) => !['', '0', '1'].includes(g.style.opacity)).length,
+            );
+            if (performance.now() - start > 1_500) resolve(moving);
+            else requestAnimationFrame(tick);
+          };
+          tick();
+        }),
+    );
+    await f.more.click();
+    await expect(f.quantity).toHaveValue('2');
+    expect(await rolling).toBeGreaterThan(0);
+    await f.more.click();
+    await expect(f.quantity).toHaveValue('3');
+    await f.less.click();
+    await f.less.click();
+    await expect(f.quantity).toHaveValue('1');
+    await expect(f.sentQuantity).toHaveValue('1');
+    // no mínimo o − segue com o foco possível (aria-disabled), e o toque mostra o limite, sem passar dele
+    await expect(f.less).toHaveAttribute('aria-disabled', 'true');
+    await f.less.click({ force: true });
+    await expect(form.getByText('Mín. 1 ação', { exact: true })).toBeVisible();
+    await expect(f.quantity).toHaveValue('1');
+
+    // a vírgula não entra: "1,5" vira 15 ações, nunca meia
+    await f.quantity.fill('1,5');
+    await f.ticker.focus();
+    await expect(f.quantity).toHaveValue('15');
+    await expect(f.sentQuantity).toHaveValue('15');
+    // o milhar aparece ao confirmar
+    await f.quantity.fill('1000');
+    await f.ticker.focus();
+    await expect(f.quantity).toHaveValue('1.000');
+    await expect(f.sentQuantity).toHaveValue('1000');
+    // acima do teto volta ao teto
+    await f.quantity.fill('2000000');
+    await f.ticker.focus();
+    await expect(f.quantity).toHaveValue('1.000.000');
+    await expect(f.more).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  test('o valor: o "R$" no campo, os centavos pela direita ("3550" vira "35,50"), colar pela regra do contrato e o resumo acima dos botões', async ({
+    page,
+    request,
+    ip,
+  }) => {
+    await signedIn(page, request, ip, 'carteira-valor');
+    await page.goto('/carteira');
+    const form = await openCreate(page);
+    const f = fields(form);
+    const summary = form.locator('[data-resumo]');
+    await expect(form.getByText('R$', { exact: true })).toBeVisible();
+    await expect(f.value).toHaveAttribute('placeholder', '0,00');
+    // sem valor, sem resumo
+    await expect(summary).toHaveCount(0);
+
+    // cada algarismo empurra os outros para a esquerda, e o Backspace tira o último
+    await f.value.click();
+    const shown: string[] = [];
+    for (const key of '3550') {
+      await page.keyboard.press(key);
+      shown.push(await f.value.inputValue());
+    }
+    expect(shown).toEqual(['0,03', '0,35', '3,55', '35,50']);
+    await page.keyboard.press('Backspace');
+    await expect(f.value).toHaveValue('3,55');
+    await page.keyboard.press('0');
+    await expect(f.value).toHaveValue('35,50');
+
+    // o resumo: 100 × R$ 35,50 é o custo total de R$ 3.550,00
+    await f.quantity.fill('100');
+    await f.ticker.focus();
+    await expect.poll(() => readText(summary)).toEqual(['Custo total R$ 3.550,00']);
+    // no modo total, o preço médio: R$ 3.550,00 por 100 ações dá R$ 35,50
+    await choose(form, 'total');
+    await expect(f.value).toHaveValue('');
+    await expect(summary).toHaveCount(0);
+    await f.value.fill('355000');
+    await expect(f.value).toHaveValue('3.550,00');
+    await expect.poll(() => readText(summary)).toEqual(['Preço médio por ação R$ 35,50']);
+
+    // colar passa pelo parseBrl: "R$ 1.234,56" entra inteiro; o que ele recusa ("1.234", ambíguo) não muda nada
+    const paste = (text: string) =>
+      f.value.evaluate((input, pasted) => {
+        const data = new DataTransfer();
+        data.setData('text/plain', pasted);
+        input.dispatchEvent(
+          new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+        );
+      }, text);
+    await paste('R$ 1.234,56');
+    await expect(f.value).toHaveValue('1.234,56');
+    await paste('1.234');
+    await expect(f.value).toHaveValue('1.234,56');
+  });
+
+  test('a data: o calendário da Arc em português, com o mês e o ano rápidos, nada depois de hoje, o "Limpar", o "Hoje" e o Esc que fecha só o calendário', async ({
+    page,
+    request,
+    ip,
+  }) => {
+    await signedIn(page, request, ip, 'carteira-data');
+    await page.goto('/carteira');
+    const form = await openCreate(page);
+    const f = fields(form);
+    const calendar = calendarOf(form);
+    const today = todayInBrasilia();
+    const [year, month, day] = today.split('-').map(Number) as [number, number, number];
+    const tomorrow = new Date(year, month - 1, day + 1);
+    const tomorrowIso = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+
+    // o gatilho abre o calendário no mês de hoje; o dia de amanhã e o mês seguinte não se escolhem
+    await f.date.click();
+    await expect(calendar).toBeVisible();
+    await expect(f.date).toHaveAttribute('aria-expanded', 'true');
+    await expect(calendar.getByRole('combobox', { name: 'Ano' })).toHaveValue(String(year));
+    await expect(calendar.getByRole('combobox', { name: 'Mês' })).toHaveValue(String(month - 1));
+    await expect(
+      calendar.getByRole('gridcell', { name: dayName(today), exact: true }),
+    ).toBeEnabled();
+    const after = calendar.getByRole('gridcell', { name: dayName(tomorrowIso), exact: true });
+    if ((await after.count()) > 0) await expect(after).toBeDisabled();
+    await expect(calendar.getByRole('button', { name: 'Próximo mês' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    if (month < 12) {
+      await expect(
+        calendar.getByRole('combobox', { name: 'Mês' }).locator(`option[value="${month}"]`),
+      ).toBeDisabled();
+    }
+    await expect(calendar.getByText('Escolha um dia', { exact: true })).toBeVisible();
+
+    // o Esc dentro do calendário fecha SÓ o calendário: o modal fica, e o foco volta ao gatilho
+    await page.keyboard.press('Escape');
+    await expect(calendar).toHaveCount(0);
+    await expect(modal(page)).toBeVisible();
+    await expect(f.date).toBeFocused();
+
+    // o voltar do Android pede para fechar o <dialog> sem tecla nenhuma (só o `cancel`): com o calendário aberto, fecha só o calendário
+    await f.date.click();
+    await expect(calendar).toBeVisible();
+    await modal(page).evaluate((dialog) =>
+      dialog.dispatchEvent(new Event('cancel', { cancelable: true })),
+    );
+    await expect(calendar).toHaveCount(0);
+    await expect(modal(page)).toBeVisible();
+
+    // o mês e o ano rápidos: uma compra de 2019 em três toques
+    await pickDate(form, '2019-03-10');
+    await expect(f.date).toHaveAccessibleName(/10 de mar\. de 2019$/);
+    // "Limpar" volta para "Sem data"
+    await f.date.click();
+    await expect(
+      calendar.getByText('Escolhida: 10 de mar. de 2019', { exact: true }),
+    ).toBeVisible();
+    await calendar.getByRole('button', { name: 'Limpar', exact: true }).click();
+    await expect(calendar).toHaveCount(0);
+    await expect(f.date).toHaveAccessibleName(/Sem data$/);
+    await expect(f.sentDate).toHaveValue('');
+    // "Hoje" escolhe o dia de hoje
+    await f.date.click();
+    await calendar.getByRole('button', { name: /^Hoje/ }).click();
+    await expect(calendar).toHaveCount(0);
+    await expect(f.sentDate).toHaveValue(today);
+
+    // e a data vai à api como AAAA-MM-DD
+    await fill(form, {
+      ticker: 'MOVE3',
+      quantity: '3',
+      mode: 'unit',
+      value: '1000',
+      boughtOn: '2019-03-10',
+    });
+    await form.getByRole('button', { name: 'Lançar compra' }).click();
+    await settled(notice(page, 'Compra lançada: 3 MOVE3, custo total R$ 30,00.')).toBeVisible();
+    expect((await wallet(page.request)).lots[0]).toMatchObject({ boughtOn: '2019-03-10' });
+    await expect(lotCards(page).first().locator('dd').nth(2)).toHaveText('10/03/2019');
   });
 });
 
@@ -642,7 +986,7 @@ test.describe('editar e apagar', () => {
     });
   };
 
-  test('editar usa o mesmo formulário, já preenchido, e a posição acompanha', async ({
+  test('editar abre o mesmo formulário no modal, já preenchido, e a posição acompanha', async ({
     page,
     request,
     ip,
@@ -657,15 +1001,21 @@ test.describe('editar e apagar', () => {
     const form = page.getByRole('form', { name: 'Editar lançamento de 100 MOVE3' });
     const f = fields(form);
     // o foco vai ao primeiro campo, e o custo guardado volta como "valor total pago"
+    await expect(modal(page)).toHaveAccessibleName('Editar lançamento de 100 MOVE3');
     await expect(f.ticker).toBeFocused();
     await expect(f.ticker).toHaveValue('MOVE3');
     await expect(f.quantity).toHaveValue('100');
     await expect(f.total).toBeChecked();
-    await expect(f.value).toHaveAccessibleName('Valor total pago (R$)');
-    await expect(f.value).toHaveValue('3550,00');
+    await expect(f.value).toHaveAccessibleName('Valor total pago em reais');
+    await expect(f.value).toHaveValue('3.550,00');
     // o custo guardado é o total de TODAS as ações: quem muda só a quantidade é lembrado de conferi-lo
     await expect(f.value).toHaveAccessibleDescription(/Mudou a quantidade\? Confira este total\./);
-    await expect(f.date).toHaveValue('2026-10-15');
+    await expect(f.date).toHaveAccessibleName(/15 de out\. de 2026$/);
+    await expect(f.sentDate).toHaveValue('2026-10-15');
+    // o resumo: 100 ações por R$ 3.550,00 dão o preço médio de R$ 35,50
+    expect(await readText(form.locator('[data-resumo]'))).toEqual([
+      'Preço médio por ação R$ 35,50',
+    ]);
     // o outro lançamento segue como estava, sem formulário
     await expect(lotCards(page).filter({ hasText: 'SINA3' }).getByRole('form')).toHaveCount(0);
 
@@ -676,6 +1026,7 @@ test.describe('editar e apagar', () => {
     await settled(
       notice(page, 'Lançamento salvo: 50 MOVE3, custo total R$ 1.775,00.'),
     ).toBeVisible();
+    await settled(modal(page)).toHaveCount(0);
     await settled(page.getByRole('form', { name: /^Editar lançamento/ })).toHaveCount(0);
     await settled(card.locator('dd')).toHaveText(['50', 'R$ 1.775,00', '15/10/2026']);
     // o foco volta ao botão que abriu a edição: a pessoa continua onde estava
@@ -699,10 +1050,10 @@ test.describe('editar e apagar', () => {
     await card.getByRole('button', { name: /^Editar/ }).click();
     const form = page.getByRole('form', { name: 'Editar lançamento de 100 MOVE3' });
     const f = fields(form);
-    await expect(f.value).toHaveValue('3550,00');
+    await expect(f.value).toHaveValue('3.550,00');
 
-    await f.unit.check();
-    await expect(f.value).toHaveAccessibleName('Preço por ação (R$)');
+    await choose(form, 'unit');
+    await expect(f.value).toHaveAccessibleName('Preço por ação em reais');
     await expect(f.value).toHaveValue('');
     // em "preço por ação" a dica do total não vale mais
     await expect(f.value).not.toHaveAccessibleDescription(/Mudou a quantidade/);
@@ -710,7 +1061,13 @@ test.describe('editar e apagar', () => {
     await form.getByRole('button', { name: 'Salvar alterações' }).click();
     await expect(f.value).toHaveAccessibleDescription(/Informe o valor/);
 
-    await f.value.fill('40');
+    // voltar ao total devolve o custo guardado; e de novo por ação, vazio
+    await choose(form, 'total');
+    await expect(f.value).toHaveValue('3.550,00');
+    await choose(form, 'unit');
+    await expect(f.value).toHaveValue('');
+    await f.value.fill('4000');
+    await expect(f.value).toHaveValue('40,00');
     await form.getByRole('button', { name: 'Salvar alterações' }).click();
     // 100 ações a R$ 40,00 = R$ 4.000,00
     await settled(
@@ -722,7 +1079,11 @@ test.describe('editar e apagar', () => {
     );
   });
 
-  test('cancelar a edição não muda nada e devolve o foco', async ({ page, request, ip }) => {
+  test('cancelar a edição fecha o modal, não muda nada e devolve o foco ao Editar', async ({
+    page,
+    request,
+    ip,
+  }) => {
     await signedIn(page, request, ip, 'carteira-cancelar-edicao');
     await seed(page);
     await page.goto('/carteira');
@@ -730,8 +1091,9 @@ test.describe('editar e apagar', () => {
     await card.getByRole('button', { name: /^Editar/ }).click();
     const form = page.getByRole('form', { name: 'Editar lançamento de 100 MOVE3' });
     await fields(form).quantity.fill('99');
-    await form.getByRole('button', { name: 'Cancelar edição' }).click();
+    await form.getByRole('button', { name: 'Cancelar', exact: true }).click();
 
+    await settled(modal(page)).toHaveCount(0);
     await settled(page.getByRole('form', { name: /^Editar lançamento/ })).toHaveCount(0);
     await settled(card.locator('dd')).toHaveText(['100', 'R$ 3.550,00', '15/10/2026']);
     await settled(card.getByRole('button', { name: /^Editar/ })).toBeFocused();
@@ -1026,60 +1388,56 @@ test.describe('quem pode ver o quê', () => {
 test.describe('por toque', () => {
   test.use({ hasTouch: true });
 
-  test('lançar, editar e apagar tocando: o texto do radio o marca, e os botões respondem ao toque', async ({
+  test('lançar, editar e apagar tocando: o modal abre no toque, o texto da metade marca o modo, e os botões respondem ao toque', async ({
     page,
     request,
     ip,
   }) => {
     await signedIn(page, request, ip, 'carteira-toque');
     await page.goto('/carteira');
+    await launch(page).tap();
     const form = createForm(page);
     const f = fields(form);
+    await expect(form).toBeVisible();
 
     await f.ticker.fill('MOVE3');
+    // o + tocado sobe de 1 em 1; a quantidade digitada vale igual
+    await f.more.tap();
+    await expect(f.quantity).toHaveValue('2');
     await f.quantity.fill('100');
     await form.getByText('Valor total pago', { exact: true }).tap();
     await expect(f.total).toBeChecked();
     await expect(f.unit).not.toBeChecked();
-    // O radio visível de 20 px, o desenho do radio nativo (a decisão que a T2b deixou, tomada no fechamento da onda): o estado é a espessura da
-    // borda, que sobrevive ao alto contraste do sistema em todo navegador (a cor vira a do sistema, a espessura fica), sem pseudo-elemento nem
-    // fundo (o `::before` num <input> o Firefox não desenha). Desmarcado, a borda de 2 px no fio de controle; marcado, a de 6 px na tinta, com o
-    // miolo no canvas. Os dois redondos, para não se confundir com a caixa de marcar (o quadrado com o X). O alvo de 44 px é o rótulo inteiro da
-    // opção (o radio e o texto), que marca o radio no toque. O e2e roda no tema claro (ADR 0035): a tinta é a quase preta, o fio de controle o
-    // cinza #8a8a90 e o fundo, o branco.
+    // O controle segmentado: duas metades de 44 px na trilha, e a pílula do canvas na metade escolhida (o `translate` dela anda 100% da
+    // largura, em 250 ms). O radio nativo fica na metade inteira, embaixo do texto, invisível; o texto escolhido fica na tinta.
     const look = (radio: Element) => {
-      const style = getComputedStyle(radio);
+      const label = radio.closest('label')!;
       return {
-        mark: getComputedStyle(radio, '::before').content,
-        border: style.borderTopWidth,
-        color: style.borderTopColor,
-        background: style.backgroundColor,
-        radius: style.borderTopLeftRadius,
-        size: radio.getBoundingClientRect().width,
-        target: radio.closest('label')!.getBoundingClientRect().height,
+        target: label.getBoundingClientRect().height,
+        width: label.getBoundingClientRect().width,
+        opacity: getComputedStyle(radio).opacity,
       };
     };
     const painted = await f.total.evaluate(look);
     const empty = await f.unit.evaluate(look);
-    expect(painted).toMatchObject({
-      mark: 'none',
-      border: '6px',
-      color: 'rgb(10, 10, 10)',
-      background: 'rgb(255, 255, 255)',
-      size: 20,
-    });
-    expect(empty).toMatchObject({
-      mark: 'none',
-      border: '2px',
-      color: 'rgb(138, 138, 144)',
-      background: 'rgb(255, 255, 255)',
-      size: 20,
-    });
-    expect(painted.radius).not.toBe('0px');
-    expect(empty.radius).not.toBe('0px');
     expect(painted.target).toBeGreaterThanOrEqual(43.95);
     expect(empty.target).toBeGreaterThanOrEqual(43.95);
-    await f.value.fill('3550');
+    expect(Math.abs(painted.width - empty.width)).toBeLessThan(1);
+    expect([painted.opacity, empty.opacity]).toEqual(['0', '0']);
+    // o e2e roda no tema claro: a tinta é a quase preta e o texto secundário, o cinza (a cor anda em 150 ms)
+    const colorOf = (radio: Locator) =>
+      radio.evaluate((input) => getComputedStyle(input.closest('label')!).color);
+    await expect.poll(() => colorOf(f.total)).toBe('rgb(10, 10, 10)');
+    await expect.poll(() => colorOf(f.unit)).toBe('rgb(107, 107, 114)');
+    await expect
+      .poll(() =>
+        f.total.evaluate(
+          (radio) => getComputedStyle(radio.closest('label')!.parentElement!, '::before').translate,
+        ),
+      )
+      .toMatch(/^100%/);
+    await f.value.fill('355000');
+    await expect(f.value).toHaveValue('3.550,00');
     await form.getByRole('button', { name: 'Lançar compra' }).tap();
     await settled(
       notice(page, 'Compra lançada: 100 MOVE3, custo total R$ 3.550,00.'),
@@ -1090,7 +1448,7 @@ test.describe('por toque', () => {
     await card.getByRole('button', { name: /^Editar/ }).tap();
     const editForm = page.getByRole('form', { name: 'Editar lançamento de 100 MOVE3' });
     await fields(editForm).quantity.fill('40');
-    await fields(editForm).value.fill('1420');
+    await fields(editForm).value.fill('142000');
     await editForm.getByRole('button', { name: 'Salvar alterações' }).tap();
     await settled(
       notice(page, 'Lançamento salvo: 40 MOVE3, custo total R$ 1.420,00.'),
@@ -1161,23 +1519,35 @@ test.describe('só com o teclado', () => {
     await expect(heading(page)).toBeVisible();
     const form = createForm(page);
     const f = fields(form);
-    // a hidratação: o formulário nasce desativado
-    await expect(form.getByRole('button', { name: 'Lançar compra' })).toBeEnabled();
+    // a hidratação: o botão que abre o modal nasce desativado
+    await expect(launch(page)).toBeEnabled();
 
-    // lançar: do cabeçalho ao ticker por Tab, digitando; as setas trocam o radio; Enter no último campo envia
-    await tabTo(page, f.ticker);
+    // abrir pelo teclado: o Tab chega ao "Lançar compra" do cabeçalho, o Enter abre o modal, e o foco vai ao ticker; o Esc fecha e devolve o
+    // foco ao botão
+    await tabTo(page, launch(page));
+    await page.keyboard.press('Enter');
+    await expect(f.ticker).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(modal(page)).toHaveCount(0);
+    await expect(launch(page)).toBeFocused();
+
+    // lançar: digitando; as setas sobem a quantidade e trocam o modo; Enter no valor envia
+    await page.keyboard.press('Enter');
+    await expect(f.ticker).toBeFocused();
     await page.keyboard.type('move3');
-    await page.keyboard.press('Tab');
-    await expect(f.quantity).toBeFocused();
+    await tabTo(page, f.quantity);
+    await page.keyboard.press('ArrowUp');
+    await expect(f.quantity).toHaveValue('2');
+    await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('100');
-    await page.keyboard.press('Tab');
-    await expect(f.unit).toBeFocused();
-    await page.keyboard.press('ArrowDown');
+    await tabTo(page, f.unit);
+    await page.keyboard.press('ArrowRight');
     await expect(f.total).toBeChecked();
     await expect(f.total).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(f.value).toBeFocused();
     await page.keyboard.type('3550,00');
+    await expect(f.value).toHaveValue('3.550,00');
     await page.keyboard.press('Enter');
     const created = notice(page, 'Compra lançada: 100 MOVE3, custo total R$ 3.550,00.');
     await settled(created).toBeFocused();
@@ -1191,18 +1561,18 @@ test.describe('só com o teclado', () => {
     await expect(edit).toHaveCSS('outline-style', 'solid');
     await expect(edit).toHaveCSS('outline-width', '2px');
 
-    // editar: Enter abre o formulário no ticker; a quantidade, o valor e o envio, tudo por Tab
+    // editar: Enter abre o modal no ticker; a quantidade, o valor e o envio, tudo por Tab
     await page.keyboard.press('Enter');
     const editForm = page.getByRole('form', { name: 'Editar lançamento de 100 MOVE3' });
     const e = fields(editForm);
     await expect(e.ticker).toBeFocused();
-    await page.keyboard.press('Tab');
-    await expect(e.quantity).toBeFocused();
+    await tabTo(page, e.quantity);
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('40');
     await tabTo(page, e.value);
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('1.420,00');
+    await expect(e.value).toHaveValue('1.420,00');
     await tabTo(page, editForm.getByRole('button', { name: 'Salvar alterações' }));
     await page.keyboard.press('Space');
     await settled(
@@ -1416,7 +1786,7 @@ test.describe('as peças vivas da carteira', () => {
     await expect(pilha).toHaveAttribute('aria-live', 'polite');
     await expect(pilha.getByRole('listitem')).toHaveCount(0);
 
-    const form = createForm(page);
+    const form = await openCreate(page);
     await fill(form, { ticker: 'MOVE3', quantity: '10', mode: 'unit', value: '10,00' });
     await form.getByRole('button', { name: 'Lançar compra' }).click();
     const aviso = notice(page, 'Compra lançada: 10 MOVE3, custo total R$ 100,00.');
@@ -1446,6 +1816,7 @@ test.describe('as peças vivas da carteira', () => {
       await expect(pilha.getByRole('listitem')).toHaveCount(0);
       await expect(page.locator('#lancamentos-titulo')).toBeFocused();
       // o Esc também fecha o aviso em que está o foco
+      await openCreate(page);
       await fill(form, { ticker: 'MOVE3', quantity: '20', mode: 'unit', value: '10,00' });
       await form.getByRole('button', { name: 'Lançar compra' }).click();
       const second = notice(page, 'Compra lançada: 20 MOVE3, custo total R$ 200,00.');
@@ -1473,6 +1844,9 @@ test.describe('as peças vivas da carteira', () => {
     const saved = notice(page, 'Lançamento salvo: 11 MOVE3, custo total R$ 100,00.');
     await settled(saved).toBeVisible();
     await settled(card.getByRole('button', { name: /^Editar/ })).toBeFocused();
+    // O "Salvar alterações" fica no pé do modal, e no celular o aviso nasce no pé da tela, embaixo do ponteiro que o clicou: o ponteiro em cima
+    // pausa o prazo (WCAG 2.2.1; o teste seguinte), e o WebKit do Playwright o deixa parado ali. O ponteiro sai de cima do aviso.
+    await page.mouse.move(1, 1);
     await expect(saved).toHaveCount(0, { timeout: 12_000 });
   });
 
@@ -1521,7 +1895,7 @@ test.describe('as peças vivas da carteira', () => {
     await expect(region(page, 'Resumo').locator('[data-contador]')).toHaveCount(3);
     expect((await sampleRolls(page, 600)).moving).toBe(0);
 
-    const form = createForm(page);
+    const form = await openCreate(page);
     await fill(form, { ticker: 'MOVE3', quantity: '100', mode: 'unit', value: '35,50' });
     const rolling = sampleRolls(page, 4_000);
     await form.getByRole('button', { name: 'Lançar compra' }).click();
@@ -1546,7 +1920,7 @@ test.describe('movimento reduzido', () => {
     });
     await page.goto('/carteira');
 
-    const form = createForm(page);
+    const form = await openCreate(page);
     await fill(form, { ticker: 'MOVE3', quantity: '100', mode: 'unit', value: '35,50' });
     const sample = sampleRolls(page, 4_000);
     await form.getByRole('button', { name: 'Lançar compra' }).click();
@@ -1581,11 +1955,12 @@ test.describe('movimento reduzido', () => {
   });
 });
 
-// Os termos que pedem explicação (o tooltip da Arc): o preço médio e o resultado, no cabeçalho da tabela e no resumo, e o "valor total pago"
-// no radio do formulário. Abrem no hover do mouse e no foco do teclado (o leitor de tela ouve a explicação como a descrição); no toque, a mesma
-// explicação está em texto na tela (o parágrafo das posições, a dica do campo).
+// Os termos que pedem explicação (o tooltip da Arc): o preço médio e o resultado, no cabeçalho da tabela e no resumo. Abrem no hover do mouse e
+// no foco do teclado (o leitor de tela ouve a explicação como a descrição); no toque, a mesma explicação está em texto na tela (o parágrafo das
+// posições). O "valor total pago" saiu do tooltip (o balão numa metade do segmentado não abre no toque): a explicação é a dica à vista do campo
+// de valor no modo total, e continua como a descrição do radio.
 test.describe('os termos com explicação', () => {
-  test('o preço médio, o resultado e o valor total pago explicam-se no tooltip, pelo ponteiro e pelo teclado', async ({
+  test('o preço médio e o resultado explicam-se no tooltip, pelo ponteiro e pelo teclado, e o valor total pago na dica à vista', async ({
     page,
     request,
     ip,
@@ -1624,10 +1999,13 @@ test.describe('os termos com explicação', () => {
       await expect(tooltip).toHaveCount(0);
     }
 
-    // o radio "Valor total pago": a explicação é a descrição dele, e o tooltip abre no rótulo
-    const form = createForm(page);
+    // o radio "Valor total pago": a explicação é a descrição dele, e à vista é a dica do campo de valor no modo total (sem tooltip)
+    const form = await openCreate(page);
     await expect(fields(form).total).toHaveAccessibleDescription(/O total da nota desta compra/);
     await form.getByText('Valor total pago', { exact: true }).hover();
-    await expect(tooltip).toContainText('O total da nota desta compra');
+    await expect(tooltip).toHaveCount(0);
+    await choose(form, 'total');
+    await expect(form.locator('p', { hasText: /^O total da nota desta compra/ })).toBeVisible();
+    await expect(fields(form).value).toHaveAccessibleDescription(/^O total da nota desta compra/);
   });
 });

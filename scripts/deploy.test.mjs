@@ -8,9 +8,11 @@ import {
   cleanup,
   create,
   currentTags,
+  greenUrl,
   main,
   migrate,
   pin,
+  probeGreen,
   promote,
   revert,
   rollback,
@@ -29,6 +31,14 @@ const DOMAIN = 'env.eastus2.azurecontainerapps.io';
 const GREEN = { api: `https://ca-api---green.${DOMAIN}`, web: `https://ca-web---green.${DOMAIN}` };
 // O endereço próprio de cada app (o que balanceia por peso), onde o `revert` confere o /health.
 const APP = { api: `https://ca-api.${DOMAIN}`, web: `https://ca-web.${DOMAIN}` };
+// O perfil econômico (ADR 0039): as imagens no GHCR, o site no endereço do ca-web e a api de ingress INTERNO, cujo endereço (e o do label)
+// tem o `.internal.` e só responde dentro do ambiente (Learn, "Communicate between container apps").
+const GHCR = 'ghcr.io/zanelladev';
+const ECO_SITE = APP.web;
+const INTERNAL = {
+  api: `https://ca-api.internal.${DOMAIN}`,
+  apiGreen: `https://ca-api---green.internal.${DOMAIN}`,
+};
 
 const flag = (args, name) => args[args.indexOf(name) + 1];
 const has = (args, ...words) => words.every((word, i) => args[i] === word);
@@ -43,6 +53,7 @@ const has = (args, ...words) => words.every((word, i) => args[i] === word);
 // O `revision label add` e o `remove` imitam o código do mesmo azure-cli (add_revision_label e remove_revision_label): o label só mora
 // numa revisão por vez e MUDA de dono ao ser adicionado; se ele já está noutra revisão e não vai `--yes`, a CLI pergunta (e sem TTY, no
 // CI, falha); a revisão sem entrada na lista ganha uma com peso 0; o `remove` de um label que ninguém tem é erro.
+// `internalApi` é o perfil econômico: o ingress da ca-api é interno (external false, endereço <app>.internal.<domínio>).
 function azure({
   traffic = 'latest',
   newTakesTraffic = false,
@@ -50,6 +61,8 @@ function azure({
   staleGreenOnOld = false,
   migrationStatus = 'Succeeded',
   missing = [],
+  internalApi = false,
+  registry = REGISTRY,
 } = {}) {
   const log = [];
   const state = { apps: {}, jobs: {} };
@@ -71,10 +84,12 @@ function azure({
     ['ca-web', 'alvesting-web'],
   ]) {
     const old = `${app}--v0`;
+    const internal = internalApi && app === 'ca-api';
     state.apps[app] = {
-      image: `${REGISTRY}/${repo}:antiga`,
+      image: `${registry}/${repo}:antiga`,
       latest: old,
-      fqdn: `${app}.${DOMAIN}`,
+      fqdn: internal ? `${app}.internal.${DOMAIN}` : `${app}.${DOMAIN}`,
+      internal,
       traffic:
         traffic === 'latest'
           ? [{ latestRevision: true, weight: 100 }]
@@ -84,19 +99,19 @@ function azure({
                 { revisionName: `${app}--v-1`, weight: 20 },
               ]
             : [{ revisionName: old, weight: 100 }],
-      revisions: { [old]: revision(old, app, `${REGISTRY}/${repo}:antiga`) },
+      revisions: { [old]: revision(old, app, `${registry}/${repo}:antiga`) },
     };
     // o deploy anterior deixa o label green na revisão que ficou no ar
     if (staleGreenOnOld) state.apps[app].traffic[0].label = 'green';
   }
   state.apps['ca-worker-data'] = {
-    image: `${REGISTRY}/alvesting-api:antiga`,
+    image: `${registry}/alvesting-api:antiga`,
     latest: 'ca-worker-data--v0',
     traffic: [],
     revisions: {},
   };
   for (const name of ['job-migrate', 'job-sched-news', 'job-worker-decisions']) {
-    state.jobs[name] = { image: `${REGISTRY}/alvesting-api:antiga` };
+    state.jobs[name] = { image: `${registry}/alvesting-api:antiga` };
   }
 
   for (const app of missing) delete state.apps[app];
@@ -179,7 +194,7 @@ function azure({
         properties: {
           latestRevisionName: target.latest,
           latestReadyRevisionName: target.latest,
-          configuration: { ingress: { fqdn: target.fqdn } },
+          configuration: { ingress: { fqdn: target.fqdn, external: !target.internal } },
         },
       };
     }
@@ -259,7 +274,7 @@ const okEverywhere = () => ({
   [`${SITE}/api/v1/health`]: healthy('api'),
 });
 
-async function world(options = {}, routes = okEverywhere()) {
+async function world(options = {}, routes = okEverywhere(), envOverrides = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'deploy-test-'));
   const cloud = azure(options);
   const site = web(routes);
@@ -283,6 +298,7 @@ async function world(options = {}, routes = okEverywhere()) {
       REVISION_SUFFIX: SUFFIX,
       SITE_URL: `${SITE}/`,
       DEPLOY_STATE: path.join(dir, 'state.json'),
+      ...envOverrides,
     },
   };
   // Quem recebe tráfego agora: as entradas com peso > 0 (a lista guarda também as de peso 0).
@@ -311,53 +327,83 @@ const promotions = (events) =>
 // `main` do script, e cada `playwright test` chama o `playwright` que o teste dá (e que enxerga o estado do tráfego naquele instante). Assim
 // a ORDEM do rollout (o green a 0% antes do smoke, a virada só depois do Playwright verde, a api antes do web) é provada no arquivo que o
 // GitHub executa, e não numa cópia dela. Passos de uma linha só; o resto (instalação, login, SSE) não interessa aqui. Passo com
-// `if: failure()` só roda depois de uma falha, como no GitHub.
-async function deploySteps() {
+// `if: failure()` só roda depois de uma falha, como no GitHub, e o `if:` do perfil (`vars.ALVESTING_PROFILE == 'economico'` ou `!=`) é
+// avaliado com o perfil do teste: sem perfil (o padrão de sempre), os passos do econômico não rodam.
+async function jobSteps(job) {
   const text = await readFile(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
-  const job = text.slice(text.indexOf('\n  deploy:'));
-  return job
+  const start = text.indexOf(`\n  ${job}:`);
+  const next = text.slice(start + 1).search(/\n {2}[a-z][\w-]*:\n/);
+  const body = next === -1 ? text.slice(start) : text.slice(start, start + 1 + next);
+  return body
     .split(/\n {6}- (?=name:|uses:)/)
     .slice(1)
     .map((block) => ({
+      name: /^name: (.+)$/m.exec(block)?.[1] ?? /^uses: ([^@\s]+)/.exec(block)?.[1],
       run: /^ {8}run: (.+)$/m.exec(block)?.[1],
+      script: /^ {8}run: \|\n((?: {10}.*(?:\n|$))+)/m.exec(block)?.[1]?.replace(/^ {10}/gm, ''),
       cond: /^ {8}if: (.+)$/m.exec(block)?.[1] ?? '',
-      baseUrl: /^ {10}BASE_URL: \$\{\{ vars\.(\w+) \}\}$/m.exec(block)?.[1],
+      baseUrl:
+        /^ {10}BASE_URL: \$\{\{ vars\.(\w+) \}\}$/m.exec(block)?.[1] ??
+        /BASE_URL="\$\{(\w+):\?\}"/.exec(block)?.[1],
       continueOnError: /^ {8}continue-on-error: true$/m.test(block),
     }));
 }
+const deploySteps = () => jobSteps('deploy');
 
-const quietIo = (errors) => ({ log: () => {}, error: (line) => errors.push(line) });
+// O `if:` do perfil no GitHub: `vars.ALVESTING_PROFILE` vale '' sem a variável.
+function profileAllows(cond, profile) {
+  const match = /vars\.ALVESTING_PROFILE (==|!=) 'economico'/.exec(cond);
+  if (!match) return true;
+  return match[1] === '==' ? profile === 'economico' : profile !== 'economico';
+}
 
-async function runWorkflow(w, { playwright = async () => {} } = {}) {
+async function runWorkflow(w, { playwright = async () => {}, profile = '' } = {}) {
   const ran = [];
   const errors = [];
+  // o que um passo escreveu no GITHUB_ENV (o `>> "$GITHUB_ENV"`), para os passos seguintes
+  const githubEnv = {};
   let failed = false;
   for (const step of await deploySteps()) {
     if (!step.run || step.continueOnError) continue;
+    if (!profileAllows(step.cond, profile)) continue;
     const onFailure = /failure\(\)|cancelled\(\)/.test(step.cond);
     if (onFailure ? !failed : failed) continue;
-    const deploy = /^node scripts\/deploy\.mjs (.+)$/.exec(step.run);
+    const deploy = /^node scripts\/deploy\.mjs (.+?)( >> "\$GITHUB_ENV")?$/.exec(step.run);
     const e2e = /playwright test (.+)$/.exec(step.run);
     if (!deploy && !e2e) continue;
     ran.push(deploy ? deploy[1] : `playwright ${step.baseUrl}`);
     try {
       if (deploy) {
-        const code = await main(deploy[1].split(' '), w.ctx.env, quietIo(errors), {
+        const out = [];
+        const io = { log: (line) => out.push(line), error: (line) => errors.push(line) };
+        const code = await main(deploy[1].split(' '), w.ctx.env, io, {
           az: w.ctx.az,
           fetch: w.ctx.fetch,
           sleep: w.ctx.sleep,
         });
         if (code !== 0) throw new Error(errors.at(-1) ?? `saiu com ${code}`);
+        if (deploy[2]) {
+          for (const line of out) {
+            const pair = /^(\w+)=(.*)$/.exec(line);
+            assert.ok(pair, `linha que não é nome=valor no GITHUB_ENV: ${line}`);
+            githubEnv[pair[1]] = pair[2];
+          }
+        }
       } else {
+        // o `${GREEN_URL:?}` do bash: sem o valor, o passo falha antes do Playwright
+        const url = githubEnv[step.baseUrl] ?? w.ctx.env[step.baseUrl] ?? step.baseUrl;
+        if (/:\?\}/.test(step.run) && !githubEnv[step.baseUrl]) {
+          throw new Error(`${step.baseUrl}: parameter null or not set`);
+        }
         w.events.push(`playwright ${step.baseUrl} ${e2e[1]}`);
-        await playwright({ baseUrl: step.baseUrl, args: e2e[1] });
+        await playwright({ baseUrl: step.baseUrl, url, args: e2e[1] });
       }
     } catch (error) {
       errors.push(String(error.message ?? error));
       failed = true;
     }
   }
-  return { failed, errors, ran };
+  return { failed, errors, ran, githubEnv };
 }
 
 // O que o Playwright "vê" quando é chamado: o tráfego e o label de cada app naquele instante.
@@ -1189,4 +1235,436 @@ describe('o passo "Conferir as variáveis do repositório"', () => {
       assert.match(result.stdout + result.stderr, message);
     });
   }
+});
+
+// --- O perfil econômico (ALVESTING_PROFILE = economico; ADR 0039) -----------------------------------------------------------------------
+// Sem Front Door: as imagens vão para o GHCR, a api tem ingress INTERNO (o runner não alcança nem o endereço dela nem o do label: de fora,
+// o proxy do ambiente dá 404) e o web verde é provado no endereço do label dele. A garantia de tráfego é a do padrão: só o `promote` vira,
+// e o `Desfazer` devolve os dois apps.
+const ECO = { internalApi: true, registry: GHCR };
+const ecoRoutes = () => ({
+  [`${GREEN.web}/health`]: healthy('web'),
+  [`${ECO_SITE}/health`]: healthy('web'),
+  [`${ECO_SITE}/api/v1/health`]: healthy('api'),
+});
+const ecoWorld = (options = {}, routes = ecoRoutes()) =>
+  world({ traffic: 'latest', ...ECO, ...options }, routes, {
+    REGISTRY: GHCR,
+    SITE_URL: `${ECO_SITE}/`,
+  });
+// Estado depois de uma falha antes do ponto sem volta: tudo como estava, e o green saiu (o mesmo `unchanged` do rollout do padrão).
+const untouched = (w) => {
+  assert.deepEqual(w.trafficOf('ca-api'), only(OLD.api));
+  assert.deepEqual(w.trafficOf('ca-web'), only(OLD.web));
+  assert.deepEqual(w.activeOf('ca-api'), [OLD.api]);
+  assert.deepEqual(w.activeOf('ca-web'), [OLD.web]);
+  assert.equal(w.greenOf('ca-api'), undefined, 'o label green saiu da api');
+  assert.equal(w.greenOf('ca-web'), undefined, 'o label green saiu do web');
+};
+
+describe('perfil econômico: o rollout inteiro (o job deploy do deploy.yml com ALVESTING_PROFILE=economico)', () => {
+  const MOBILE = '--project=pixel-7 --project=iphone-15';
+
+  it('sucesso: a api pelas sondas (nenhum pedido a ela), o Playwright no label do web, a api antes do web e as imagens do GHCR', async () => {
+    const w = await ecoWorld();
+    const seen = [];
+    const result = await runWorkflow(w, { playwright: recorder(w, seen), profile: 'economico' });
+    assert.equal(result.failed, false, result.errors.join('\n'));
+    assert.deepEqual(result.ran, [
+      'pin',
+      'migrate',
+      'create api',
+      'probe-green api',
+      'promote api',
+      'create web',
+      'smoke-green web',
+      'green-url web',
+      'playwright GREEN_URL',
+      'promote web',
+      'smoke-edge',
+      'playwright SITE_URL',
+      'cleanup',
+      'roll-roles',
+    ]);
+    // o endereço do label do web, que o deploy.mjs calcula e o passo seguinte usa
+    assert.equal(result.githubEnv.GREEN_URL, GREEN.web);
+
+    // duas provas do Playwright, em Pixel 7 e iPhone 15: o web verde (com a api JÁ promovida e o web novo a 0%) e o site de produção
+    assert.equal(seen.length, 2);
+    for (const call of seen) assert.ok(call.args.includes(MOBILE), call.args);
+    assert.equal(seen[0].url, GREEN.web);
+    assert.doesNotMatch(seen[0].args, /--grep/);
+    assert.deepEqual(seen[0].api, only(NEW.api), 'a api vem antes do web');
+    assert.deepEqual(seen[0].web, only(OLD.web), 'o web novo ainda tem 0%');
+    assert.equal(seen[0].webGreen, NEW.web);
+    assert.equal(seen[1].baseUrl, 'SITE_URL');
+    assert.deepEqual(seen[1].api, only(NEW.api));
+    assert.deepEqual(seen[1].web, only(NEW.web));
+
+    // o runner nunca pede nada à api interna (nem ao endereço dela, nem ao do label): ela é provada pelas sondas da plataforma
+    const gets = w.events.filter((e) => e.startsWith('get '));
+    assert.deepEqual(gets, [
+      `get ${GREEN.web}/health`,
+      `get ${ECO_SITE}/health`,
+      `get ${ECO_SITE}/api/v1/health`,
+    ]);
+    // a ordem: as sondas da api, a virada da api, e só então o web nasce
+    const probe = w.events.findLastIndex((e) => e.includes('revision show') && e.includes(NEW.api));
+    const turnApi = w.events.findIndex((e) =>
+      /traffic set .*-n ca-api .*--revision-weight ca-api--r/.test(e),
+    );
+    const createWeb = w.events.findIndex((e) => /containerapp update .*-n ca-web/.test(e));
+    assert.ok(probe !== -1 && probe < turnApi && turnApi < createWeb, 'sondas, virada, web');
+    assert.equal(promotions(w.events).length, 2, 'uma virada por app');
+
+    // toda imagem que o deploy põe (apps, migrate, worker, decisões e agendadores) é a do GHCR
+    const images = w.events.filter((e) => /containerapp (job )?update/.test(e));
+    assert.ok(images.length > 0);
+    for (const e of images)
+      assert.match(e, new RegExp(`--image ${GHCR}/alvesting-(api|web):${TAG}`));
+    assert.deepEqual(w.trafficOf('ca-api'), only(NEW.api));
+    assert.deepEqual(w.trafficOf('ca-web'), only(NEW.web));
+    assert.deepEqual(w.activeOf('ca-api'), [NEW.api]);
+    assert.deepEqual(w.activeOf('ca-web'), [NEW.web]);
+  });
+
+  it('a api nova cai depois de ganhar o label (as sondas a dão por doente): nada vira, o web nem nasce e o green sai', async () => {
+    const w = await ecoWorld();
+    const original = w.ctx.az;
+    let labeled = false;
+    w.ctx.az = async (args) => {
+      const reply = await original(args);
+      if (has(args, 'containerapp', 'revision', 'label', 'add')) labeled = true;
+      if (labeled && has(args, 'containerapp', 'revision', 'show') && args.at(-1) === NEW.api) {
+        reply.properties.healthState = 'Unhealthy';
+      }
+      return reply;
+    };
+    const result = await runWorkflow(w, { profile: 'economico' });
+    assert.equal(result.failed, true);
+    assert.deepEqual(result.ran, ['pin', 'migrate', 'create api', 'probe-green api', 'rollback']);
+    assert.match(result.errors.join('\n'), /não ficou saudável por 3 leituras seguidas/);
+    assert.equal(promotions(w.events).length, 0, 'a revisão nova nunca recebeu tráfego');
+    assert.equal(
+      w.events.filter((e) => e.startsWith('az containerapp update') && e.includes('-n ca-web'))
+        .length,
+      0,
+      'o web nem foi criado',
+    );
+    untouched(w);
+  });
+
+  it('o Playwright no label do web reprova com a api já promovida: o rollback devolve os DOIS à antiga', async () => {
+    const w = await ecoWorld();
+    const result = await runWorkflow(w, {
+      profile: 'economico',
+      playwright: async ({ baseUrl }) => {
+        if (baseUrl === 'GREEN_URL') throw new Error('Playwright reprovou no web verde');
+      },
+    });
+    assert.equal(result.failed, true);
+    assert.deepEqual(result.ran.slice(-2), ['playwright GREEN_URL', 'rollback']);
+    assert.equal(promotions(w.events).length, 1, 'só a api tinha virado');
+    untouched(w);
+  });
+
+  it('o site de produção não repassa /api (o smoke-edge vê o 404): tudo volta à antiga', async () => {
+    const routes = ecoRoutes();
+    routes[`${ECO_SITE}/api/v1/health`] = [{ status: 404, body: 'Cannot GET /api/v1/health' }];
+    const w = await ecoWorld({}, routes);
+    const result = await runWorkflow(w, { profile: 'economico' });
+    assert.equal(result.failed, true);
+    assert.equal(promotions(w.events).length, 2);
+    assert.equal(result.ran.at(-1), 'rollback');
+    untouched(w);
+  });
+});
+
+describe('perfil econômico: os passos novos do deploy.mjs', () => {
+  const created = async (apps) => {
+    const w = await ecoWorld();
+    await pin(w.ctx);
+    for (const app of apps) await create(w.ctx, app);
+    return w;
+  };
+
+  it('smoke-green recusa a api de ingress interno, sem pedido nenhum: a prova dela é o probe-green', async () => {
+    const w = await created(['ca-api']);
+    await assert.rejects(smokeGreen(w.ctx, 'ca-api'), /ingress é interno/);
+    assert.equal(w.events.filter((e) => e.startsWith('get ')).length, 0);
+  });
+
+  it('probe-green pede 3 leituras saudáveis seguidas: a revisão que oscila só passa quando firma, e segue sem tráfego', async () => {
+    const w = await created(['ca-api']);
+    const states = ['Healthy', 'Unhealthy', 'Healthy', 'Healthy', 'Healthy'];
+    const original = w.ctx.az;
+    let shown = 0;
+    w.ctx.az = async (args) => {
+      const reply = await original(args);
+      if (has(args, 'containerapp', 'revision', 'show') && args.at(-1) === NEW.api) {
+        reply.properties.healthState = states[Math.min(shown, states.length - 1)];
+        shown += 1;
+      }
+      return reply;
+    };
+    await probeGreen(w.ctx, 'ca-api');
+    assert.equal(shown, 5, 'parou na terceira leitura saudável seguida');
+    assert.deepEqual(w.trafficOf('ca-api'), only(OLD.api));
+  });
+
+  it('probe-green recusa o label fora da revisão nova (provaria outra revisão)', async () => {
+    const w = await created(['ca-api']);
+    await w.cloud.az([
+      'containerapp',
+      'revision',
+      'label',
+      'add',
+      '-g',
+      RG,
+      '-n',
+      'ca-api',
+      '--label',
+      'green',
+      '--revision',
+      OLD.api,
+      '--yes',
+    ]);
+    await assert.rejects(probeGreen(w.ctx, 'ca-api'), /label green não está/);
+  });
+
+  it('probe-green devolve o tráfego à antiga e falha se a Azure o mandar à nova na espera', async () => {
+    const w = await created(['ca-api']);
+    await w.cloud.az([
+      'containerapp',
+      'ingress',
+      'traffic',
+      'set',
+      '-g',
+      RG,
+      '-n',
+      'ca-api',
+      '--revision-weight',
+      `${NEW.api}=100`,
+    ]);
+    await assert.rejects(probeGreen(w.ctx, 'ca-api'), /recebeu tráfego na espera pelas sondas/);
+    assert.deepEqual(w.trafficOf('ca-api'), only(OLD.api));
+  });
+
+  it('green-url: pelo main, uma linha só no stdout, GREEN_URL=<endereço do label do web> (vai para o GITHUB_ENV)', async () => {
+    const w = await created(['ca-web']);
+    const lines = [];
+    const io = { log: (l) => lines.push(l), error: (l) => lines.push(`stderr: ${l}`) };
+    const deps = { az: w.ctx.az, fetch: w.ctx.fetch, sleep: w.ctx.sleep };
+    assert.equal(await main(['green-url', 'web'], w.ctx.env, io, deps), 0);
+    assert.deepEqual(lines, [`GREEN_URL=${GREEN.web}`]);
+  });
+
+  it('green-url recusa o app de ingress interno e o label fora da revisão nova', async () => {
+    const w = await created(['ca-api', 'ca-web']);
+    await assert.rejects(greenUrl(w.ctx, 'ca-api'), /ingress é interno/);
+    await w.cloud.az([
+      'containerapp',
+      'revision',
+      'label',
+      'add',
+      '-g',
+      RG,
+      '-n',
+      'ca-web',
+      '--label',
+      'green',
+      '--revision',
+      OLD.web,
+      '--yes',
+    ]);
+    await assert.rejects(greenUrl(w.ctx, 'ca-web'), /label green não está/);
+  });
+
+  it('revert da api interna: o /api/v1/health pelo repasse do site, e nunca o endereço interno', async () => {
+    const w = await ecoWorld();
+    const result = await runWorkflow(w, { profile: 'economico' });
+    assert.equal(result.failed, false, result.errors.join('\n'));
+    w.events.length = 0;
+    await revert(w.ctx, OLD.api);
+    assert.deepEqual(w.trafficOf('ca-api'), only(OLD.api));
+    assert.deepEqual(
+      w.events.filter((e) => e.startsWith('get ')),
+      [`get ${ECO_SITE}/api/v1/health`],
+    );
+  });
+
+  it('revert da api interna sem SITE_URL: só as sondas, com um aviso, e nenhum pedido', async () => {
+    const w = await ecoWorld();
+    const result = await runWorkflow(w, { profile: 'economico' });
+    assert.equal(result.failed, false, result.errors.join('\n'));
+    delete w.ctx.env.SITE_URL;
+    const warnings = [];
+    w.ctx.warn = (line) => warnings.push(line);
+    w.events.length = 0;
+    await revert(w.ctx, OLD.api);
+    assert.deepEqual(w.trafficOf('ca-api'), only(OLD.api));
+    assert.equal(w.events.filter((e) => e.startsWith('get ')).length, 0);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /interno/);
+  });
+
+  it('o padrão não muda: com a api de ingress externo, o revert confere no endereço do app', async () => {
+    const w = await world({ traffic: 'latest' });
+    await runWorkflow(w);
+    assert.ok(INTERNAL.api.includes('.internal.'));
+    w.events.length = 0;
+    await revert(w.ctx, OLD.api);
+    assert.ok(w.events.every((e) => !e.includes('.internal.')));
+  });
+});
+
+// O primeiro passo do job `deploy`, no econômico: sem Front Door não há SITE_GREEN_URL, e um valor torto da variável não pode rodar os passos
+// do padrão em silêncio.
+describe('o passo "Conferir as variáveis do repositório", por perfil', () => {
+  const run = async (env) => {
+    const step = (await deploySteps()).find(
+      (s) => s.name === 'Conferir as variáveis do repositório',
+    );
+    assert.ok(step?.script, 'o passo não foi achado no deploy.yml');
+    return spawnSync('bash', ['-e', '-c', step.script], {
+      env: { PATH: process.env.PATH, ...env },
+      encoding: 'utf8',
+    });
+  };
+
+  it('econômico: basta o SITE_URL (o ca-web), sem SITE_GREEN_URL', async () => {
+    const r = await run({ ALVESTING_PROFILE: 'economico', SITE_URL: ECO_SITE });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  });
+
+  for (const [what, env, message] of [
+    ['econômico sem SITE_URL', { ALVESTING_PROFILE: 'economico' }, /falta a variável SITE_URL/],
+    [
+      'econômico com SITE_URL sem https',
+      { ALVESTING_PROFILE: 'economico', SITE_URL: 'http://ca-web.example.test' },
+      /SITE_URL precisa começar com https/,
+    ],
+    [
+      '"padrao" escrito: o mesmo que sem a variável (pede o SITE_GREEN_URL)',
+      { ALVESTING_PROFILE: 'padrao', SITE_URL: SITE },
+      /falta a variável SITE_GREEN_URL/,
+    ],
+    [
+      'um valor torto (com acento)',
+      { ALVESTING_PROFILE: 'econômico', SITE_URL: ECO_SITE },
+      /ALVESTING_PROFILE vale economico ou padrao/,
+    ],
+  ]) {
+    it(`recusa ${what}`, async () => {
+      const r = await run(env);
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stdout + r.stderr, message);
+    });
+  }
+});
+
+describe('perfil econômico: o job images publica no GHCR', () => {
+  it('cada perfil roda só os passos dele: o padrão segue com azure/login, ACR e o build de sempre; o econômico não toca na Azure', async () => {
+    const steps = await jobSteps('images');
+    assert.deepEqual(
+      steps.filter((s) => profileAllows(s.cond, '')).map((s) => s.name),
+      ['actions/checkout', 'azure/login', 'Entrar no ACR', 'Construir e publicar as imagens'],
+    );
+    assert.deepEqual(
+      steps.filter((s) => profileAllows(s.cond, 'economico')).map((s) => s.name),
+      ['actions/checkout', 'Entrar no GHCR e publicar as imagens (perfil econômico)'],
+    );
+  });
+
+  it('continua pulado sem as variáveis de OIDC (fork, repositório não configurado) e pede packages: write', async () => {
+    const text = await readFile(
+      new URL('../.github/workflows/deploy.yml', import.meta.url),
+      'utf8',
+    );
+    const images = text.slice(text.indexOf('\n  images:'), text.indexOf('\n  deploy:'));
+    assert.match(images, /^ {4}if: \$\{\{ vars\.AZURE_CLIENT_ID != '' \}\}$/m);
+    assert.match(images, /^ {6}packages: write$/m);
+    assert.match(images, /^ {6}registry: \$\{\{ steps\.ghcr\.outputs\.registry \}\}$/m);
+  });
+
+  it('o passo do GHCR: o dono em minúsculas, o token pela entrada padrão (nunca em argumento), o rótulo do repositório e o registro na saída', async () => {
+    const step = (await jobSteps('images')).find((s) => s.name.startsWith('Entrar no GHCR'));
+    assert.ok(step?.script, 'o passo do GHCR não foi achado');
+    const dir = await mkdtemp(path.join(tmpdir(), 'ghcr-'));
+    const log = path.join(dir, 'docker.log');
+    // um docker de mentira: registra os argumentos e o que chegou na entrada padrão do login
+    await writeFile(
+      path.join(dir, 'docker'),
+      `#!/bin/sh\necho "$*" >> "${log}"\nif [ "$1" = login ]; then echo "entrada: $(cat)" >> "${log}"; fi\n`,
+    );
+    await chmod(path.join(dir, 'docker'), 0o755);
+    const summary = path.join(dir, 'summary');
+    const output = path.join(dir, 'output');
+    const token = 'token-de-mentira-0123456789';
+    const r = spawnSync('bash', ['-e', '-c', step.script], {
+      env: {
+        PATH: `${dir}${path.delimiter}${process.env.PATH}`,
+        GITHUB_REPOSITORY_OWNER: 'ZanellaDev',
+        GITHUB_REPOSITORY: 'ZanellaDev/alvesting',
+        GITHUB_SERVER_URL: 'https://github.com',
+        GITHUB_ACTOR: 'zanelladev',
+        GITHUB_TOKEN: token,
+        IMAGE_TAG: TAG,
+        GITHUB_STEP_SUMMARY: summary,
+        GITHUB_OUTPUT: output,
+      },
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const source = 'org.opencontainers.image.source=https://github.com/ZanellaDev/alvesting';
+    const calls = (await readFile(log, 'utf8')).trim().split('\n');
+    assert.deepEqual(calls, [
+      'login ghcr.io --username zanelladev --password-stdin',
+      `entrada: ${token}`,
+      `build -f apps/api/Dockerfile --label ${source} -t ${GHCR}/alvesting-api:${TAG} .`,
+      `push ${GHCR}/alvesting-api:${TAG}`,
+      `build -f apps/web/Dockerfile --label ${source} -t ${GHCR}/alvesting-web:${TAG} .`,
+      `push ${GHCR}/alvesting-web:${TAG}`,
+    ]);
+    assert.ok(
+      calls.filter((c) => !c.startsWith('entrada:')).every((c) => !c.includes(token)),
+      'o token nunca vai em argumento',
+    );
+    assert.equal(await readFile(output, 'utf8'), `registry=${GHCR}\n`);
+    assert.match(await readFile(summary, 'utf8'), /publicada: ghcr\.io\/zanelladev\/alvesting-web/);
+  });
+});
+
+// "Padrão intacto" (ADR 0039): sem ALVESTING_PROFILE, o job deploy roda os mesmos passos de antes desta onda, na mesma ordem. O econômico só
+// acrescenta passos com o `if:` dele, e os do padrão só ganharam o `if:` contrário.
+describe('sem ALVESTING_PROFILE o deploy.yml faz o que já fazia', () => {
+  it('o job deploy no padrão: os mesmos 24 passos, na mesma ordem', async () => {
+    const names = (await deploySteps()).filter((s) => profileAllows(s.cond, '')).map((s) => s.name);
+    assert.deepEqual(names, [
+      'actions/checkout',
+      'pnpm/action-setup',
+      'actions/setup-node',
+      'Conferir as variáveis do repositório',
+      'Dependências do e2e',
+      'azure/login',
+      'Nome da revisão',
+      'Fixar o tráfego na revisão atual',
+      'Migrations e login da api no banco (job-migrate)',
+      'API, passo 1 - criar a revisão nova, com o label green e sem tráfego',
+      'API, passo 2 - smoke no endereço do label green',
+      'API, passo 3 - Playwright (mobile) pelo Front Door verde',
+      'API, passo 4 - virar o tráfego da api',
+      'Web, passo 1 - criar a revisão nova, com o label green e sem tráfego',
+      'Web, passo 2 - smoke no endereço do label green',
+      'Web, passo 3 - Playwright (mobile) pelo Front Door verde',
+      'Web, passo 4 - virar o tráfego do web',
+      'Smoke pelo Front Door de produção',
+      'Smoke do Playwright (mobile) pelo Front Door de produção',
+      'Confirmar e desativar as revisões antigas',
+      'Atualizar worker, decisões e agendadores',
+      'Teste de SSE pelo Front Door (informativo)',
+      'actions/upload-artifact',
+      'Desfazer (a antiga volta a ter 100% nos dois apps, o label green sai e a nova é desativada)',
+    ]);
+  });
 });

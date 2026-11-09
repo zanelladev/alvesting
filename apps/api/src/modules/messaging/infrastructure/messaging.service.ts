@@ -6,6 +6,7 @@ import type {
   ServiceBusReceiver,
   ServiceBusSender,
 } from '@azure/service-bus';
+import Long from 'long';
 import {
   QUEUES,
   messageId,
@@ -319,11 +320,13 @@ export class MessagingService implements OnApplicationShutdown {
     return 'retry';
   }
 
-  // Lê sem consumir (peek): as mensagens continuam na DLQ.
+  // Lê sem consumir (peek): as mensagens continuam na DLQ. Sempre do começo (o 1, de onde um cliente novo parte): sem o
+  // fromSequenceNumber, o SDK continua do último número espiado, que ele guarda no cliente (por fila) e não no receiver, e a
+  // segunda leitura voltaria vazia, com as mensagens ainda na DLQ.
   async readDeadLetters(queue: QueueName, max = 20): Promise<DeadLetter[]> {
     const receiver = this.bus.createReceiver(queue, { subQueueType: 'deadLetter' });
     try {
-      return (await receiver.peekMessages(max)).map(toDeadLetter);
+      return (await receiver.peekMessages(max, { fromSequenceNumber: Long.ONE })).map(toDeadLetter);
     } finally {
       await receiver.close();
     }

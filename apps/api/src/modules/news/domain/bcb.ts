@@ -12,6 +12,8 @@ export interface MacroSeries {
   name: string;
   // casas decimais com que o BCB publica a série
   scale: number;
+  // série mensal: o SGS data cada valor no dia 1 do mês e devolve o mês que contém a dataInicial (parseSgs)
+  monthly?: true;
 }
 
 export const BCB_HOST = 'api.bcb.gov.br';
@@ -24,8 +26,14 @@ export const MACRO_SERIES: readonly MacroSeries[] = [
     name: 'Meta Selic definida pelo Copom (% ao ano)',
     scale: 2,
   },
-  { id: 'ipca_month_pct', code: 433, name: 'IPCA, variação do mês (%)', scale: 2 },
-  { id: 'ipca_12m_pct', code: 13522, name: 'IPCA, acumulado em 12 meses (%)', scale: 2 },
+  { id: 'ipca_month_pct', code: 433, name: 'IPCA, variação do mês (%)', scale: 2, monthly: true },
+  {
+    id: 'ipca_12m_pct',
+    code: 13522,
+    name: 'IPCA, acumulado em 12 meses (%)',
+    scale: 2,
+    monthly: true,
+  },
   // a série 1 é o PTAX de venda: conferida em 01/11/2026 contra o PTAX oficial (OData do BCB) em 29 e 30/10/2026
   { id: 'usd_brl_ptax_sell', code: 1, name: 'Dólar PTAX de venda (R$ por US$)', scale: 4 },
 ];
@@ -81,7 +89,9 @@ function point(series: MacroSeries, raw: unknown): MacroPoint | null {
 // A resposta do SGS: lista de { data: "dd/MM/aaaa", valor: "texto" }. Ordena por data; na data repetida vale o último.
 // Com `window` (a que foi pedida), ponto datado fora dela falha: um ponto de 2099 faria lastDates() devolver 2099 e a série
 // nunca mais seria buscada (missingWindow dá null), sem erro nenhum. O SGS respeita dataFinal, então isso só acontece com
-// resposta errada ou hostil.
+// resposta errada ou hostil. A exceção é o começo da série mensal: o SGS data o valor no dia 1 do mês e devolve o mês que
+// contém a dataInicial (conferido em 06/11/2026: o 433 e o 13522 pedidos a partir de 02/10/2025 começam em 01/10/2025), então
+// ali a janela começa no dia 1 do mês. O fim continua estrito: o perigo é o ponto no futuro.
 export function parseSgs(
   series: MacroSeries,
   body: unknown,
@@ -89,10 +99,11 @@ export function parseSgs(
 ): MacroPoint[] {
   if (!Array.isArray(body)) throw new Error(`SGS ${series.code}: a resposta não é uma lista`);
   if (body.length > MAX_POINTS) throw new Error(`SGS ${series.code}: mais de ${MAX_POINTS} pontos`);
+  const start = window && (series.monthly ? `${window.from.slice(0, 7)}-01` : window.from);
   const byDate = new Map<IsoDate, MacroPoint>();
   for (const raw of body as unknown[]) {
     const parsed = point(series, raw);
-    if (parsed && window && (parsed.date < window.from || parsed.date > window.to)) {
+    if (parsed && window && start && (parsed.date < start || parsed.date > window.to)) {
       throw new Error(`SGS ${series.code}: ponto fora da janela pedida`);
     }
     if (parsed) byDate.set(parsed.date, parsed);

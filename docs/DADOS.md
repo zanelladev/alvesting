@@ -826,6 +826,11 @@ minutos. O SGS tem manias que só apareceram na chamada de verdade (01/11/2026),
 - ponto datado **fora da janela pedida** (2099, 1900, um dia depois de hoje) falha a série, sem gravar nem os pontos bons: o
   SGS respeita `dataFinal`, então é resposta errada ou hostil, e um ponto de 2099 faria o último dia guardado ser 2099 e a
   série nunca mais ser buscada, sem erro nenhum;
+- a série **mensal** (o IPCA, 433 e 13522) vem datada no dia 1 do mês, e o SGS devolve o mês que **contém** a `dataInicial`:
+  pedida a partir de 02/10/2025, ela começa em 01/10/2025 (conferido em 06/11/2026, na primeira execução real do retroativo,
+  que parou aí antes de abrir qualquer ciclo). Por isso, só nas séries marcadas `monthly` em `MACRO_SERIES`, a janela aceita
+  começa no dia 1 do mês; o fim continua estrito. Sem isso, a primeira carga do IPCA (400 dias para trás) falhava em todo
+  dia que não fosse dia 1, também em produção. A carga do dev de 01/11 passou porque veio antes da trava da janela;
 - uma série que falha não impede as outras de gravar; a busca falha no fim, dizendo quais, e a fila repete.
 
 **No banco de dev (01/11/2026):** CDI 273 pontos (29/09/2025 a 29/10/2026), meta Selic 401 (até 01/11/2026), IPCA mensal 13
@@ -1095,3 +1100,49 @@ pnpm --filter @alvesting/api briefing:freeze 2026-10-30     # precisa do Azurite
 Nenhuma nova. O worker usa o que a etapa 4 já definiu: `DATABASE_URL`, `SERVICEBUS_FQDN`, `STORAGE_BLOB_ENDPOINT` e
 `AZURE_CLIENT_ID` (o container de briefings é `briefings`, criado pela infra; o Azurite cria o dele). Nenhuma fonte de
 notícia pede token.
+
+## O retroativo da Temporada 1 (06/11/2026, ADR 0038)
+
+### 22. O que cada fonte deixa ver num pregão que já passou
+
+O `arena:retroativo` roda, agora, os pregões da Temporada 1 que já passaram (de 13/10/2026 até ontem), num banco que já tem o que saiu
+**depois** de cada um: as barras dos dias seguintes, o CDI publicado depois, o IPCA divulgado no mês seguinte e os documentos da CVM entregues
+depois. A regra é uma só: **o briefing do pregão D vê só o que o pipeline ao vivo teria visto às 07:30 de D**. Cada fonte tem a sua forma de
+cumprir a regra (`apps/api/src/temporada/visibility.ts`), e o `visibility.integration.spec.ts` prova, fonte por fonte, que o que o ao vivo só
+veria depois do corte de D não entra no briefing de D.
+
+| Fonte | O que o briefing de D vê no retroativo | Por quê |
+|---|---|---|
+| Barras (brapi) | Só até D-1 | É a própria regra do freeze, ao vivo e no retroativo (as 30 sessões antes de D, seção 18). As barras de D em diante estão no banco e nunca entram |
+| CVM (IPE) | O documento entregue no dia X entra no briefing do **primeiro pregão depois de X+1** | É o "Limite da fonte" da seção 14: o IPE é refeito por volta das 07:00 e a busca das 07:00 corre antes; o arquivo novo é visto pela busca das 07:30 de X+1, depois do corte. O retroativo lê o arquivo do ano de uma vez e grava cada documento com `first_seen_at` = 07:30:45 de X+1 (Brasília), a hora em que a busca ao vivo o veria |
+| BCB (SGS) | Cada valor só depois de público pela regra da série (abaixo), e não "data do valor até D-1" | O `macro_daily` guarda a data do valor, não a hora em que ele saiu, e o banco de hoje tem valores que às 07:30 de D ainda não existiam |
+| RSS (os quatro portais) | Só a notícia que o operador local viu de verdade, pela hora real (`first_seen_at`), na janela do freeze | Os portais não guardam histórico: o retroativo não inventa notícia. Antes de o operador começar a coletar, o pregão retroativo não tem notícia de portal |
+
+**A CVM, por dia da semana** (o caso de borda que o teste cobre): entregue na terça, entra na quinta (dois pregões depois); na sexta ou no
+sábado, na segunda (um pregão depois); no domingo, na terça (visto na segunda depois do corte). O documento que só seria visto depois do corte
+do último pregão da execução fica para a próxima execução (`--ate` maior). O retroativo lê os dois arquivos do ano sem condição e **não toca
+nos validadores** (`fetch_state`): eles são da busca ao vivo do operador, que passaria a responder 304 a um arquivo que ela nunca leu.
+
+**O BCB, série por série.** O repositório não documenta a hora de publicação de nenhuma série do SGS (seção 15 diz só "o valor de um dia só
+sai depois"). Por isso vale a regra mais conservadora que o que se sabe permite:
+
+| Série | Público a partir de | No briefing de D (exemplo) |
+|---|---|---|
+| CDI (12) e dólar PTAX (1) | o fim do dia útil seguinte ao dia do valor (o dia útil é o pregão da B3, que nunca vem antes do dia útil bancário) | quinta 22/10 vê o de terça 20/10, e não o de quarta 21/10 |
+| Meta Selic (432) | o fim do dia do valor: a meta do dia V foi decidida pelo Copom antes de V | quinta 22/10 vê a de quarta 21/10 (o mesmo que o ao vivo) |
+| IPCA do mês (433) e de 12 meses (13522) | o dia 1 do segundo mês depois do mês do valor: o IBGE divulga o do mês M no começo de M+1, num dia que o repositório não guarda | o briefing de outubro vê o IPCA de agosto; o de novembro, o de setembro |
+
+O preço disso é o macro do briefing retroativo um dia útil mais velho (CDI e dólar) e o IPCA um mês mais velho que o do ao vivo. A liquidação
+**não** usa a regra: o CDI que rende o caixa é o do pregão anterior, e a liquidação é refeita do zero com a taxa certa (`docs/METODOLOGIA.md`,
+"Caixa e CDI"), ao vivo e no retroativo.
+
+**As datas internas.** Num ciclo retroativo, a hora da decisão (08:00), o prazo (09:30), o fechamento do ciclo, a liquidação e o
+`first_seen_at` dos documentos da CVM que o retroativo grava seguem o relógio do pregão simulado. **A hora real está em `cycle.executed_at`**
+(a hora em que o ciclo foi aberto de verdade, dias depois do pregão) e, por chamada à LLM, nas horas do pedido e da resposta HTTP do meta do IO
+bruto (`http`). Nenhuma rota pública apresenta um valor do retroativo como coletado ou decidido na hora: o ciclo, o feed, a página do modelo, a
+da ação e a home levam o modo (`mode`) e a hora real (`executedAt`), e o ranking conta os pregões de cada modo (`cyclesByMode`).
+
+**O que fica de fora do retroativo, por fonte:** a cotação intradiária (nunca foi fonte), o histórico do RSS (não existe) e a hora exata de
+publicação do SGS e do IBGE (substituída pela regra conservadora). As barras que o banco de dev não tem (antes de 07/08/2026, para a janela do
+universo das semanas de outubro, e as dos pregões depois da carga do dev) vêm da brapi, só a falta, em blocos de até 85 dias (a brapi limita o
+tamanho do período, não a idade dele: seção 9, a prova controlada).

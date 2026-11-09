@@ -47,7 +47,7 @@ import { actionOf, cursorOf, first, orNotFound, type SearchParams } from '../../
 import { REFERENCE_TICKER, readBars } from '../../../../lib/quotes';
 import { withApiDown } from '../../../../lib/with-api-down';
 
-// A arena (docs/redesign-rallies/plano.md, seção e; o conteúdo é o da home de antes, que virou a landing): no desenho da Arena do Rallies,
+// A arena (ADR 0035; o conteúdo é o da home de antes, que virou a landing): no desenho da Arena do Rallies,
 // a barra "Carteiras" à esquerda (components/arena/carteiras.tsx), e no principal a faixa dos modelos, o gráfico do patrimônio (o Line Chart
 // da beUI, com o rótulo no fim de cada linha), as cotações e o macro com a data de cada valor, os ciclos, o feed de decisões com o filtro por
 // BUY, SELL e HOLD e por modelo, e a temporada. O e2e acha as regiões pelo nome ("Ranking", "Patrimônio", "Cotações e macro", "Ciclos",

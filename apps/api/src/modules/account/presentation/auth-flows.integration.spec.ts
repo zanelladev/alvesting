@@ -448,6 +448,31 @@ describe.skipIf(!testDatabaseUrl)(
           (await signIn(account.agent(), email, 'senha-errada-qualquer', nextIp())).status,
         ).toBe(401);
       });
+
+      // O perfil econômico (ADR 0039): o site repassa o /api com o X-Forwarded-For de UM valor (a entrada da direita que o ingress dele
+      // escreveu: apps/web/src/lib/api-proxy.ts), e o ingress INTERNO da api acrescenta o IP do site à direita ("If specified in initial
+      // request, it is appended to": Learn, "Ingress in Azure Container Apps"). A api pula esse salto de endereço privado e conta o cliente.
+      it('atrás do repasse do site ("cliente, IP privado do salto"), o limite conta o cliente: o salto não vira balde e o que vem à esquerda não escapa', async () => {
+        const client = nextIp();
+        const email = newEmail();
+        const statuses: number[] = [];
+        for (const hop of ['10.10.0.5', '10.10.1.6', '100.100.0.7', '172.16.3.4']) {
+          const chain = `${client}, ${hop}`;
+          statuses.push(
+            (await signIn(account.agent(), email, 'senha-errada-qualquer', chain)).status,
+          );
+        }
+        expect(statuses).toEqual([401, 401, 401, 429]);
+        // o que o cliente escrevesse à esquerda (o site já o tira) também não abre um balde novo
+        expect(
+          (await signIn(account.agent(), email, 'x', `203.0.113.250, ${client}, 10.10.0.5`)).status,
+        ).toBe(429);
+        // outro cliente atrás do mesmo salto não é afetado: cada um tem o seu balde
+        expect(
+          (await signIn(account.agent(), email, 'senha-errada-qualquer', `${nextIp()}, 10.10.0.5`))
+            .status,
+        ).toBe(401);
+      });
     });
 
     describe('redefinição de senha', () => {

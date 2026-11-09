@@ -156,6 +156,33 @@ describe('parseSgs', () => {
     it('ponto sem dado (valor vazio) fora da janela não conta: não vira nada', () => {
       expect(parseSgs(cdi, [{ data: '01/01/2099', valor: '' }], window)).toEqual([]);
     });
+
+    // O SGS data o valor mensal no dia 1 e devolve o mês que contém a dataInicial (conferido em 06/11/2026: o 433 e o 13522
+    // pedidos a partir de 02/10/2025 começam em 01/10/2025). Sem a exceção, a primeira carga do IPCA (400 dias para trás) falhava
+    // em todo dia que não fosse dia 1. O CDI acima continua estrito: o ponto de 25/10, um dia antes do início, falha.
+    it('na série mensal, o dia 1 do mês em que a janela começa passa; o mês anterior e o futuro, não', () => {
+      const pedida = { from: '2025-10-02', to: '2026-11-06' } as const;
+      expect(
+        parseSgs(
+          ipca,
+          [
+            { data: '01/10/2025', valor: '0.09' },
+            { data: '01/09/2026', valor: '0.82' },
+          ],
+          pedida,
+        ).map((p) => p.date),
+      ).toEqual(['2025-10-01', '2026-09-01']);
+      for (const data of ['01/09/2025', '01/12/2026']) {
+        expect(() => parseSgs(ipca, [{ data, valor: '0.09' }], pedida)).toThrow(/fora da janela/);
+      }
+    });
+
+    it('as séries mensais são as duas do IPCA', () => {
+      expect(MACRO_SERIES.filter((s) => s.monthly).map((s) => s.id)).toEqual([
+        'ipca_month_pct',
+        'ipca_12m_pct',
+      ]);
+    });
   });
 });
 

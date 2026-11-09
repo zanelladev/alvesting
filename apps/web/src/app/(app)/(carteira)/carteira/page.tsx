@@ -95,7 +95,7 @@ export default withApiDown(async function WalletPage() {
         </noscript>
       </PageHead>
 
-      {/* O layout do Today do Rallies (docs/redesign-rallies/plano.md, f.3): a coluna da carteira, o meio com as posições e os lançamentos, e
+      {/* O layout do Today do Rallies (ADR 0035): a coluna da carteira, o meio com as posições e os lançamentos, e
           o painel "Perguntar" (o chat desligado), que a partir de 1280 px é a terceira coluna e abaixo disso um cartão no fim da tela. A partir
           de 1024 px as colunas são painéis de 360 px separados por fio, como as barras do Rallies: a grade come o respiro do `main` da casca
           (-mx-6) e cada painel tem o seu. Em 1440 px o meio tem 592 px de conteúdo, e a tabela de posições cabe inteira. No celular, uma

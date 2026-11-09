@@ -146,7 +146,7 @@ describe('cadastro', () => {
     expect(out).toContain('Li e aceito os termos de uso (versão 0.1).');
     expect(out).toContain('Li e aceito a política de privacidade (versão 0.3)');
     // a transferência internacional (LGPD, art. 33) está na frase que a pessoa aceita
-    expect(out).toContain('servidores nos Estados Unidos (LGPD, art. 33)');
+    expect(out).toContain('servidores no Chile e nos Estados Unidos (LGPD, art. 33)');
   });
 
   it('os textos abrem noutra aba, sem entregar a janela, e o link fica fora da frase da caixa', () => {

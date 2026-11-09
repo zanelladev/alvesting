@@ -11,13 +11,19 @@ param location string
 param tags object
 @description('Quem acessa qual container: [{ container, identity, role }], com role = contributor (ler, gravar e apagar) ou reader (só ler). Uma linha por par, no escopo do container. Quem não aparece não alcança Blob nenhum: a api, os agendadores, o migrate e o web (um RCE na api não pode reescrever o dado do experimento). O que o código de cada workload usa está em docs/INFRA.md, 3.2, e o infra/tests/check.mjs escreve a matriz à mão.')
 param grants array
+@description('Object ID de quem opera (o ALVESTING_ADMIN_PRINCIPAL_ID) para ESCREVER nos três containers: o envio do dump da temporada ao backups e a cópia do Blob do Azurite para briefings e llm-io (docs/RUNBOOK.md, 13.6; ADR 0039). Vazio = não atribui. O main.bicep só o passa no perfil econômico; no padrão o papel continua à mão (RUNBOOK, 5.3).')
+param operatorPrincipalId string
 
 var containerNames = ['briefings', 'llm-io', 'backups']
 var blobRoles = { contributor: storageBlobDataContributor, reader: storageBlobDataReader }
 
+// Cada identidade declarada uma vez só: o ARM recusa o mesmo recurso duas vezes no template ("defined multiple times", a prévia de
+// 07/11/2026), e `grants` repete a identidade (uma linha por par). O union(…, []) tira a repetição; o papel acha a sua pelo indexOf.
+var granteeNames = union(map(grants, grant => grant.identity), [])
+
 resource grantees 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' existing = [
-  for grant in grants: {
-    name: grant.identity
+  for identityName in granteeNames: {
+    name: identityName
   }
 ]
 
@@ -84,24 +90,37 @@ resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2025-01
   }
 }
 
-// O container de cada linha de `grants`, como escopo do papel. É `existing` (o container nasce acima) e por isso o dependsOn explícito: sem
-// ele o ARM podia criar o papel antes do container.
-resource grantContainers 'Microsoft.Storage/storageAccounts/blobServices/containers@2025-01-01' existing = [
+// O escopo é o container declarado acima (o Bicep gera a dependência sozinho): um `existing` do mesmo container seria o recurso declarado
+// duas vezes, e o ARM recusa.
+resource blobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
   for grant in grants: {
-    parent: blobService
-    name: grant.container
+    scope: containers[indexOf(containerNames, grant.container)]
+    name: guid(
+      containers[indexOf(containerNames, grant.container)].id,
+      grantees[indexOf(granteeNames, grant.identity)].id,
+      blobRoles[grant.role]
+    )
+    properties: {
+      principalId: grantees[indexOf(granteeNames, grant.identity)].properties.principalId
+      principalType: 'ServicePrincipal'
+      roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', blobRoles[grant.role])
+    }
   }
 ]
 
-resource blobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
-  for (grant, i) in grants: {
-    scope: grantContainers[i]
-    name: guid(grantContainers[i].id, grantees[i].id, blobRoles[grant.role])
-    dependsOn: [containers]
+// Quem opera escreve (Storage Blob Data Contributor: o papel interno de escrita de blob; não há um só de escrita) nos três containers, pelo
+// `az storage blob upload --auth-mode login` (a conta não tem chave). Owner do resource group não basta: ele não tem as ações de dados.
+resource operatorAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
+  for i in range(0, empty(operatorPrincipalId) ? 0 : length(containerNames)): {
+    scope: containers[i]
+    name: guid(containers[i].id, operatorPrincipalId, storageBlobDataContributor)
     properties: {
-      principalId: grantees[i].properties.principalId
-      principalType: 'ServicePrincipal'
-      roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', blobRoles[grant.role])
+      principalId: operatorPrincipalId
+      principalType: 'User'
+      roleDefinitionId: subscriptionResourceId(
+        'Microsoft.Authorization/roleDefinitions',
+        storageBlobDataContributor
+      )
     }
   }
 ]

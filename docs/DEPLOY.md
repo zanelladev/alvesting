@@ -1,17 +1,44 @@
 # Deploy: GitHub Actions para a Azure, por OIDC
 
-Etapa 3 do plano (§5.10 e §16), com o blue/green da etapa 10 (ADR 0029). Merge na `main` publica sem passo manual: as imagens vão para o ACR, as migrations
+Etapa 3 do plano (§5.10 e §16), com o blue/green da etapa 10 (ADR 0029) e, desde 06/11/2026, o perfil econômico, em que a produção nasce (ADR 0039;
+o fluxo dele está na seção 1, "O perfil econômico"). Merge na `main` publica sem passo manual: as imagens vão para o ACR (no econômico, para o GHCR), as migrations
 rodam (e o login da api no banco), e a revisão nova de cada app, a api primeiro, sobe com o label `green` e sem tráfego, passa por smoke e por Playwright mobile
 pelo Front Door verde, e só então recebe 100% do tráfego. Qualquer passo que falhe antes da confirmação (seção 1) deixa a revisão antiga com 100% e desativa a nova.
 
 | Arquivo | Para quê |
 |---|---|
-| `.github/workflows/ci.yml` | PR e push na `main`: lint, tipos, unidade, integração (Postgres e emulador do Service Bus), Playwright nos três projetos, Lighthouse mobile, `docs:check`, build, check da infra, imagens Docker e what-if do Bicep |
+| `.github/workflows/ci.yml` | PR e push na `main`: lint, tipos, unidade, integração (Postgres e emulador do Service Bus), a cobertura contra o mínimo do Playbook (e o SonarCloud, com o segredo `SONAR_TOKEN`; `docs/QUALIDADE.md`), Playwright nos três projetos, Lighthouse mobile, `docs:check`, build, check da infra, imagens Docker e what-if do Bicep |
 | `.github/workflows/deploy.yml` | Push na `main` (e execução manual): imagens no ACR e o rollout descrito abaixo |
-| `scripts/deploy.mjs` | Os passos que falam com o Container Apps (`pin`, `migrate`, `create api\|web`, `smoke-green api\|web`, `promote api\|web`, `smoke-edge`, `cleanup`, `roll-roles`, `rollback`, `current-tags`, e o `revert <revisão>` da seção 6), com testes em `scripts/deploy.test.mjs` (que executa o `deploy.yml` de verdade contra um Container Apps falso) |
+| `scripts/deploy.mjs` | Os passos que falam com o Container Apps (`pin`, `migrate`, `create api\|web`, `smoke-green api\|web`, `promote api\|web`, `smoke-edge`, `cleanup`, `roll-roles`, `rollback`, `current-tags`, o `revert <revisão>` da seção 6 e, no econômico, `probe-green api` e `green-url web`), com testes em `scripts/deploy.test.mjs` (que executa o `deploy.yml` de verdade contra um Container Apps falso, nos dois perfis) |
 | `scripts/sse-probe.mjs` | Mede se o SSE chega aos poucos ou bufferizado (ADR 0017) |
 
-Nenhum segredo vive no GitHub. Os IDs do OIDC (cliente, tenant, assinatura) não são segredo: sozinhos não dão acesso a nada.
+Nenhum segredo da Azure vive no GitHub. Os IDs do OIDC (cliente, tenant, assinatura) não são segredo: sozinhos não dão acesso a nada. O
+único segredo do repositório é o `SONAR_TOKEN` do SonarCloud, que só dá acesso à análise do código (`docs/QUALIDADE.md`, seção 7).
+
+---
+
+## Como implantar (do zero, na ordem)
+
+**No perfil econômico, o da produção (ADR 0039), o caminho em ordem, com o comando, o que cria, o tempo e quem faz cada passo, é o
+`docs/INFRA.md`, seção 6.0.** A tabela abaixo é a do perfil padrão (Front Door e ACR), para quem tiver crédito.
+
+O caminho inteiro, da assinatura vazia ao site no ar. Cada passo diz onde está o detalhe; os comandos estão lá, conferidos contra o
+`.github/workflows/deploy.yml`, o `scripts/deploy.mjs`, o `infra/` e o `docs/INFRA.md`. **Nada disto rodou ainda:** o repositório público e
+a assinatura não existem (seção 7).
+
+| # | Passo | Onde está o detalhe |
+|---|---|---|
+| 0 | **Pré-requisitos.** A assinatura de estudante da Azure (Azure for Students, US$ 100 de crédito: o perfil padrão dura umas 5 semanas e o econômico, de 10 meses a mais de um ano), com a sua conta como **Owner** do resource group; o repositório no GitHub, público e com o histórico; na máquina, o `az` logado **na assinatura do projeto** (confira com `az account show` antes de tudo), o Bicep 0.48.1, o Node 26.13 com o pnpm 12.16.1, o `gh` e o `openssl`; e os valores que só você tem: o token da brapi, a chave do OpenRouter, o arquivo do prompt da arena (fora do repositório) e, se quiser o login com o Google, o client secret | `docs/INFRA.md`, seção 6 (passo 0) e seção 9; o README, "Pré-requisitos" |
+| 1 | **Conferir a infra sem a Azure.** `node infra/tests/check.mjs` compila os dois perfis e afirma os invariantes; na assinatura, o `infra/scripts/verify-roles.sh` confere o nome de cada papel antes do primeiro deploy | `docs/INFRA.md`, passos 0 e 1 |
+| 2 | **O bootstrap (fase 1).** As senhas do Postgres e as entradas da conta exportadas só no shell; o `az group create` e o deploy do `infra/main.prod.bicepparam` com `deployApps=false writeDerivedSecrets=true deployBudget=true`, com o what-if antes. Cria a rede, o cofre, o banco, as filas, o Blob, o ACR, o Front Door e os alertas, sem os apps. Se a assinatura de estudante recusar o orçamento, `deployBudget=false` | `docs/INFRA.md`, passos 2 e 3, e seção 11 |
+| 3 | **Os segredos.** `infra/scripts/seed-secrets.sh kv-alvesting` pergunta, sem eco, o que só você tem (o prompt vem só de arquivo) e gera ao acaso os segredos internos; anote a versão do `prompt-arena`, que a fase 2 pede | `docs/INFRA.md`, passo 4 |
+| 4 | **O GitHub e o OIDC.** O primeiro push da `main` ainda sem variáveis (os jobs de publicação são pulados e nada fica vermelho); a identidade `id-alvesting-ci`, com as credenciais federadas (`environment:production` e `pull_request`) e os papéis `AcrPush` e `Contributor`; as variáveis do repositório (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `SITE_URL` e `SITE_GREEN_URL`); o ambiente `production` liberado só para a `main`; e a proteção da `main` exigindo os checks do CI | seções 2 e 3 deste documento |
+| 5 | **O primeiro deploy pelo GitHub Actions.** *Run workflow* do `deploy.yml` com `images_only` marcado (publica as duas imagens com a tag do SHA do commit); a fase 2 da infra com essas tags e a versão do prompt; o `job-migrate` uma vez (cria o login da api no banco); e *Run workflow* de novo, completo: a revisão nova de cada app, a api primeiro, nasce sem tráfego, é provada pelo Front Door verde e só então recebe os 100% | seção 4 deste documento; `docs/INFRA.md`, passos 5 a 7 |
+| 6 | **O smoke.** O deploy já roda o `apps/web/e2e/smoke.spec.ts` no Pixel 7 e no iPhone 15, pelo endpoint green (antes da virada) e pelo de produção (depois). À mão, contra o site no ar: `BASE_URL=https://<o site> pnpm --filter @alvesting/web exec playwright test e2e/smoke.spec.ts --project=pixel-7 --project=iphone-15`; e a conta de teste num celular de verdade | seções 1 ("O smoke do Playwright") e 4 (passo 8) |
+| 7 | **Voltar uma versão.** Até o ponto sem volta o próprio deploy devolve o tráfego à revisão antiga (o passo `Desfazer`). Depois dele, `node scripts/deploy.mjs revert ca-api--<sufixo>` (e o mesmo para o `ca-web`) reativa a revisão escolhida e passa a ela os 100%; os jobs voltam pelo *Re-run all jobs* do run verde que você quer de volta | seção 6 deste documento; `docs/RUNBOOK.md`, seção 6 |
+| 8 | **Depois do primeiro deploy.** O primeiro admin (o `account:promote` por uma execução do `job-migrate`), o domínio próprio, o SonarCloud e a Wiki | `docs/INFRA.md`, seções 8.4 e 8.6; `docs/QUALIDADE.md`, seções 7 e 8 |
+
+Depois disso, todo merge na `main` publica sozinho. O `deploy.yml` não roda quando o push só muda documentação (`docs/**` e `*.md`).
 
 ---
 
@@ -61,6 +88,22 @@ e o executa contra um Container Apps falso (`node scripts/deploy.mjs ...` roda o
 3. Só os passos 7 e 8 movem tráfego para a revisão nova, cada um depois do smoke no label e do Playwright mobile **daquele app**, e o job só chega neles se os passos anteriores passaram.
    O Playwright do web verde roda com a api nova já no ar (`seen[1]` do teste `o rollout inteiro`: a api tem os 100% e o web novo ainda tem 0%).
 4. O passo 13 refaz (1), tira o label da nova e a desativa, em falha ou cancelamento, nos dois apps.
+
+### O perfil econômico (`ALVESTING_PROFILE=economico`; ADR 0039)
+
+Sem Front Door, a variável do repositório `ALVESTING_PROFILE=economico` troca só o que precisa (sem ela, ou com `padrao`, os passos são os de cima,
+um por um: o `deploy.test.mjs` afirma a lista). O que muda:
+
+| Passo | No econômico | Por quê |
+|---|---|---|
+| `images` | `docker login ghcr.io` com o `GITHUB_TOKEN` pela entrada padrão (`packages: write`, sem `azure/login`), as duas imagens em `ghcr.io/<dono em minúsculas>/alvesting-{api,web}:<sha>` com o rótulo `org.opencontainers.image.source` do repositório. Continua pulado sem as variáveis de OIDC | Não há ACR. O rótulo liga o pacote ao repositório (docs.github.com, "Working with the Container registry", lida em 06/11/2026) |
+| 1 | Só o `SITE_URL` (o `ca-web`), sem `SITE_GREEN_URL`; um valor torto de `ALVESTING_PROFILE` é recusado aqui, antes de tocar na Azure | Não há endpoint green |
+| 5 e 6 da api | No lugar do smoke no label e do Playwright `@api`: **`probe-green api`**, o label na revisão nova e ela saudável pelas sondas da plataforma em 3 leituras seguidas, 10 s entre elas | A api é **interna**: o runner não alcança nem o endereço dela nem o do label (de fora, o proxy do ambiente dá 404). **Este portão é mais fraco que o do padrão**: não prova rota nenhuma além do `/health` no contêiner, nem a borda |
+| 8 do web | O smoke no label (`smoke-green web`, o web é externo) e o Playwright mobile da suíte inteira **no endereço do label** (`https://ca-web---green.<domínio>`), que o `green-url web` calcula e põe no `GITHUB_ENV` | O web verde fala com a api nova pelo repasse do site (`API_PROXY`): é aqui que a api nova é provada por HTTP, já com os 100% |
+| 9 | O `smoke-edge` e o Playwright no `SITE_URL` (o `ca-web`); o SSE informativo também, pelo repasse do site | O site é a borda |
+
+O resto (o `pin`, o `migrate`, a api antes do web, o `cleanup`, o `roll-roles` com a imagem do GHCR e o `Desfazer` nos dois apps) é igual. O `revert`
+da api interna confere o `/api/v1/health` pelo `SITE_URL`, quando ele está no ambiente; sem ele, só pelas sondas.
 
 ### O que acontece com worker, decisões e agendadores (não têm revisão)
 
@@ -154,19 +197,23 @@ ACR=cralvesting                       # com nameSuffix na infra, é outro nome
 REPO=dono/alvesting                   # <dono>/<repositório> no GitHub
 
 # 1. A identidade do CI
-az identity create --resource-group "$RG" --name id-alvesting-ci --location eastus2
+az identity create --resource-group "$RG" --name id-alvesting-ci   # nasce na região do grupo (ADR 0040)
 CLIENT_ID="$(az identity show -g "$RG" -n id-alvesting-ci --query clientId -o tsv)"
 PRINCIPAL_ID="$(az identity show -g "$RG" -n id-alvesting-ci --query principalId -o tsv)"
 
-# 2. Em que condições o GitHub pode usar essa identidade
+# 2. Em que condições o GitHub pode usar essa identidade. O prefixo do `sub` vem do próprio GitHub: o repositório criado
+# depois de 2026 usa o sub imutável, com os IDs do dono e do repositório (repo:<dono>@<id>/<repo>@<id>); o antigo, repo:<dono>/<repo>
+SUB_PREFIX="$(gh api "repos/${REPO}/actions/oidc/customization/sub" --jq '.sub_claim_prefix // empty')"
+SUB_PREFIX="${SUB_PREFIX:-repo:${REPO}}"
 az identity federated-credential create -g "$RG" --identity-name id-alvesting-ci \
   --name github-production --issuer https://token.actions.githubusercontent.com \
-  --subject "repo:${REPO}:environment:production" --audiences api://AzureADTokenExchange
+  --subject "${SUB_PREFIX}:environment:production" --audiences api://AzureADTokenExchange
 az identity federated-credential create -g "$RG" --identity-name id-alvesting-ci \
   --name github-pull-request --issuer https://token.actions.githubusercontent.com \
-  --subject "repo:${REPO}:pull_request" --audiences api://AzureADTokenExchange
+  --subject "${SUB_PREFIX}:pull_request" --audiences api://AzureADTokenExchange
 
 # 3. Os papéis (a identidade acabou de nascer: se a Azure disser que o principal não existe, espere 1 minuto)
+# o AcrPush só no perfil padrão: no econômico (a produção, ADR 0039) não há ACR, e as imagens vão ao GHCR com o GITHUB_TOKEN
 az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal \
   --role AcrPush --scope "$(az acr show -n "$ACR" --query id -o tsv)"
 az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal \
@@ -175,12 +222,16 @@ az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-princi
 
 | Credencial | Assunto (`sub`) | Quem usa |
 |---|---|---|
-| `github-production` | `repo:<dono>/<repo>:environment:production` | `images` e `deploy` do `deploy.yml`, que declaram `environment: production` |
-| `github-pull-request` | `repo:<dono>/<repo>:pull_request` | O what-if do `ci.yml`, em PR do próprio repositório (fork não recebe token de OIDC) |
+| `github-production` | `<prefixo>:environment:production` | `images` e `deploy` do `deploy.yml`, que declaram `environment: production` |
+| `github-pull-request` | `<prefixo>:pull_request` | O what-if do `ci.yml`, em PR do próprio repositório (fork não recebe token de OIDC) |
+
+O `<prefixo>` é o `sub_claim_prefix` do `gh api repos/<dono>/<repo>/actions/oidc/customization/sub`: no repositório deste projeto,
+criado em 09/11/2026, `repo:zanelladev@50930348/alvesting@1451309049` (o sub imutável do GitHub, que guarda os IDs para um repositório
+apagado e recriado com o mesmo nome não herdar a credencial).
 
 | Papel | Escopo | Para quê |
 |---|---|---|
-| `AcrPush` | O registro `cralvesting` | Publicar as imagens (`az acr login`, `docker push`) |
+| `AcrPush` | O registro `cralvesting` (só no padrão) | Publicar as imagens (`az acr login`, `docker push`). No econômico não existe: o GHCR recebe as imagens pelo `GITHUB_TOKEN` do próprio job |
 | `Contributor` | O resource group `rg-alvesting-prod` | `containerapp update`, `job update` e `job start`, `ingress traffic set`, `revision deactivate` e o `what-if` |
 
 Por que `Contributor` e não algo mais estreito: o `az containerapp update` escreve o app, junta-o ao ambiente
@@ -203,8 +254,9 @@ Settings, Secrets and variables, Actions, **Variables** (variável, não segredo
 | `AZURE_CLIENT_ID` | `$CLIENT_ID` da identidade `id-alvesting-ci` | Sim. Sem ela, `images`, `deploy` e o what-if são **pulados** (repositório novo e fork não ficam vermelhos) |
 | `AZURE_TENANT_ID` | `$TENANT` | Sim |
 | `AZURE_SUBSCRIPTION_ID` | `$SUB` | Sim |
-| `SITE_URL` | URL pública, com `https://` e sem barra no fim: o output `siteUrl` da infra (`https://alvesting-xxxx.z01.azurefd.net`) ou o domínio próprio | Sim, no `deploy` |
-| `SITE_GREEN_URL` | URL do **endpoint green** do Front Door, com `https://` e sem barra no fim: o output `greenSiteUrl` da infra (`https://alvesting-green-xxxx.z01.azurefd.net`). É por ele que o deploy prova a revisão nova antes de ela ter tráfego (seção 1). Não é o domínio próprio | Sim, no `deploy` |
+| `ALVESTING_PROFILE` | `economico` (a produção, ADR 0039) ou ausente (`padrao` vale o mesmo que ausente). Escolhe os passos do perfil no `deploy.yml` (seção 1); outro valor é recusado no primeiro passo | Sim, no econômico |
+| `SITE_URL` | URL pública, com `https://` e sem barra no fim: o output `siteUrl` da infra (`https://alvesting-xxxx.z01.azurefd.net` no padrão; `https://ca-web.<domínio do ambiente>` no econômico) ou o domínio próprio | Sim, no `deploy` |
+| `SITE_GREEN_URL` | URL do **endpoint green** do Front Door, com `https://` e sem barra no fim: o output `greenSiteUrl` da infra (`https://alvesting-green-xxxx.z01.azurefd.net`). É por ele que o deploy prova a revisão nova antes de ela ter tráfego (seção 1). Não é o domínio próprio | Sim, no `deploy` do padrão; no econômico não existe (vazio na saída da infra) e é ignorada |
 | `AZURE_RESOURCE_GROUP` | `rg-alvesting-prod` | Não: esse é o padrão |
 | `ACR_NAME` | `cralvesting` | Não: esse é o padrão. Mude se a infra usou `nameSuffix` |
 | `ALVESTING_BUDGET_EMAIL`, `ALVESTING_ADMIN_PRINCIPAL_ID` | Os mesmos do passo 2 do `docs/INFRA.md` | Não: só para o what-if |
@@ -220,19 +272,38 @@ gh variable set SITE_URL --body "https://alvesting-xxxx.z01.azurefd.net" --repo 
 gh variable set SITE_GREEN_URL --body "$(az deployment group show -g rg-alvesting-prod -n alvesting --query properties.outputs.greenSiteUrl.value -o tsv)" --repo "$REPO"
 ```
 
+No econômico:
+
+```bash
+gh variable set ALVESTING_PROFILE --body economico --repo "$REPO"
+gh variable set SITE_URL --body "$(az deployment group show -g rg-alvesting-prod -n alvesting --query properties.outputs.siteUrl.value -o tsv)" --repo "$REPO"
+```
+
+**O pacote do GHCR público, uma vez (econômico).** O primeiro `images` cria os pacotes `alvesting-api` e `alvesting-web` no GHCR, e eles nascem
+**privados** ("the default visibility is private": docs.github.com, "Configuring a package's access control and visibility", lida em 06/11/2026).
+O Container Apps puxa a imagem sem credencial (o template não leva registro), então cada um precisa ficar público antes da fase 2 da infra: no
+GitHub, o seu perfil, *Packages*, o pacote, *Package settings*, e no fim da página (*Danger Zone*) *Change visibility*, *Public*; confirme digitando o
+nome. A mesma página avisa que um pacote público não volta a ser privado. A API REST de pacotes do GitHub não tem rota para mudar a visibilidade
+(docs.github.com, "REST API endpoints for packages", lida em 06/11/2026: só ler, apagar e restaurar); para conferir depois, sem mudar nada:
+`gh api /users/<dono>/packages/container/alvesting-api --jq .visibility` (tem de dizer `public`). As imagens não levam segredo nem prompt (o job
+`images` do `ci.yml` confere).
+
 **Ambiente `production`:** Settings, Environments, New environment, nome `production`. Em *Deployment branches and tags*,
 escolha *Selected branches* e libere só `main`: assim nenhum outro branch consegue assumir a credencial
 `github-production`. Não ponha revisores obrigatórios (cada um dos dois jobs pediria aprovação).
 
-**Branch protection da `main`:** exija os checks `check`, `web`, `images (api)` e `images (web)` do `ci.yml` antes do
-merge. O `whatif` é informativo e não precisa ser exigido.
+**Branch protection da `main`:** exija os checks `check`, `coverage`, `web`, `images (api)` e `images (web)` do `ci.yml` antes do
+merge (o `coverage` é o mínimo de cobertura do Playbook: 75% no backend e 25% no frontend). O `whatif` é informativo e não precisa ser
+exigido.
 
 ---
 
-## 4. Primeiro deploy: a versão mínima (olá + `/health`)
+## 4. Primeiro deploy
 
-O que sobe é o que já existe: a home "Alvesting" do site, o `/health` do site e o `/api/v1/health` da api. É suficiente
-para provar o caminho inteiro. A ordem importa, porque o Container App não sobe sem imagem e o Bicep não sobe os apps
+O que sobe é o que está na `main`: o site, a api, o worker, as decisões e os agendadores, com o banco ainda sem temporada (o smoke da home não
+depende de dado: seção 1). **No econômico** (a produção, ADR 0039) a ordem com os comandos é a do `docs/INFRA.md`, seção 6.0; o que muda aqui: as
+imagens vão para o GHCR (passo 5) e os dois pacotes ficam públicos antes da fase 2 (seção 3), não há `SITE_GREEN_URL` nem `AcrPush`, e a
+temporada do Mac entra depois do primeiro deploy (`docs/RUNBOOK.md`, 13.6). A ordem importa, porque o Container App não sobe sem imagem e o Bicep não sobe os apps
 sem os segredos (`docs/INFRA.md`, seção 6).
 
 1. **Repositório no GitHub.** O repositório local ainda não tem `remote`. Crie o repositório, faça o primeiro push da
@@ -279,7 +350,7 @@ sem os segredos (`docs/INFRA.md`, seção 6).
    curl -fsS "$SITE/api/v1/health"   # ... "service":"api"
    ```
 
-   Abra `$SITE` no celular: a home "Alvesting" tem de carregar.
+   Abra `$SITE` no celular: a landing tem de carregar (o h1 "Modelos de linguagem investindo na B3").
 
    **Entrar numa conta de teste, num iPhone de verdade e no Chrome do Android** (a etapa 11 trouxe a conta): é a primeira
    prova do cookie de sessão com o prefixo `__Secure-` pela borda de verdade. O e2e o exercita em Chromium e em WebKit
@@ -298,7 +369,7 @@ Depois disso, todo merge na `main` publica sozinho.
 | Sintoma | Onde olhar |
 |---|---|
 | `images` pulado | A variável `AZURE_CLIENT_ID` não existe, ou o run é de um fork |
-| `azure/login` falha com `AADSTS70021` ou `AADSTS700213` | O `sub` do token não bate com nenhuma credencial federada. O job do `deploy.yml` precisa do `environment: production` e a credencial é `repo:<dono>/<repo>:environment:production` (maiúsculas e minúsculas contam). Para PR, a credencial `pull_request` |
+| `azure/login` falha com `AADSTS70021` ou `AADSTS700213` | O `sub` do token não bate com nenhuma credencial federada. O job do `deploy.yml` precisa do `environment: production` e a credencial é `<prefixo>:environment:production` (maiúsculas e minúsculas contam). O erro mostra o `sub` que o GitHub mandou: repositório novo usa o sub imutável (`repo:<dono>@<id>/<repo>@<id>:...`), e a credencial criada com `repo:<dono>/<repo>` não serve; troque o assunto com `az identity federated-credential update ... --subject` (o prefixo certo na seção 2, depois da tabela das credenciais). Para PR, a credencial `pull_request` |
 | `az acr login` ou `docker push` negado | A identidade não tem `AcrPush` no ACR, ou o papel ainda propaga (alguns minutos) |
 | `pin` diz "não está 100% numa revisão só" | Alguém dividiu o tráfego à mão. Acerte (`az containerapp ingress traffic set --revision-weight <rev>=100`) e rode de novo |
 | `migrate` termina em `Failed` | Veja o log da execução do `job-migrate` no portal (Container Apps, Jobs, Execution history). O banco não muda quando a migration falha inteira; a antiga segue no ar |
@@ -310,6 +381,10 @@ Depois disso, todo merge na `main` publica sozinho.
 | A api não sobe em produção: "só roda com o login alvesting_api" | O `DATABASE_URL` do `ca-api` aponta para o segredo do administrador. Tem de ser o `database-url-api` (`docs/INFRA.md`, 2.2) |
 | A api sobe, mas as rotas que consultam o banco dão `password authentication failed` | O login `alvesting_api` não existe no banco ou a senha dele não é a do `database-url-api`: rode o `job-migrate` (cria o login e define a senha) e, se acabou de girar a senha, reinicie a revisão do `ca-api` (`docs/INFRA.md`, 8.2) |
 | `Desfazer` com "rollback incompleto" | Está dito qual app e qual passo. Acerte à mão (seção 6) |
+| (econômico) A revisão nova não sobe: "image pull failed", `ImagePullBackOff`, `unauthorized` no GHCR | O pacote do GHCR ainda está privado (seção 3), ou o `ghcrOwner` da infra não é o dono em minúsculas do repositório |
+| (econômico) O `probe-green api` diz "não ficou saudável por 3 leituras seguidas" | A api nova sobe e cai (a sonda de liveness). O log do app no Log Analytics diz por quê; a revisão já foi desativada pelo `Desfazer` |
+| (econômico) O Playwright no label do web reprova com 404 no `/api/*`, ou o login dá 404 | O site não está repassando: o `API_PROXY=on` ou o `API_INTERNAL_URL` interno faltam no `ca-web` (a infra do econômico os põe; o site recusa subir com o `API_PROXY` torto) |
+| (econômico) O `deploy` falha no passo 1: "ALVESTING_PROFILE vale economico ou padrao" | A variável do repositório tem outro valor (acento, maiúscula) |
 
 ## 6. Voltar uma revisão à mão
 
@@ -379,8 +454,11 @@ Como rodar esse SQL no Postgres privado: uma execução do `job-migrate` com o c
   já teve tráfego fica na lista com peso 0 (e a regra "sempre a última" também, com peso 0). Não muda o roteamento, e o
   pipeline só olha quem tem peso maior que zero. Se um dia a Azure recusar a lista por causa de revisões apagadas, é
   preciso limpá-la (`az containerapp update --set properties.configuration.ingress.traffic=...`, não verificado).
-- **Perfil econômico** (GHCR e sem Front Door): o pipeline cobre só o padrão (ACR e Front Door). No econômico a imagem
-  iria para o GHCR e o smoke bateria direto no ingress.
+- **Perfil econômico** (GHCR e sem Front Door; ADR 0039): o pipeline cobre os dois perfis, e o `deploy.test.mjs` executa o `deploy.yml` contra um
+  Container Apps falso nos dois (a ordem, a api pelas sondas, o Playwright no label do web, a virada e o "Desfazer"; e o passo do GHCR com um `docker`
+  falso: o dono em minúsculas, o token pela entrada padrão e o rótulo). Não verificado, porque só o GitHub e a Azure mostram: o primeiro publish no
+  GHCR com o `GITHUB_TOKEN` (o pacote ligado ao repositório pelo rótulo), a visibilidade, o Container Apps puxando a imagem pública sem credencial,
+  o `GITHUB_ENV` levando o `GREEN_URL` ao passo seguinte, e o portão da api pelas sondas (`docs/INFRA.md`, seção 11).
 - **Rollback deixa o template do app apontando para a imagem que falhou** até o próximo deploy bom. A revisão que serve é a
   antiga. Por isso o what-if lê a tag da revisão com tráfego (`current-tags`), não a do template, e quem roda a infra à
   mão deve informar as tags que estão no ar (`docs/INFRA.md`, 7.3).

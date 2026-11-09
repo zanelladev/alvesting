@@ -4,7 +4,7 @@ import { partesDoNome } from '../competidor';
 import { AVISO_DE_MARCA } from '../rodape';
 import { SimulatedTag } from '../ui';
 
-// A faixa dos seis laboratórios da landing (docs/redesign-rallies/plano.md, d.4 e g.3), no lugar da faixa de marcas do Rallies: um ladrilho por
+// A faixa dos seis laboratórios da landing (ADR 0035), no lugar da faixa de marcas do Rallies: um ladrilho por
 // laboratório, sempre na mesma ordem, com o logo (máscara em currentColor, decorativo) e o nome do modelo da temporada. O elenco vem do ranking
 // (ou das decisões, antes da primeira liquidação); o laboratório sem modelo na temporada (ou sem temporada nenhuma) mostra o nome do
 // laboratório. O "simulado" vai uma vez, no cabeçalho, quando a arena é simulada (docs/DESIGN.md: uma vez por contexto), fora do título: o

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -235,5 +236,17 @@ describe('a tipografia', () => {
   it('o font-display leva o peso 600 na camada base (um peso explícito, que é utilitário, ainda ganha)', () => {
     const base = /@layer base \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
     expect(base).toMatch(/\n {2}\.font-display \{\s*font-weight: 600;\s*\}/);
+  });
+
+  // A Exo 2 da marca vem em linha no CSS (o subconjunto das letras de "Alvesting" que o Google Fonts gera): os bytes são os que o
+  // docs/DEPENDENCIAS.md registra, e o `font-marca` a usa com a sans de reserva atrás.
+  it('a fonte da marca em linha é o subconjunto registrado da Exo 2 600', () => {
+    const face = /@font-face \{[^}]*font-family: 'Exo 2 Marca';[^}]*\}/.exec(css)?.[0] ?? '';
+    expect(face).toContain('font-weight: 600;');
+    const base64 = /url\(data:font\/woff2;base64,([A-Za-z0-9+/=]+)\)/.exec(face)?.[1] ?? '';
+    expect(createHash('sha256').update(Buffer.from(base64, 'base64')).digest('hex')).toBe(
+      '32cdec5ca5c2b57cea711242ba400e59385ec5d5f30eeed63fa6863c252fff29',
+    );
+    expect(css).toMatch(/--font-marca: 'Exo 2 Marca', var\(--font-sans\);/);
   });
 });

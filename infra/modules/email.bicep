@@ -7,17 +7,18 @@ param keyVaultName string
 @description('Grava o segredo acs-connection-string. Só na fase 1: regravar o mesmo valor cria uma versão nova, e o Container Apps reinicia as revisões que o referenciam.')
 param writeDerivedSecrets bool
 
-// Mesma região de dados do resto da stack (East US 2): a transferência internacional já é informada (§12).
+// Os dados do envio ficam nos Estados Unidos; o resto da stack, na Chile Central (ADR 0040). A política de privacidade informa as
+// duas transferências (item 6).
 var dataLocation = 'United States'
 
-resource emailService 'Microsoft.Communication/emailServices@2025-05-01' = {
+resource emailService 'Microsoft.Communication/emailServices@2025-09-01' = {
   name: emailName
   location: 'global'
   tags: tags
   properties: { dataLocation: dataLocation }
 }
 
-resource domain 'Microsoft.Communication/emailServices/domains@2025-05-01' = {
+resource domain 'Microsoft.Communication/emailServices/domains@2025-09-01' = {
   parent: emailService
   name: 'AzureManagedDomain'
   location: 'global'
@@ -25,7 +26,7 @@ resource domain 'Microsoft.Communication/emailServices/domains@2025-05-01' = {
   properties: { domainManagement: 'AzureManaged' }
 }
 
-resource communication 'Microsoft.Communication/communicationServices@2025-05-01' = {
+resource communication 'Microsoft.Communication/communicationServices@2025-09-01' = {
   name: name
   location: 'global'
   tags: tags

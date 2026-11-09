@@ -87,9 +87,11 @@ export class InProcessBus {
   }
 
   // Entrega tudo o que venceu até `limit`, em ordem de horário. O que os handlers publicam no meio da passada entra na fila e sai na
-  // mesma passada, se já venceu. O relógio fica na hora da última mensagem entregue.
-  async runUntil(limit: Date): Promise<void> {
+  // mesma passada, se já venceu. O relógio fica na hora da última mensagem entregue. Com `signal` abortado (o Ctrl+C do arena:retroativo e
+  // do operador), para ENTRE duas entregas: a que está em curso termina, e nada fica pela metade.
+  async runUntil(limit: Date, signal?: AbortSignal): Promise<void> {
     for (;;) {
+      if (signal?.aborted) return;
       const next = this.nextDue(limit);
       if (!next) return;
       this.queue.splice(this.queue.indexOf(next), 1);

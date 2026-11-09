@@ -12,13 +12,15 @@ import {
 import type { Position } from '@alvesting/contracts';
 import { messageFor, type Reply } from './account-client';
 import { ratioBps } from './chart';
-import { formatBRL, formatDate, formatQuantity } from './format';
+import { formatBRL, formatDate, formatPrice, formatQuantity } from './format';
 
 // O que o navegador faz com a carteira (etapa 12, parte 2; docs/TELAS.md, seção 9): conferir o que a pessoa digitou antes de enviar, montar o
 // corpo que a api espera e dizer, em português e no campo, o que a api recusou. Nada daqui importa valor do índice do pacote de contratos
 // (leva o zod). A api confere tudo de novo; a conferência daqui só poupa a ida e fala a língua da pessoa.
 
 export const LOTS_PATH = '/api/v1/me/portfolio/lots';
+// os tetos, para o modal do lançamento (components/wallet-lots.tsx lê o contrato só por aqui)
+export { PORTFOLIO_LIMITS };
 
 // O que a pessoa digitou, em texto. `mode` é o radio ("por ação" ou "total").
 export interface LotDraft {
@@ -114,12 +116,43 @@ export function checkLot(draft: LotDraft): LotCheck {
   };
 }
 
-// O custo guardado, de volta no campo de valor ao editar: centavos inteiros viram "3550,00", sem milhar (o ponto de milhar é onde a pessoa mais
-// erra ao editar, e a regra do campo aceita as duas formas).
-export function centsToInput(cents: number): string {
-  if (!Number.isSafeInteger(cents) || cents < 0)
-    throw new RangeError('centavos inteiros esperados');
-  return `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}`;
+// --- o campo de dinheiro do modal (o padrão dos bancos brasileiros) -----------------------------------------------------------------
+// Os centavos entram pela direita: o campo guarda os algarismos (os centavos, sem os zeros da frente) e mostra o texto deles, e cada tecla é
+// lida do texto novo do campo. Só algarismos contam, então o teclado de números de qualquer celular serve, e o ponto que um teclado de
+// Android manda no lugar da vírgula não muda nada (com o Money input da Arc, "35.50" em pt-BR virava R$ 3.550). O texto que o campo mostra
+// ("1.234,56") é o que o formulário envia, e o `parseBrl` o lê como sempre (o checkLot não muda).
+// No máximo 12 algarismos: R$ 9.999.999.999,99, acima do teto do custo, que o checkLot recusa com a frase dele.
+const MONEY_DIGITS = 12;
+
+// O texto do campo depois de uma tecla (ou de um Backspace), em algarismos; null quando passa do máximo (o campo fica como estava).
+export function typedCents(text: string): string | null {
+  const digits = text.replace(/\D/g, '').replace(/^0+/, '');
+  return digits.length > MONEY_DIGITS ? null : digits;
+}
+
+// O que se cola passa pela regra do contrato ("35", "35,5", "1.234,56" e "R$ 35,50", sem o "R$"); o que ela recusa não muda nada (null).
+export function pastedCents(text: string): string | null {
+  const read = parseBrl(text.replace(/^\s*R\$/i, ''));
+  return read.ok ? String(read.cents) : null;
+}
+
+// O que o campo mostra: "" (o marcador "0,00" aparece) ou o valor com o milhar ("1.234,56").
+export const centsText = (digits: string): string =>
+  digits === '' ? '' : formatPrice(Number(digits));
+
+// A linha acima dos botões do modal: no modo por ação, o custo total (o do contrato); no modo total, o preço médio por ação, arredondado no
+// centavo mais próximo com o meio para longe do zero (a regra `divRound` da api, em conta inteira). Some sem valor ou acima do teto do custo.
+export function lotSummary(
+  mode: PriceMode,
+  quantity: number,
+  valueCents: number | null,
+): { label: string; cents: number } | null {
+  if (valueCents === null) return null;
+  const cost = lotCostCents(mode, quantity, valueCents);
+  if (!cost.ok) return null;
+  if (mode === 'unit') return { label: 'Custo total', cents: cost.costCents };
+  const [total, count] = [BigInt(valueCents), BigInt(quantity)];
+  return { label: 'Preço médio por ação', cents: Number((2n * total + count) / (2n * count)) };
 }
 
 // "100 MOVE3": como a tela chama um lançamento nos avisos, nos nomes dos botões e na pergunta de apagar.
