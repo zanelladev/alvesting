@@ -30,6 +30,9 @@ resource vnet 'Microsoft.Network/virtualNetworks@2025-05-01' = {
           delegations: [
             { name: 'postgres', properties: { serviceName: 'Microsoft.DBforPostgreSQL/flexibleServers' } }
           ]
+          // A Azure liga este endpoint ao criar o servidor (é por ele que o WAL vai ao Storage), e tirá-lo "pode interromper a conectividade"
+          // (learn.microsoft.com/azure/postgresql/network/concepts-networking-private). Sem ele aqui, toda execução da infra o apaga (09/11/2026).
+          serviceEndpoints: [{ service: 'Microsoft.Storage' }]
         }
       }
     ]
