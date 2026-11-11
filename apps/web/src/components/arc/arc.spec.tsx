@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AnimatedCounter } from './animated-counter/animated-counter';
 import { Calendar } from './calendar/calendar';
 import { DatePicker } from './date-picker/date-picker';
-import { dateKey, fromKey } from './lib/use-today';
+import { dateKey, fromKey, todayKey } from './lib/use-today';
 import { NumberField } from './number-field/number-field';
 import { Tooltip } from './tooltip/tooltip';
 
@@ -135,5 +135,14 @@ describe('a data do lançamento (lib/use-today.ts)', () => {
   it('e volta para a data local, à meia-noite do dia', () => {
     expect(fromKey('2026-10-15')).toEqual(new Date(2026, 9, 15));
     expect(dateKey(fromKey('1900-01-01'))).toBe('1900-01-01');
+  });
+
+  it('o hoje é o de Brasília, o limite que o servidor manda: num aparelho à frente do fuso o "Hoje" saía do limite e ficava desativado', () => {
+    vi.stubEnv('TZ', 'Asia/Tokyo');
+    // 22:30 de 10/11 em Brasília, 10:30 de 11/11 em Tóquio (o CI, em UTC, cai no mesmo caso das 21h às 24h de Brasília)
+    const late = new Date('2026-11-11T01:30:00Z');
+    expect(dateKey(late)).toBe('2026-11-11');
+    expect(todayKey(late)).toBe('2026-11-10');
+    expect(todayKey(new Date('2026-11-11T03:00:00Z'))).toBe('2026-11-11');
   });
 });
