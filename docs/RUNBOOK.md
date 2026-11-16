@@ -660,9 +660,9 @@ validador de hoje recusa.
 
 ## 13. Operador local: a Temporada 1 no Mac, até a Azure
 
-**não ensaiado.** Nenhum destes passos rodou de verdade: os três comandos foram provados só com os substitutos do ensaio (a brapi falsa, o
-provedor fake de LLM, o SGS e a CVM sintéticos), sem rede (`apps/api/src/temporada/*.spec.ts`). A primeira execução real é do coordenador, depois
-da chave do OpenRouter e do prompt aprovados pelo Artur (o passo a passo exato está no relatório `docs/temporada-1/relatorios/t0-temporada-real.md`).
+**não ensaiado:** o operador ao vivo (`arena:operar` e o `launchd`, 13.3 e 13.4), que nunca foi instalado. O `temporada:preparar` e o
+`arena:retroativo` rodaram de verdade de 06/11 a 15/11/2026 (os 23 pregões de 13/10 a 13/11), e a ida para a Azure (13.6), em 15/11/2026. Os
+testes usam os substitutos do ensaio (a brapi falsa, o provedor fake de LLM, o SGS e a CVM sintéticos), sem rede (`apps/api/src/temporada/*.spec.ts`).
 Por que existe: ADR 0038. As regras da Temporada 1 (o trecho retroativo e o ao vivo): `docs/METODOLOGIA.md`, "Temporada 1".
 
 Os três comandos leem o banco de `TEMPORADA_DATABASE_URL` (o `alvesting_temporada`, no Postgres do docker compose) e recusam qualquer outro
@@ -775,10 +775,12 @@ retroativo cobri-lo (13.5), e **enquanto ele existir nenhum pregão seguinte abr
 
 ### 13.6 Levar o `alvesting_temporada` para a Azure
 
-**não ensaiado na Azure.** Provado na máquina em 06/11/2026 (ADR 0039; o relatório da onda Azure): o dump do `alvesting_temporada` restaurado pelo
-comando de cima, num banco cujo dono **não é superusuário** (como o administrador do Flexible Server), deu as 32 tabelas com as contagens da origem
-e a api servindo esse banco mostrou os mesmos 17 ciclos (13/10 a 05/11). O teste `season-restore.integration.spec.ts` repete isso com uma temporada
-sintética, as recusas inclusive. O que só a Azure prova: o `job start --yaml` lendo o Blob pela identidade do migrate (`docs/INFRA.md`, seção 11).
+**Rodou na Azure em 15/11/2026:** a Temporada 1 (23 ciclos, de 13/10 a 13/11) foi para a produção por estes passos; a execução do
+`job-migrate` leu o dump do `backups` pela identidade do migrate e conferiu as 25 tabelas com as contagens da origem, e o site mostrou os mesmos
+ciclos. Antes, provado na máquina em 06/11/2026 (ADR 0039; o relatório da onda Azure): o dump do `alvesting_temporada` restaurado pelo comando de
+cima, num banco cujo dono **não é superusuário** (como o administrador do Flexible Server), deu as 32 tabelas com as contagens da origem e a api
+servindo esse banco mostrou os mesmos 17 ciclos (13/10 a 05/11). O teste `season-restore.integration.spec.ts` repete isso com uma temporada
+sintética, as recusas inclusive.
 
 **Antes.** A produção no perfil econômico de pé: a fase 2 da infra, o primeiro deploy pelo pipeline (o `job-migrate` já aplicou as migrations) e
 o site respondendo. O papel de escrita nos containers (`Storage Blob Data Contributor` em `backups`, `briefings` e `llm-io`) é do
@@ -802,6 +804,8 @@ a conta que você já criou no site novo fica (o dump não tem as tabelas pessoa
    pnpm --filter @alvesting/api build
    DATABASE_URL=postgresql://alvesting:alvesting@localhost:25432/alvesting_temporada \
      node apps/api/dist/restore-cli.js contagens > ~/segredos/contagens-origem.txt
+   # o DATABASE_URL é só para a validação do ambiente: sem ele, o comando para antes de exportar
+   DATABASE_URL=postgresql://alvesting:alvesting@localhost:25432/alvesting_temporada \
    STORAGE_CONNECTION_STRING='UseDevelopmentStorage=true;DevelopmentStorageProxyUri=http://127.0.0.1:25100' \
      node apps/api/dist/restore-cli.js exportar-blob ~/segredos/blob-temporada   # briefings/ e llm-io/, com os nomes do Azurite
    ```
@@ -855,6 +859,12 @@ a conta que você já criou no site novo fica (o dump não tem as tabelas pessoa
    (<linhas> do dump)`, e termina em `restauração conferida`: o comando já comparou cada tabela com as linhas que o dump trazia. Compare também com
    o `contagens-origem.txt` do passo 1 (as 25 tabelas que o dump traz têm o mesmo número; as pessoais, as suas). E no site: a arena mostra os
    pregões da temporada (os mesmos ciclos do Mac) e a `/arena` tem o último ciclo.
+
+   **Se a restauração veio depois de um agendador que precisa da temporada** (o `universe` do domingo às 09:00, o `freeze` das 07:30 de um
+   pregão), ele falhou sem ela e foi para a DLQ depois das novas tentativas. A restauração apagou o `job_run` falho, então: o universo da semana
+   de novo, antes das 07:30 do pregão (`az containerapp job start -g $RG -n job-sched-universe`; o log do `ca-worker-data` traz `universo da
+   semana`), e o reenvio das mensagens mortas pelo `/admin` (seção 3): o `freeze` de um pregão que o dump já tem e o `universe` já congelado voltam
+   `already_done`. Com mensagem morta, o alerta da DLQ daquela fila não manda e-mail de uma falha nova.
 
 5. **Desligar o operador do Mac ANTES de os agendadores da Azure assumirem** (o próximo `briefing` às 07:30 e o ciclo às 08:00): sem isso os dois
    abririam o mesmo pregão, cada um no seu banco, e a chave do OpenRouter pagaria duas vezes.
