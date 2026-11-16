@@ -14,7 +14,8 @@
 // referências pontilhadas e o logo no fim de cada linha com o valor numa pílula da cor dela; o valor do painel é o contador da Arc, que rola
 // só quando o ponteiro muda de pregão (pelo teclado e pelo toque ele troca na hora, como o cursor: animação no teclado cansa, e o deslize sob
 // o dedo parece atraso), e o dinheiro é o de lib/format.ts; a série que volta se desenha por um recorte do CSS (globals.css, `.linha-desenha`);
-// no celular, o toque fora da figura e a rolagem fecham a leitura (não há Esc); saíram o estado de carregamento, a área, o esmaecer das
+// no celular, o toque fora da figura e a rolagem fecham a leitura (não há Esc); a leitura (o painel e o leitor de tela) lista as séries do
+// maior patrimônio do pregão para o menor, e não na ordem das séries (15/11/2026); saíram o estado de carregamento, a área, o esmaecer das
 // pontas, o eixo de valores, o `cn` (clsx e tailwind-merge) e o NumberTicker da beUI; os textos em português. Com movimento reduzido, nada
 // anda: a escala, a linha e o cursor trocam na hora.
 'use client';
@@ -234,10 +235,15 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
       .join('; ') +
     '.' +
     (band ? ' A faixa vai do percentil 5 ao 95 das carteiras aleatórias do Monte Carlo.' : '');
+  // Quem estava ganhando primeiro (o pedido do Artur em 15/11/2026): as séries à vista do maior patrimônio do pregão para o menor, o "sem
+  // dado" no fim. O painel e o leitor de tela leem a mesma ordem; no empate (o primeiro pregão, todos com o capital inicial), a das séries
+  // (o sort é estável, e dois "sem dado" dão NaN, que o `|| 0` faz empate).
+  const rankedAt = (i: number) =>
+    [...visible].sort((a, b) => (b.cents[i] ?? -Infinity) - (a.cents[i] ?? -Infinity) || 0);
   const valueText = (i: number) =>
     [
       formatDate(dates[i]!),
-      ...visible.map((l) => {
+      ...rankedAt(i).map((l) => {
         const cents = l.cents[i];
         return `${l.competitor.name} ${cents === null || cents === undefined ? 'sem dado' : formatBRL(cents)}`;
       }),
@@ -410,7 +416,7 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
             <Leitura
               id={tooltipId}
               date={dates[act]!}
-              rows={visible.map((l) => ({
+              rows={rankedAt(act).map((l) => ({
                 key: l.key,
                 curto: l.curto,
                 cor: l.cor,

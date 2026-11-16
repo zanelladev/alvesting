@@ -779,6 +779,24 @@ describe('gráfico do patrimônio (o Line Chart da beUI)', () => {
   });
 
   // A linha quebra no dado que falta (a peça da beUI): o caminho recomeça depois do buraco, e a tabela diz "sem dado".
+  // A leitura lista quem estava ganhando primeiro (o pedido do Artur em 15/11/2026): o maior patrimônio do pregão no topo e o "sem dado" no
+  // fim. O painel e o controle seguem a mesma ordem; aqui, o controle, que sai no HTML do servidor.
+  it('a leitura lista as séries do maior patrimônio do pregão para o menor, com o "sem dado" no fim', () => {
+    const out = html(
+      <LineChart
+        {...props}
+        series={[
+          { ...props.series[0]!, cents: [10_000_000, 9_900_000] },
+          { competitor: competitor('gpt-6-1-sol', 'Modelo B (0903)'), cents: [10_000_000, null] },
+          { ...props.series[1]!, cents: [10_000_000, 10_100_000] },
+        ]}
+      />,
+    );
+    expect(out).toContain(
+      'aria-valuetext="04/11/2026. Sorteio R$ 101.000,00. Modelo A (0902) R$ 99.000,00. Modelo B (0903) sem dado"',
+    );
+  });
+
   it('o valor que falta quebra a linha e vira "sem dado" na tabela e na leitura', () => {
     const out = html(
       <LineChart

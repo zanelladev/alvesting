@@ -346,11 +346,14 @@ test.describe('arena', () => {
     const shown = equity.series.filter(
       (s) => s.competitor.type === 'MODEL' || s.competitor.type === 'RANDOM',
     );
+    // do maior patrimônio do pregão para o menor, como a leitura (o empate, como no primeiro pregão, fica na ordem das séries)
     const reading = (i: number) =>
       nb(
         [
           dmy(equity.dates[i]!),
-          ...shown.map((s) => `${s.competitor.name} ${brl(s.equityCents[i]!)}`),
+          ...[...shown]
+            .sort((a, b) => b.equityCents[i]! - a.equityCents[i]!)
+            .map((s) => `${s.competitor.name} ${brl(s.equityCents[i]!)}`),
         ].join('. '),
       );
     await page.goto('/arena');
