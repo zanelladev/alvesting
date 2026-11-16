@@ -12,6 +12,8 @@
 using 'main.bicep'
 
 param profile = 'economico'
+// O site sempre ligado, a pedido do Artur em 15/11/2026 (ADR 0039, nota de 15/11/2026): com false, web e api voltam à escala a zero.
+param alwaysOn = true
 param nameSuffix = ''
 param deployApps = true
 param writeDerivedSecrets = false

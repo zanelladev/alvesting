@@ -84,3 +84,21 @@ perfis, mas três buracos impediam o econômico de servir de produção:
   a visibilidade). Sem isso a Azure não puxa a imagem.
 - **O que só a Azure e o GitHub provam** está no INFRA.md, seção 11: o ingress interno e o repasse de verdade, o IP que a api vê, o `job start` com
   o comando trocado lendo o Blob pela identidade do migrate, o primeiro publish no GHCR e a visibilidade do pacote.
+
+## Nota de 15/11/2026: o site sempre ligado
+
+A pedido do Artur, o `ca-web` e o `ca-api` da produção ficam com **mínimo de 1 réplica** (`alwaysOn = true` no `main.prod.bicepparam`; o
+parâmetro só muda o econômico, e com `false` os dois voltam à escala a zero). O motivo é a partida a frio: com o mínimo 0, quem chegava depois de
+5 minutos sem visita (o `cooldownPeriod` padrão da plataforma) esperava os dois apps subirem, e a api passava dos 30 s do repasse do site (a
+imagem tem 317 MB), então a primeira página mostrava o aviso de api fora do ar.
+
+O custo, pelos preços do Chile Central: 0,25 vCPU e 0,5 GiB em cada app, na taxa de réplica ociosa, dão uns **US$ 0,52 por dia** a mais (uns US$
+16 por mês). A taxa de ociosa vale porque, medidos em 15/11/2026 nos minutos sem requisição, a api usou 0,004 vCPU e o site 0,003, com uns 200
+bytes por segundo de rede (o limite da Azure é 0,01 vCPU e 1.000 bytes por segundo); na taxa de ativo seriam uns US$ 1,81 por dia. Com os US$
+98,67 que sobravam do crédito e o resto da assinatura em uns US$ 0,19 por dia, o crédito dura até o começo de abril de 2027, em vez de chegar ao
+vencimento (07/11/2027); o Demo Day (10 a 16/12) cabe com folga.
+
+A produção mudou antes do Bicep, pelo caminho do blue/green feito à mão: `az containerapp update --min-replicas 1` com o sufixo novo
+`rb4bdc81-min1` (a mesma imagem), o label `green` e 100% do tráfego na revisão nova, e a antiga desativada, a api antes do site. Com o mínimo 1,
+uma revisão ativa sem tráfego custa o mesmo que a que serve: depois de uma execução da infra que crie revisão, desative a que ficou com 0%
+(`docs/INFRA.md`, 7.3); o `cleanup` do deploy já faz isso a cada deploy.

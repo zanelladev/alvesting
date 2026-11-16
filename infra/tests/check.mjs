@@ -83,7 +83,8 @@ const CRONS = {
   retention: '0 13 * * *', // diária (04/11/2026): a promessa de 7 dias da política de privacidade depende disso
   backup: '0 6 1 * *',
 }; // §6, em UTC
-const SCALE = { padrao: [1, 5], economico: [0, 5] }; // ca-web e ca-api: [mínimo, máximo] (§5.3 e §5.12)
+// ca-web e ca-api: [mínimo, máximo] (§5.3 e §5.12). O econômico da produção tem o alwaysOn (ADR 0039, nota de 15/11/2026); sem ele, mínimo 0.
+const SCALE = { padrao: [1, 5], economico: [1, 5] };
 const WORKER_QUEUES = ['market', 'news', 'briefing', 'settlement', 'maintenance']; // todas menos decisions
 
 // Alertas de operação (plano 5.9, etapa 10; docs/INFRA.md, seção 5). Escrito à mão a partir da documentação do Azure Monitor (nome da
@@ -2954,6 +2955,14 @@ test('[google] sem ALVESTING_GOOGLE_CLIENT_ID a variável nem é injetada (o log
   // o secret continua por referência (o app trata o PENDENTE do cofre como ausente) e o resto da conta segue igual
   assert.equal(api.GOOGLE_CLIENT_SECRET?.secretRef, 'google-oauth-client-secret');
   assert.equal(api.LEGAL_CONTACT_EMAIL?.value, INPUT_ENV.ALVESTING_LEGAL_CONTACT_EMAIL);
+});
+
+test('[escala a zero] o econômico com alwaysOn = false tem web e api com mínimo 0', () => {
+  const m = snapshot('escala-zero', { profile: "'economico'", alwaysOn: 'false', ...FIRST_DEPLOY });
+  for (const name of ['ca-web', 'ca-api']) {
+    const { scale } = m.one('Microsoft.App/containerApps', name).properties.template;
+    assert.equal(scale.minReplicas, 0, `${name} mínimo`);
+  }
 });
 
 test('[domínio próprio] sem customDomain não há domínio; com ele, rotas e WAF o usam (certificado gerenciado)', () => {

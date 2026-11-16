@@ -23,9 +23,12 @@
 // (regra what-if-short-circuiting, em erro no bicepconfig.json).
 targetScope = 'resourceGroup'
 
-@description('padrao = Front Door + ACR + web/api com mínimo 1. economico = sem Front Door e sem ACR, web/api com mínimo 0.')
+@description('padrao = Front Door + ACR + web/api com mínimo 1. economico = sem Front Door e sem ACR, web/api com mínimo 0 (1 com alwaysOn).')
 @allowed(['padrao', 'economico'])
 param profile string
+
+@description('Só muda o econômico: web e api com mínimo 1, sem a partida a frio de quem chega depois de 5 minutos parados. Uns US$ 0,52 por dia a mais (ADR 0039, nota de 15/11/2026).')
+param alwaysOn bool = false
 
 @description('Sufixo dos nomes únicos no mundo (cofre, storage, ACR, Service Bus, Postgres, OpenAI, e-mail). Vazio em prod, "-dev" em dev; troque se a Azure disser que o nome já existe.')
 param nameSuffix string = ''
@@ -369,9 +372,9 @@ module apps 'modules/containerapps.bicep' = if (deployApps) {
     arenaMonthlyCostCapUsd: arenaMonthlyCostCapUsd
     registryName: isStandard ? names.registry : ''
     hasFrontDoor: isStandard
-    webMinReplicas: isStandard ? 1 : 0
+    webMinReplicas: isStandard || alwaysOn ? 1 : 0
     webMaxReplicas: 5
-    apiMinReplicas: isStandard ? 1 : 0
+    apiMinReplicas: isStandard || alwaysOn ? 1 : 0
     apiMaxReplicas: 5
     restoreFromBackups: !isStandard
     publicUrl: 'https://${publicHost}'

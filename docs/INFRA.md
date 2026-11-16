@@ -110,11 +110,11 @@ levam o sufixo do parâmetro `nameSuffix`: vazio em prod, `-dev` em dev. Se a Az
 | Borda | Front Door Standard + WAF + cache de estáticos | Nenhuma: o ingress do Container Apps (Envoy sobre o Azure LB) balanceia |
 | Mesmo domínio para web e api | Sim, pelo Front Door (sem CORS, cookie primário) | Sim, pelo site: o `ca-web` repassa `/api/*` à api (`API_PROXY=on`, `src/proxy.ts`), que tem ingress **interno** e sem CORS (ADR 0039) |
 | Registro de imagens | ACR (`cralvesting`), pull por identidade | GHCR (`ghcr.io/<dono>/alvesting-*`); o pacote precisa ser público |
-| `ca-web` e `ca-api` | mínimo 1, máximo 5 | mínimo 0, máximo 5 |
+| `ca-web` e `ca-api` | mínimo 1, máximo 5 | mínimo 0, máximo 5; mínimo 1 com o `alwaysOn`, que a produção liga (ADR 0039, nota de 15/11/2026) |
 | Trava de origem | `FRONT_DOOR_ID` e `ORIGIN_LOCK=front-door` em web e api (seção 3.3) | Não existe: a api não é alcançável de fora, e a entrada é só o site (seção 3.3) |
 | Pipeline (`docs/DEPLOY.md`) | ACR; a revisão nova provada pelo endpoint green do Front Door | `ALVESTING_PROFILE=economico`: GHCR; a api verde só pelas sondas, o web verde no endereço do label |
 | A temporada do Mac | (não previsto) | Uma execução do `job-migrate` com o `restore-cli` (`docs/RUNBOOK.md`, 13.6); o migrate lê o `backups` |
-| Custo (plano §5.12) | ≈ US$ 72–83 por mês | ≈ US$ 5–11 por mês (Chile Central, ADR 0040) |
+| Custo (plano §5.12) | ≈ US$ 72–83 por mês | ≈ US$ 5–11 por mês (Chile Central, ADR 0040); o `alwaysOn` soma uns US$ 16 |
 
 Trocar de perfil num ambiente que já existe: seção 8.1.
 
@@ -1158,7 +1158,9 @@ da seção 6. O `node scripts/deploy.mjs current-tags` lê da revisão que tem o
 
 O Bicep não declara `ingress.traffic`, para não brigar com a divisão de tráfego por label (blue/green, etapa 10). Com o modo
 `Multiple`, uma revisão nova **não desativa as antigas**: elas ficam rodando (com as réplicas mínimas) até alguém desativá-las.
-O pipeline da etapa 3 desativa as antigas depois do smoke (`cleanup`), senão o custo dobra a cada deploy.
+O pipeline da etapa 3 desativa as antigas depois do smoke (`cleanup`), senão o custo dobra a cada deploy. A execução da infra não faz
+isso: com o mínimo 1 (o padrão, ou o econômico com o `alwaysOn`), se ela criou revisão, desative a que ficou com 0% de tráfego
+(`az containerapp revision list -g $RG -n <app> --query "[?properties.active]"` e `az containerapp revision deactivate`).
 
 ---
 
