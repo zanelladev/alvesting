@@ -41,7 +41,7 @@ export { direction };
 const PRESA = 'celula-presa py-1 text-left text-sm font-semibold whitespace-nowrap text-ink';
 export const STICKY = `${PRESA} px-2`;
 // a célula do competidor: o logo fica fora do fluxo do texto, no respiro da esquerda (globals.css, `.celula-competidor`)
-const STICKY_COMPETIDOR = `${PRESA} celula-competidor pr-2 pl-10`;
+export const STICKY_COMPETIDOR = `${PRESA} celula-competidor pr-2 pl-10`;
 // A tabela compacta (a landing, o "Sorte ou habilidade?") cabe no celular sem rolar, com o Percentil à vista (o QA do fechamento, achado 4: em
 // 390 px ele ficava escondido à direita, e o painel é sobre ele): o respiro das células é de 4 px, e o nome curto, em 13 px, pode quebrar ao lado
 // do logo, que fica fora do fluxo do texto (como no ranking: no celular ele nunca fica sozinho numa linha acima do nome).

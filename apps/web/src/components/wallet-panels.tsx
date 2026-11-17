@@ -1,8 +1,10 @@
-import type { Position, Totals } from '@alvesting/contracts';
+import type { Position, PublicCompetitor, Totals } from '@alvesting/contracts';
+import type { Comparacao, Resultado } from '../lib/comparacao';
 import { formatBRL, formatBRLSigned, formatBps, formatDate, formatQuantity } from '../lib/format';
+import { Competidor } from './competidor';
 import { LogoDoPapel } from './logo-do-papel';
-import { Th, direction } from './tables';
-import { LINK, NavLink, ROW, TABLE, TD, TH, TableScroll } from './ui';
+import { STICKY_COMPETIDOR, Th, direction } from './tables';
+import { LINK, NavLink, NotaSimulada, ROW, TABLE, TD, TH, TableScroll } from './ui';
 import { AlocacaoDaCarteira, Dinheiro, Termo } from './wallet-charts';
 import { BotaoLancar } from './wallet-lots';
 
@@ -212,5 +214,92 @@ export function WalletPositions({
         </tbody>
       </table>
     </TableScroll>
+  );
+}
+
+// O que a página lê para a comparação (app/(app)/(carteira)/carteira/page.tsx): a conta pronta, a temporada ainda sem pregão liquidado, ou a
+// leitura que falhou.
+export type LeituraDaComparacao = Comparacao | 'sem-pregao' | 'indisponivel';
+
+// A comparação com a arena (o pedido do Artur em 17/11/2026; docs/TELAS.md, seção 9; a conta em lib/comparacao.ts): o mesmo dinheiro de cada
+// compra com data, nas mesmas datas, em cada competidor, numa tabela do maior valor no último pregão liquidado para o menor, com a carteira da
+// pessoa entre eles. O resultado leva o sinal, a palavra e o glifo, como nas posições. Quem fica de fora é contado, pelo motivo. A leitura que
+// falha deixa só esta parte "indisponível agora".
+export function WalletComparison({ comparacao }: { comparacao: LeituraDaComparacao }) {
+  if (comparacao === 'indisponivel') {
+    return <p className="muted max-w-prose">A comparação com a arena está indisponível agora.</p>;
+  }
+  if (comparacao === 'sem-pregao') {
+    return (
+      <p className="muted max-w-prose">
+        A comparação começa depois do primeiro pregão liquidado da temporada.
+      </p>
+    );
+  }
+  const { inicio, ate, compras, investidoCents, fora, voce, competidores } = comparacao;
+  const motivos = [
+    fora.semData ? `${fora.semData} sem data` : null,
+    fora.antes ? `${fora.antes} antes de ${formatDate(inicio)}, o começo da temporada` : null,
+    fora.depois ? `${fora.depois} depois de ${formatDate(ate)}, o último pregão liquidado` : null,
+    fora.semCotacao ? `${fora.semCotacao} sem cotação em ${formatDate(ate)}` : null,
+  ].filter((motivo) => motivo !== null);
+  const deFora = motivos.length > 0 ? ` Ficam de fora: ${motivos.join('; ')}.` : '';
+  if (voce === null) {
+    return (
+      <p className="muted max-w-prose">
+        {`Nenhuma compra entra na comparação.${deFora} Para entrar, a compra precisa ter a data, de ${formatDate(inicio)} a ${formatDate(ate)}.`}
+      </p>
+    );
+  }
+  // a carteira da pessoa entre os competidores, do maior valor para o menor (no empate, ela primeiro)
+  const linhas: Array<Resultado & { competitor: PublicCompetitor | null }> = [
+    { competitor: null, ...voce },
+    ...competidores,
+  ].sort((a, b) => b.valorCents - a.valorCents);
+  const label = `Comparação com a arena, no fechamento de ${formatDate(ate)}`;
+  return (
+    <>
+      <p className="muted max-w-prose">
+        {`Quanto valeria no fechamento de ${formatDate(ate)}, o último pregão liquidado, o mesmo dinheiro de cada compra posto em cada competidor da arena no dia dela. O competidor recebe o dinheiro antes da abertura daquele dia; a sua conta usa o preço que você pagou e o fechamento de cada ação, sem proventos, corretagem nem taxas.`}
+      </p>
+      <p className="mt-2 max-w-prose">
+        {`${compras === 1 ? 'Entra 1 compra' : `Entram ${compras} compras`}, ${formatBRL(investidoCents)} no total.${deFora}`}
+      </p>
+      <NotaSimulada competitors={competidores.map((c) => c.competitor)} className="pt-4" />
+      <div className="mt-4">
+        <TableScroll label={label}>
+          <table className={TABLE}>
+            <caption className="sr-only">{label}</caption>
+            <thead>
+              <tr>
+                <Th>Carteira</Th>
+                <Th>Resultado</Th>
+                <Th>Valor</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((linha) => (
+                <tr key={linha.competitor?.slug ?? 'voce'} className={ROW}>
+                  <th scope="row" className={STICKY_COMPETIDOR}>
+                    {linha.competitor ? (
+                      <Competidor competitor={linha.competitor} etiqueta={false} curto />
+                    ) : (
+                      'Sua carteira'
+                    )}
+                  </th>
+                  <td className={TD} data-dir={direction(linha.resultadoCents)}>
+                    {formatBRLSigned(linha.resultadoCents)}{' '}
+                    <span className="block text-xs text-muted">
+                      {`${formatBps(linha.rendimentoBps)} · ${verdict(linha.resultadoCents)}`}
+                    </span>
+                  </td>
+                  <td className={TD}>{formatBRL(linha.valorCents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
+      </div>
+    </>
   );
 }

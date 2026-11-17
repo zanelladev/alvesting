@@ -1,5 +1,11 @@
 import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
-import { envelopeSchema, meSchema, type Position, type Totals } from '@alvesting/contracts';
+import {
+  envelopeSchema,
+  equitySchema,
+  meSchema,
+  type Position,
+  type Totals,
+} from '@alvesting/contracts';
 import {
   contextOptions,
   fakeIp,
@@ -11,7 +17,7 @@ import {
 import { FRONT_DOOR_URL } from './api-server';
 import { ORIGIN, addLot, wallet } from './carteira-support';
 import { abrirMenu } from './menu';
-import { brl, dmy, pct, ratioBps } from './data';
+import { SEASON, brl, brlSigned, clean, dmy, fetchApi, fetchBars, pct, ratioBps } from './data';
 
 // A tela da carteira (etapa 12, parte 2; docs/TELAS.md, seção 9), em pixel-7, iphone-15 (WebKit) e desktop, como todo e2e. O navegador fala com
 // UMA origem só, o Front Door imitado (e2e/front-door.ts): `/api/*` vai para a api da conta, que roda no login de menor privilégio do Postgres
@@ -2008,5 +2014,86 @@ test.describe('os termos com explicação', () => {
     await choose(form, 'total');
     await expect(form.locator('p', { hasText: /^O total da nota desta compra/ })).toBeVisible();
     await expect(fields(form).value).toHaveAccessibleDescription(/^O total da nota desta compra/);
+  });
+});
+
+// A comparação com a arena (o pedido do Artur em 17/11/2026; docs/TELAS.md, seção 9): o mesmo dinheiro de cada compra com data, nas mesmas
+// datas, em cada competidor da temporada sintética, contra a carteira da pessoa. O esperado sai da api pública (a série do patrimônio) e da
+// rota interna das barras (o fechamento de cada ação no último pregão liquidado), escrito de novo aqui pela regra: o dinheiro entra antes da
+// abertura do dia da compra (no primeiro pregão, pelo capital inicial), o centavo do meio sobe, e o percentual vai para longe do zero.
+test.describe('a comparação com a arena', () => {
+  test('o mesmo dinheiro nas mesmas datas em cada competidor, do maior valor para o menor, e quem fica de fora', async ({
+    page,
+    request,
+    ip,
+  }) => {
+    await signedIn(page, request, ip, 'carteira-comparacao');
+    const equity = await fetchApi(request, `/seasons/${SEASON}/equity`, equitySchema);
+    const { dates } = equity;
+    const capital = equity.season.params.capitalCents;
+    const ate = dates.at(-1)!;
+    // a do primeiro pregão entra pelo capital inicial e a do terceiro pela véspera; a sem data, a de antes da temporada e a de depois do
+    // último pregão liquidado ficam de fora
+    const dentro = [
+      { ticker: 'MOVE3', quantity: 100, mode: 'unit', valueCents: 3_550, boughtOn: dates[0]! },
+      { ticker: 'SINA3', quantity: 10, mode: 'total', valueCents: 150_000, boughtOn: dates[2]! },
+    ] as const;
+    for (const lot of dentro) await addLot(page.request, lot);
+    await addLot(page.request, { ticker: 'PAUS3', quantity: 50, mode: 'unit', valueCents: 1_000 });
+    await addLot(page.request, {
+      ticker: 'MOVE3',
+      quantity: 10,
+      mode: 'unit',
+      valueCents: 3_000,
+      boughtOn: '2026-10-15',
+    });
+    await addLot(page.request, {
+      ticker: 'MOVE3',
+      quantity: 1,
+      mode: 'unit',
+      valueCents: 3_000,
+      boughtOn: '2026-11-10',
+    });
+
+    const close = async (ticker: string) =>
+      (await fetchBars(request, ticker)).findLast((bar) => bar.date <= ate)!.closeCents;
+    const custo = { MOVE3: 100 * 3_550, SINA3: 150_000 } as const;
+    const investido = custo.MOVE3 + custo.SINA3;
+    const linhas = [
+      { nome: 'Sua carteira', valor: 100 * (await close('MOVE3')) + 10 * (await close('SINA3')) },
+      ...equity.series.map((s) => ({
+        nome: s.competitor.name,
+        valor: dentro.reduce((sum, lot) => {
+          const k = dates.findIndex((date) => date >= lot.boughtOn) - 1;
+          const antes = BigInt(k < 0 ? capital : s.equityCents[k]!);
+          const fim = BigInt(s.equityCents.at(-1)!);
+          return sum + Number((2n * BigInt(custo[lot.ticker]) * fim + antes) / (2n * antes));
+        }, 0),
+      })),
+    ].sort((a, b) => b.valor - a.valor);
+
+    await page.goto('/carteira');
+    const comparacao = region(page, 'Comparação com a arena');
+    await expect(comparacao.locator('p', { hasText: /^Entram/ })).toHaveText(
+      `Entram 2 compras, ${brl(investido)} no total. Ficam de fora: 1 sem data; 1 antes de ${dmy(dates[0]!)}, o começo da temporada; 1 depois de ${dmy(ate)}, o último pregão liquidado.`,
+    );
+    const table = comparacao.getByRole('table', {
+      name: `Comparação com a arena, no fechamento de ${dmy(ate)}`,
+    });
+    await expect(table.getByRole('row')).toHaveCount(1 + linhas.length);
+    for (const [i, linha] of linhas.entries()) {
+      const resultado = linha.valor - investido;
+      const palavra = resultado > 0 ? 'ganho' : resultado < 0 ? 'perda' : 'sem variação';
+      const cells = await table
+        .getByRole('row')
+        .nth(i + 1)
+        .locator('th, td')
+        .allInnerTexts();
+      expect(cells.map(clean), linha.nome).toEqual([
+        linha.nome,
+        `${brlSigned(resultado)} ${pct(ratioBps(resultado, investido))} · ${palavra}`,
+        brl(linha.valor),
+      ]);
+    }
   });
 });

@@ -104,7 +104,10 @@ origem, sessão, aceite, validação, serviço, repositório, Prisma e Postgres.
    que a api usou para montá-la (`envelopeSchema(portfolioSchema)`); fora do contrato vira `ApiError` 502.
 4. Se a api respondeu 401, a página manda para a entrada; 403 `CONSENT_REQUIRED`, para a conta aceitar os termos novos; outro erro vira a
    tela "a arena não respondeu" (`apps/web/src/lib/with-api-down.tsx#withApiDown`). Ao navegador vai só o que a tela usa de cada
-   lançamento (`apps/web/src/app/(app)/(carteira)/carteira/page.tsx#lotView`).
+   lançamento (`apps/web/src/app/(app)/(carteira)/carteira/page.tsx#lotView`). Junto com os logos,
+   `apps/web/src/app/(app)/(carteira)/carteira/page.tsx#lerComparacao` lê a comparação com a arena (a temporada e a série do patrimônio
+   pelas leituras públicas, o fechamento de cada ação pela rota interna das barras), e a conta é de
+   `apps/web/src/lib/comparacao.ts#compararCarteira`, em BigInt; a leitura que falha deixa só a comparação "indisponível agora".
 
 **O toque em "Lançar compra".**
 

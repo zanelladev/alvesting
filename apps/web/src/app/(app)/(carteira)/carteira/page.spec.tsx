@@ -21,6 +21,15 @@ vi.mock('next/headers', () => ({
 }));
 vi.mock('next/navigation', () => ({ redirect, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('../../../../lib/wallet', () => ({ readPortfolio }));
+// a comparação com a arena lê a temporada e a série pela api pública e o fechamento pela rota interna das barras: tudo fingido aqui
+const arenaCurrent = vi.hoisted(() => vi.fn());
+const equity = vi.hoisted(() => vi.fn());
+const readBars = vi.hoisted(() => vi.fn());
+vi.mock('../../../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../lib/api')>()),
+  api: { arenaCurrent, equity },
+}));
+vi.mock('../../../../lib/quotes', () => ({ readBars }));
 // os logos das ações (lib/logos.ts, só do servidor): o índice vazio, só monogramas
 vi.mock('../../../../lib/logos', () => ({ versoesDosLogos: () => Promise.resolve(new Map()) }));
 
@@ -128,6 +137,10 @@ const render = async () => renderToStaticMarkup(await WalletPage({}));
 beforeEach(() => {
   readPortfolio.mockReset();
   redirect.mockClear();
+  // sem temporada: a comparação espera o primeiro pregão liquidado
+  arenaCurrent.mockReset().mockResolvedValue({ season: null });
+  equity.mockReset();
+  readBars.mockReset();
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -256,6 +269,115 @@ describe('a página /carteira', () => {
     expect(todayOf(await WalletPage({}))).toBe('2026-11-08');
     vi.setSystemTime(new Date('2026-11-09T13:00:00.000Z'));
     expect(todayOf(await WalletPage({}))).toBe('2026-11-09');
+  });
+
+  // A comparação com a arena (lib/comparacao.ts tem a conta; aqui, o que a página lê e mostra). O fechamento é o do último pregão liquidado,
+  // mesmo com uma barra mais nova (a noite em que as barras chegaram e a liquidação ainda não), e só se lê a barra das ações do período.
+  describe('a comparação com a arena', () => {
+    const competitor = (slug: string, name: string, type: 'MODEL' | 'CDI') => ({
+      slug,
+      name,
+      type,
+      provider: type === 'MODEL' ? ('openrouter' as const) : null,
+      modelId: type === 'MODEL' ? 'lab/modelo-a' : null,
+    });
+    const COMPARAVEL: Portfolio = {
+      ...WITH_LOTS,
+      lots: [
+        lot('01JABCDEFGHJKMNPQRSTVWXYZ0', 'MOVE3', { boughtOn: '2026-11-03' }),
+        lot('01JABCDEFGHJKMNPQRSTVWXYZ1', 'SEMN3', { boughtOn: null }),
+        lot('01JABCDEFGHJKMNPQRSTVWXYZ2', 'PAUS3', { boughtOn: '2026-10-15' }),
+      ],
+    };
+    const temporada = () => {
+      arenaCurrent.mockResolvedValue({
+        season: { slug: 'temporada-1', settledThrough: '2026-11-05' },
+      });
+      equity.mockResolvedValue({
+        season: { params: { capitalCents: 10_000_000 } },
+        dates: ['2026-11-03', '2026-11-04', '2026-11-05'],
+        series: [
+          {
+            competitor: competitor('modelo-a', 'Modelo A', 'MODEL'),
+            equityCents: [10_100_000, 10_200_000, 10_500_000],
+          },
+          {
+            competitor: competitor('cdi', 'CDI', 'CDI'),
+            equityCents: [10_004_000, 10_008_000, 10_012_000],
+          },
+        ],
+      });
+      const bar = (date: string, closeCents: number) => ({
+        date,
+        openCents: closeCents,
+        highCents: closeCents,
+        lowCents: closeCents,
+        closeCents,
+      });
+      readBars.mockResolvedValue([bar('2026-11-05', 4_000), bar('2026-11-06', 9_999)]);
+    };
+
+    it('o mesmo dinheiro nas mesmas datas, com a carteira entre os competidores, do maior valor para o menor', async () => {
+      readPortfolio.mockResolvedValue(COMPARAVEL);
+      temporada();
+      const out = await render();
+      const order = ['id="posicoes"', 'id="comparacao"', 'id="lancamentos"'].map((id) =>
+        out.indexOf(id),
+      );
+      expect(order.every((i) => i > 0)).toBe(true);
+      expect(order).toEqual([...order].sort((a, b) => a - b));
+      expect(readBars.mock.calls).toEqual([['MOVE3']]);
+      const text = plain(semEscondido(out));
+      expect(text).toContain(
+        'Entra 1 compra, R$ 3.550,00 no total. Ficam de fora: 1 sem data; 1 antes de 03/11/2026, o começo da temporada.',
+      );
+      // a pessoa: 100 × R$ 40,00 (o fechamento de 05/11, e não o de 06/11); o Modelo A: R$ 3.550,00 × 10.500.000 ÷ 10.000.000 (a compra do
+      // primeiro pregão entra pelo capital inicial); o CDI: × 10.012.000 ÷ 10.000.000
+      const table =
+        /<table[^>]*>(?:(?!<\/table>).)*Comparação com a arena(?:(?!<\/table>).)*<\/table>/s.exec(
+          out,
+        )![0];
+      expect(plain(semEscondido(table))).toBe(
+        'Comparação com a arena, no fechamento de 05/11/2026 Carteira Resultado Valor ' +
+          'Sua carteira +R$ 450,00 +12,68% · ganho R$ 4.000,00 ' +
+          'Modelo A +R$ 177,50 +5,00% · ganho R$ 3.727,50 ' +
+          'CDI +R$ 4,26 +0,12% · ganho R$ 3.554,26',
+      );
+    });
+
+    it('sem pregão liquidado, a comparação diz que espera o primeiro', async () => {
+      readPortfolio.mockResolvedValue(COMPARAVEL);
+      const out = await render();
+      expect(plain(out)).toContain(
+        'A comparação começa depois do primeiro pregão liquidado da temporada.',
+      );
+      expect(equity).not.toHaveBeenCalled();
+    });
+
+    it('sem compra no período, ela diz quem ficou de fora e o que falta para entrar', async () => {
+      readPortfolio.mockResolvedValue(WITH_LOTS);
+      temporada();
+      const text = plain(await render());
+      expect(text).toContain(
+        'Nenhuma compra entra na comparação. Ficam de fora: 2 antes de 03/11/2026, o começo da temporada. Para entrar, a compra precisa ter a data, de 03/11/2026 a 05/11/2026.',
+      );
+      expect(readBars).not.toHaveBeenCalled();
+    });
+
+    it('a leitura que falha deixa só a comparação indisponível, com o resto da carteira na tela, e vai para o log', async () => {
+      const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      readPortfolio.mockResolvedValue(COMPARAVEL);
+      temporada();
+      readBars.mockRejectedValue(new ApiError(503, 'UNAVAILABLE'));
+      const out = await render();
+      expect(plain(out)).toContain('A comparação com a arena está indisponível agora.');
+      expect(out).toContain('id="posicoes"');
+      expect(log).toHaveBeenCalledWith(
+        '[web] comparação da carteira indisponível:',
+        expect.any(ApiError),
+      );
+      log.mockRestore();
+    });
   });
 
   it('a página não é indexada (a carteira de ninguém é conteúdo público) e tem título próprio', () => {

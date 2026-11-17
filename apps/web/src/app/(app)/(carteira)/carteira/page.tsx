@@ -5,11 +5,19 @@ import type { Portfolio } from '@alvesting/contracts';
 import { Avisos } from '../../../../components/avisos';
 import { PainelPerguntar } from '../../../../components/chat/chat-desligado';
 import { WalletLots, type LotView } from '../../../../components/wallet-lots';
-import { WalletEmpty, WalletPositions, WalletSummary } from '../../../../components/wallet-panels';
+import {
+  WalletComparison,
+  WalletEmpty,
+  WalletPositions,
+  WalletSummary,
+  type LeituraDaComparacao,
+} from '../../../../components/wallet-panels';
 import { Abas, Aviso, PageHead, Section } from '../../../../components/ui';
 import { authCookieHeader } from '../../../../lib/account';
-import { ApiError } from '../../../../lib/api';
+import { ApiError, api } from '../../../../lib/api';
+import { compararCarteira, fechamentoAte, noPeriodo } from '../../../../lib/comparacao';
 import { versoesDosLogos } from '../../../../lib/logos';
+import { readBars } from '../../../../lib/quotes';
 import { readPortfolio } from '../../../../lib/wallet';
 import { withApiDown } from '../../../../lib/with-api-down';
 
@@ -44,6 +52,40 @@ const lotView = ({
   boughtOn,
 });
 
+// A comparação com a arena (docs/TELAS.md, seção 9; lib/comparacao.ts): a temporada atual e a série do patrimônio (as leituras públicas, pelo
+// cache de dados do site) e o fechamento, no último pregão liquidado, de cada ação comprada no período (a rota interna das barras, só do
+// servidor; a tela mostra só o valor e o resultado, nunca o fechamento). A leitura que falha deixa só a comparação "indisponível agora", e a
+// falha vai para o log; sem pregão liquidado ainda não há com que comparar.
+async function lerComparacao(lots: Portfolio['lots']): Promise<LeituraDaComparacao> {
+  try {
+    const { season } = await api.arenaCurrent();
+    if (!season?.settledThrough) return 'sem-pregao';
+    const equity = await api.equity(season.slug);
+    if (equity.dates.length === 0) return 'sem-pregao';
+    const ate = equity.dates.at(-1)!;
+    const tickers = new Set(
+      lots.filter((lot) => noPeriodo(lot.boughtOn, equity.dates)).map((lot) => lot.ticker),
+    );
+    const closes = new Map<string, number>();
+    await Promise.all(
+      [...tickers].map(async (ticker) => {
+        const close = fechamentoAte(await readBars(ticker), ate);
+        if (close !== null) closes.set(ticker, close);
+      }),
+    );
+    return compararCarteira({
+      lots,
+      dates: equity.dates,
+      capitalCents: equity.season.params.capitalCents,
+      series: equity.series,
+      closes,
+    });
+  } catch (error) {
+    console.error('[web] comparação da carteira indisponível:', error);
+    return 'indisponivel';
+  }
+}
+
 export default withApiDown(async function WalletPage() {
   const cookie = authCookieHeader((await headers()).get('cookie'));
   if (!cookie) redirect(SIGN_IN);
@@ -67,8 +109,13 @@ export default withApiDown(async function WalletPage() {
     new Date(),
   );
 
-  // ao navegador vai só a versão do logo dos tickers desta carteira (o componente de cliente dos lançamentos e a legenda da rosca a recebem)
-  const versions = await allLogos;
+  const hasLots = wallet.lots.length > 0;
+  // ao navegador vai só a versão do logo dos tickers desta carteira (o componente de cliente dos lançamentos e a legenda da rosca a recebem);
+  // a comparação é lida junto
+  const [versions, comparacao] = await Promise.all([
+    allLogos,
+    hasLots ? lerComparacao(wallet.lots) : null,
+  ]);
   const logos = Object.fromEntries(
     [...new Set([...wallet.positions, ...wallet.lots].map((item) => item.ticker))].flatMap(
       (ticker) => {
@@ -78,7 +125,6 @@ export default withApiDown(async function WalletPage() {
     ),
   );
 
-  const hasLots = wallet.lots.length > 0;
   return (
     <Avisos foco="#lancamentos-titulo">
       <PageHead title="Minha carteira">
@@ -116,6 +162,7 @@ export default withApiDown(async function WalletPage() {
               label="Seções da carteira"
               items={[
                 { label: 'Posições', href: '#posicoes' },
+                { label: 'Comparação', href: '#comparacao' },
                 { label: 'Lançamentos', href: '#lancamentos' },
               ]}
             />
@@ -132,6 +179,11 @@ export default withApiDown(async function WalletPage() {
                 desdobramentos, corretagem, taxas nem impostos. Cotações: brapi.dev.
               </p>
               <WalletPositions positions={wallet.positions} logos={logos} />
+            </Section>
+          ) : null}
+          {comparacao ? (
+            <Section id="comparacao" title="Comparação com a arena">
+              <WalletComparison comparacao={comparacao} />
             </Section>
           ) : null}
           <WalletLots lots={wallet.lots.map(lotView)} today={today} logos={logos} />
