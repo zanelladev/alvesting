@@ -329,6 +329,9 @@ peças copiadas moram em `apps/web/src/components/arc`, `.../beui` e `.../reui`,
 - **Navegação entre telas e vistas:** os links `.segmentado` (o trilho cinza de 40 px e a pílula do canvas de 32 px) e `.abas` (15/500, a
   escolhida na tinta), do servidor, com o `aria-current` na escolhida: as telas de uma área, o filtro do feed e as vistas da arena no celular
   ("Decisões | Carteiras", `?vista=`). O Segmented control da Arc, de cliente, saiu por falta de uso (ADR 0037).
+- **Escolha dentro da tela:** o `RadioField` do form-kit (os radios nativos no desenho do segmentado, a pílula que desliza só por CSS): o
+  modo de preço do lançamento da carteira e, desde 17/11/2026, a escala do gráfico do patrimônio ("R$ | %"), fora de um formulário, com a
+  legenda só para o leitor de tela e desativado até a hidratação.
 
 ### Theme selector (a peça da fundação)
 

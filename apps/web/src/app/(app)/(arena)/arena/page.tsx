@@ -417,6 +417,7 @@ export default withApiDown(async function ArenaPage({
                 cents: s.equityCents,
               }))}
               band={baseline ? alignBand(equity.dates, baseline.rows) : null}
+              capitalCents={equity.season.params.capitalCents}
               defaultHidden={referencias}
             />
           ) : (

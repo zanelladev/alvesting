@@ -390,15 +390,19 @@ export function SelectField({
 export function RadioField({
   name,
   legend,
+  legendHidden = false,
   hint,
   value,
   options,
   onChange,
   clears,
   describe = {},
+  disabled = false,
 }: {
   name: string;
   legend: string;
+  // a legenda só para o leitor de tela: o controle fora de um formulário (a escala do gráfico do patrimônio), onde o lugar já diz o que ele é
+  legendHidden?: boolean;
   hint?: string;
   value: string;
   options: readonly [
@@ -408,13 +412,21 @@ export function RadioField({
   onChange: (value: string) => void;
   clears?: string;
   describe?: Readonly<Record<string, string>>;
+  // fora de um formulário (que desativa o próprio fieldset), quem chama o desativa até a hidratação: sem JavaScript a troca não faria nada
+  disabled?: boolean;
 }) {
   const { clear } = useContext(Errors);
   const baseId = useId();
   const hintId = `${baseId}-dica`;
   return (
-    <fieldset aria-describedby={hint ? hintId : undefined} className="min-w-0 space-y-1">
-      <legend className="text-sm font-medium text-ink">{legend}</legend>
+    <fieldset
+      aria-describedby={hint ? hintId : undefined}
+      disabled={disabled}
+      className="min-w-0 space-y-1"
+    >
+      <legend className={legendHidden ? 'sr-only' : 'text-sm font-medium text-ink'}>
+        {legend}
+      </legend>
       {hint ? (
         <p id={hintId} className="muted">
           {hint}

@@ -237,6 +237,7 @@ export default withApiDown(async function CompetitorPage({ params }: Props) {
             dates={series.dates}
             series={[{ competitor, cents: series.equityCents }]}
             band={baseline ? alignBand(series.dates, baseline.rows) : null}
+            capitalCents={season.params.capitalCents}
           />
         ) : (
           <Empty>{NO_RESULT}</Empty>

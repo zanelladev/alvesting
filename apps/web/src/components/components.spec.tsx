@@ -654,6 +654,7 @@ describe('gráfico do patrimônio (o Line Chart da beUI)', () => {
       { competitor: competitor('sorteio', 'Sorteio', 'RANDOM'), cents: [10_000_000, 9_900_000] },
     ],
     band: { p5: [9_900_000, 9_800_000], p95: [10_100_000, 10_200_000] },
+    capitalCents: 10_000_000,
   };
 
   it('o patrimônio é uma imagem com título e descrição, e uma tabela com os mesmos valores', () => {
@@ -679,7 +680,7 @@ describe('gráfico do patrimônio (o Line Chart da beUI)', () => {
   // cada série; sem o cursor ainda, ele está no último pregão.
   it('o controle deslizante tem nome e diz a data e o valor de cada série à vista', () => {
     const out = html(<LineChart {...props} />);
-    expect(out.match(/<input/g)).toHaveLength(1);
+    expect(out.match(/<input type="range"/g)).toHaveLength(1);
     expect(out).toMatch(/<input type="range" aria-label="Patrimônio por pregão: ler os valores"/);
     expect(out).toContain(
       'aria-valuetext="04/11/2026. Modelo A (0902) R$\u00a0101.000,00. Sorteio R$\u00a099.000,00"',
@@ -821,6 +822,27 @@ describe('gráfico do patrimônio (o Line Chart da beUI)', () => {
     const out = html(<LineChart {...props} band={null} />);
     expect(out).not.toContain('data-band');
     expect(out).not.toContain('Monte Carlo');
+  });
+
+  // A escala dos valores (o pedido do Artur em 17/11/2026): o segmentado "R$ | %" do form-kit, com a legenda só para o leitor de tela. No HTML
+  // do servidor ele nasce em R$ e desativado (sem JavaScript a troca não faria nada); a troca para o rendimento, nos três aparelhos, é do e2e
+  // (arena.spec.ts), que confere os valores contra a api.
+  it('o segmentado da escala nasce em R$ e desativado até a hidratação, com a legenda para o leitor de tela', () => {
+    const out = html(<LineChart {...props} />);
+    const escala = /<fieldset[^>]*>.*?<\/fieldset>/s.exec(out)![0];
+    expect(escala).toMatch(/^<fieldset disabled=""/);
+    expect(escala).toContain('<legend class="sr-only">Mostrar os valores em</legend>');
+    // os atributos do radio saem na ordem do React, não na do JSX: cada um é conferido por si
+    const radios = [...escala.matchAll(/<input type="radio"([^>]*)\/><span>([^<]*)<\/span>/g)];
+    expect(radios.map(([, , text]) => text)).toEqual(['R$', '%']);
+    const [saldo, rendimento] = radios.map(([, attrs]) => attrs!);
+    expect(saldo).toMatch(/name="[^"]*-escala"/);
+    expect(saldo).toContain('value="saldo"');
+    expect(saldo).toContain('checked=""');
+    expect(rendimento).toContain('value="rendimento"');
+    expect(rendimento).not.toContain('checked');
+    expect(escala).toContain('rendimento sobre o capital inicial');
+    expect(out).toContain('Patrimônio em R$, no fechamento de cada pregão.');
   });
 });
 

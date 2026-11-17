@@ -15,7 +15,8 @@
 // só quando o ponteiro muda de pregão (pelo teclado e pelo toque ele troca na hora, como o cursor: animação no teclado cansa, e o deslize sob
 // o dedo parece atraso), e o dinheiro é o de lib/format.ts; a série que volta se desenha por um recorte do CSS (globals.css, `.linha-desenha`);
 // no celular, o toque fora da figura e a rolagem fecham a leitura (não há Esc); a leitura (o painel e o leitor de tela) lista as séries do
-// maior patrimônio do pregão para o menor, e não na ordem das séries (15/11/2026); saíram o estado de carregamento, a área, o esmaecer das
+// maior patrimônio do pregão para o menor, e não na ordem das séries (15/11/2026); o segmentado "R$ | %" (o RadioField do form-kit) troca os
+// valores do patrimônio pelo rendimento sobre o capital inicial, sem mexer no desenho (17/11/2026); saíram o estado de carregamento, a área, o esmaecer das
 // pontas, o eixo de valores, o `cn` (clsx e tailwind-merge) e o NumberTicker da beUI; os textos em português. Com movimento reduzido, nada
 // anda: a escala, a linha e o cursor trocam na hora.
 'use client';
@@ -39,8 +40,9 @@ import {
 } from 'react';
 import type { PublicCompetitor } from '@alvesting/contracts';
 import { layoutEquity, rotuloCoberto, serieDe, spreadLabels } from '../../lib/chart';
-import { formatBRL, formatDate } from '../../lib/format';
+import { formatBRL, formatBps, formatDate, variationBps } from '../../lib/format';
 import { MOTION } from '../../lib/motion';
+import { RadioField, useHydrated } from '../form-kit';
 import { IconeInfo } from '../icones';
 import { AnimatedCounter } from '../arc/animated-counter/animated-counter';
 import { Logo, partesDoNome } from '../competidor';
@@ -60,9 +62,18 @@ export interface LineChartProps {
   dates: readonly string[];
   series: readonly LineChartSeries[];
   band: { p5: readonly number[]; p95: readonly number[] } | null;
+  // o capital inicial da temporada, em centavos: a base do rendimento em %, a outra escala dos valores
+  capitalCents: number;
   // as séries que começam escondidas (as referências da arena): a legenda as mostra, e a linha se desenha
   defaultHidden?: readonly string[];
 }
+
+// As escalas dos valores: o patrimônio em reais e o rendimento sobre o capital inicial.
+type Escala = 'saldo' | 'rendimento';
+const ESCALAS = [
+  ['saldo', 'R$'],
+  ['rendimento', '%'],
+] as const;
 
 // a altura é fixa (280 px) e a largura acompanha a coluna: o SVG estica só na horizontal, e um px da altura é uma unidade do desenho
 const VIEW = { width: 1000, height: 280 };
@@ -145,10 +156,32 @@ function useSprings(targets: ReadonlyMap<string, number>, reduce: boolean) {
 
 type Via = 'ponteiro' | 'teclado' | 'toque';
 
-export function LineChart({ id, label, dates, series, band, defaultHidden = [] }: LineChartProps) {
+export function LineChart({
+  id,
+  label,
+  dates,
+  series,
+  band,
+  capitalCents,
+  defaultHidden = [],
+}: LineChartProps) {
   const reduce = useReducedMotion() ?? false;
   const canHover = useHoverCapable();
+  const hydrated = useHydrated();
   const uid = useId();
+  // A escala dos valores (o pedido do Artur em 17/11/2026): o patrimônio em R$ ou o rendimento em % sobre o capital inicial, em pontos-base
+  // inteiros (o variationBps, a regra de arredondamento do projeto). O desenho não muda: todo competidor começa do mesmo capital, então o
+  // rendimento é o patrimônio na mesma régua, e a ordem da leitura é a mesma.
+  const [escala, setEscala] = useState<Escala>('saldo');
+  const rendimento = escala === 'rendimento';
+  const valor = (cents: number) =>
+    rendimento ? formatBps(variationBps(cents, capitalCents)) : formatBRL(cents);
+  // o número do contador da Arc na leitura pelo ponteiro: os reais, ou o rendimento em %, com o sinal do ganho (o do formatBps)
+  const numero = (cents: number) => {
+    if (!rendimento) return { value: reais(cents), prefix: 'R$\u00a0', suffix: '' };
+    const bps = variationBps(cents, capitalCents);
+    return { value: bps / 100, prefix: bps > 0 ? '+' : '', suffix: '%' };
+  };
   const [hidden, setHidden] = useState<readonly string[]>(defaultHidden);
   const [hovered, setHovered] = useState<string | null>(null);
   const [active, setActive] = useState<number | null>(null);
@@ -228,10 +261,11 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
     );
 
   const description =
-    `${label} em reais, de ${formatDate(dates[0]!)} a ${formatDate(dates.at(-1)!)}. ` +
+    `${label} ${rendimento ? `em rendimento sobre o capital inicial de ${formatBRL(capitalCents)}` : 'em reais'}, ` +
+    `de ${formatDate(dates[0]!)} a ${formatDate(dates.at(-1)!)}. ` +
     visible
       .filter((l) => l.line.end !== null)
-      .map((l) => `${l.competitor.name} termina em ${formatBRL(lastValue(l.cents)!)}`)
+      .map((l) => `${l.competitor.name} termina em ${valor(lastValue(l.cents)!)}`)
       .join('; ') +
     '.' +
     (band ? ' A faixa vai do percentil 5 ao 95 das carteiras aleatórias do Monte Carlo.' : '');
@@ -245,7 +279,7 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
       formatDate(dates[i]!),
       ...rankedAt(i).map((l) => {
         const cents = l.cents[i];
-        return `${l.competitor.name} ${cents === null || cents === undefined ? 'sem dado' : formatBRL(cents)}`;
+        return `${l.competitor.name} ${cents === null || cents === undefined ? 'sem dado' : valor(cents)}`;
       }),
     ].join('. ');
   const maskId = `${uid}-recuo`;
@@ -254,6 +288,25 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
   return (
     // aria-label: sem ele a figura tomaria o nome do figcaption, que traz a legenda inteira
     <figure ref={figureRef} aria-label={label} className="space-y-4">
+      {/* a escala dos valores, no segmentado da carteira (o RadioField: radios nativos, as setas trocam, a pílula desliza só por CSS; ADR
+          0037). Desativada até a hidratação: sem JavaScript o gráfico fica em R$, e a troca não faria nada */}
+      <div className="flex justify-end">
+        <div className="w-28">
+          <RadioField
+            name={`${uid}-escala`}
+            legend="Mostrar os valores em"
+            legendHidden
+            disabled={!hydrated}
+            value={escala}
+            options={ESCALAS}
+            describe={{
+              saldo: 'reais: o patrimônio',
+              rendimento: 'rendimento sobre o capital inicial',
+            }}
+            onChange={(value) => setEscala(value === 'rendimento' ? 'rendimento' : 'saldo')}
+          />
+        </div>
+      </div>
       {/* a calha da direita é a das pílulas do fim da linha (o logo tem metade dentro do desenho) */}
       <div className="mr-30">
         {/* a altura em px, a da escala: em rem ela cresceria com a fonte padrão do navegador, e o desenho esticaria longe dos rótulos e dos
@@ -382,7 +435,7 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
                   className="rounded-sm px-1.5 text-11 leading-[18px] font-medium whitespace-nowrap text-canvas tabular-nums"
                   style={{ backgroundColor: l.cor }}
                 >
-                  {formatBRL(lastValue(l.cents)!)}
+                  {valor(lastValue(l.cents)!)}
                 </span>
               </motion.li>
             ))}
@@ -416,13 +469,16 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
             <Leitura
               id={tooltipId}
               date={dates[act]!}
-              rows={rankedAt(act).map((l) => ({
-                key: l.key,
-                curto: l.curto,
-                cor: l.cor,
-                cents: l.cents[act] ?? null,
-                y: l.line.points[act]?.y ?? null,
-              }))}
+              rows={rankedAt(act).map((l) => {
+                const cents = l.cents[act] ?? null;
+                return {
+                  key: l.key,
+                  curto: l.curto,
+                  cor: l.cor,
+                  valor: cents === null ? null : { texto: valor(cents), numero: numero(cents) },
+                  y: l.line.points[act]?.y ?? null,
+                };
+              })}
               x={crossPx}
               width={width}
               glide={glide}
@@ -512,14 +568,14 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
                   const cents = l.cents[i];
                   return (
                     <td key={l.key}>
-                      {cents === null || cents === undefined ? 'sem dado' : formatBRL(cents)}
+                      {cents === null || cents === undefined ? 'sem dado' : valor(cents)}
                     </td>
                   );
                 })}
                 {band ? (
                   <>
-                    <td>{formatBRL(band.p5[i]!)}</td>
-                    <td>{formatBRL(band.p95[i]!)}</td>
+                    <td>{valor(band.p5[i]!)}</td>
+                    <td>{valor(band.p95[i]!)}</td>
                   </>
                 ) : null}
               </tr>
@@ -529,7 +585,11 @@ export function LineChart({ id, label, dates, series, band, defaultHidden = [] }
       </div>
 
       <figcaption className="space-y-1">
-        <p className="muted">Patrimônio em R$, no fechamento de cada pregão.</p>
+        <p className="muted">
+          {rendimento
+            ? `Rendimento sobre o capital inicial de ${formatBRL(capitalCents)}, no fechamento de cada pregão.`
+            : 'Patrimônio em R$, no fechamento de cada pregão.'}
+        </p>
         {/* a legenda: com mais de uma série, cada uma é um botão que a mostra ou esconde (o eixo se ajusta ao que sobrou, e a linha que volta
             se desenha); o traço antes do nome liga a linha ao nome sem depender só da cor */}
         <ul aria-label="Séries do gráfico" className="flex flex-wrap items-center gap-x-1 text-xs">
@@ -709,7 +769,7 @@ function Faixa({
 
 // O painel da leitura: a data e o valor de cada série no pregão do cursor, ao lado do ponto mais alto, sem cobrir os pontos que ele descreve
 // (à direita do cursor; perto da borda, à esquerda). Pelo ponteiro, ele segue o cursor numa mola e os valores rolam (o contador da Arc);
-// pelo teclado e pelo dedo, troca na hora (o valor é o texto do formatBRL).
+// pelo teclado e pelo dedo, troca na hora (o valor é o texto do formatBRL, ou o do formatBps na escala do rendimento).
 function Leitura({
   id,
   date,
@@ -722,7 +782,13 @@ function Leitura({
 }: {
   id: string;
   date: string;
-  rows: Array<{ key: string; curto: string; cor: string; cents: number | null; y: number | null }>;
+  rows: Array<{
+    key: string;
+    curto: string;
+    cor: string;
+    valor: { texto: string; numero: { value: number; prefix: string; suffix: string } } | null;
+    y: number | null;
+  }>;
   x: number;
   width: number;
   glide: typeof NO_TIME | (typeof MOTION.spring)['fast'];
@@ -772,13 +838,18 @@ function Leitura({
             />
             <span className="min-w-0 flex-1 truncate pr-3 text-muted">{row.curto}</span>
             <span className="shrink-0 text-13 font-medium text-ink tabular-nums">
-              {row.cents === null ? (
+              {row.valor === null ? (
                 'sem dado'
               ) : contador ? (
                 // o espaço do "R$ " é o que não quebra (o do formatBRL): o comum some no fim do item flex do contador
-                <AnimatedCounter value={reais(row.cents)} decimals={2} prefix={'R$\u00a0'} />
+                <AnimatedCounter
+                  value={row.valor.numero.value}
+                  decimals={2}
+                  prefix={row.valor.numero.prefix}
+                  suffix={row.valor.numero.suffix}
+                />
               ) : (
-                formatBRL(row.cents)
+                row.valor.texto
               )}
             </span>
           </li>

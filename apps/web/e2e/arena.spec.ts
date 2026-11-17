@@ -332,6 +332,90 @@ test.describe('arena', () => {
     }
   });
 
+  // A escala dos valores (o pedido do Artur em 17/11/2026): o segmentado "R$ | %" troca o patrimônio pelo rendimento sobre o capital inicial
+  // na pílula do fim de cada linha, na tabela, no controle do teclado e na legenda, e o desenho não muda (todo competidor começa do mesmo
+  // capital). O rendimento esperado sai da api pela regra do projeto (o meio para longe do zero), escrito de novo aqui.
+  test('o gráfico troca o patrimônio em R$ pelo rendimento em % sobre o capital inicial, e volta', async ({
+    page,
+    request,
+  }) => {
+    const equity = await fetchApi(request, `/seasons/${SEASON}/equity`, equitySchema);
+    const baseline = await fetchApi(
+      request,
+      `/seasons/${SEASON}/random-baseline`,
+      randomBaselineSchema,
+    );
+    const capital = equity.season.params.capitalCents;
+    const rendimento = (cents: number) => pct(ratioBps(cents - capital, capital));
+    const drawn = equity.series.filter(
+      (s) => s.competitor.type === 'MODEL' || s.competitor.type === 'RANDOM',
+    );
+    await page.goto('/arena');
+    const chart = region(page, 'Patrimônio');
+    const reais = chart.getByRole('radio', { name: 'R$', exact: true });
+    const porcento = chart.getByRole('radio', { name: '%', exact: true });
+    // o radio fica embaixo do texto da metade (o segmentado do form-kit): a pessoa toca o texto, e o teste também, como o da carteira
+    const escolher = (texto: 'R$' | '%') =>
+      chart
+        .getByRole('group', { name: 'Mostrar os valores em' })
+        .getByText(texto, { exact: true })
+        .click();
+    await expect(reais).toBeChecked();
+    // o segmentado só liga depois da hidratação: o desenho de antes da troca é lido com a página viva
+    await expect(porcento).toBeEnabled();
+    const first = chart.locator(`path[data-series="${drawn[0]!.competitor.slug}"]`);
+    const desenho = await first.getAttribute('d');
+
+    await escolher('%');
+    await expect(porcento).toBeChecked();
+    for (const s of drawn) {
+      await expect(chart.locator(`[data-rotulo="${s.competitor.slug}"]`)).toHaveText(
+        rendimento(s.equityCents.at(-1)!),
+      );
+    }
+    const table = chart.getByRole('table', { name: /dados do gráfico/i });
+    for (const [i, date] of equity.dates.entries()) {
+      const cells = await table
+        .getByRole('row')
+        .nth(i + 1)
+        .locator('th, td')
+        .allInnerTexts();
+      expect(cells.map(clean)).toEqual([
+        dmy(date),
+        ...equity.series.map((s) => rendimento(s.equityCents[i]!)),
+        rendimento(baseline.rows[i]!.equityCents.p5),
+        rendimento(baseline.rows[i]!.equityCents.p95),
+      ]);
+    }
+    // o controle do teclado diz o último pregão, do maior rendimento para o menor (a ordem da leitura é a mesma do patrimônio)
+    const last = equity.dates.length - 1;
+    const ranked = [...drawn].sort((a, b) => b.equityCents[last]! - a.equityCents[last]!);
+    await expect(
+      chart.getByRole('slider', { name: 'Patrimônio por pregão: ler os valores' }),
+    ).toHaveAttribute(
+      'aria-valuetext',
+      [
+        dmy(equity.dates[last]!),
+        ...ranked.map((s) => `${s.competitor.name} ${rendimento(s.equityCents[last]!)}`),
+      ].join('. '),
+    );
+    await expect(chart.locator('figcaption > p').first()).toHaveText(
+      `Rendimento sobre o capital inicial de ${brl(capital)}, no fechamento de cada pregão.`,
+    );
+    expect(await first.getAttribute('d')).toBe(desenho);
+
+    await escolher('R$');
+    await expect(reais).toBeChecked();
+    for (const s of drawn) {
+      await expect(chart.locator(`[data-rotulo="${s.competitor.slug}"]`)).toHaveText(
+        brl(s.equityCents.at(-1)!),
+      );
+    }
+    await expect(chart.locator('figcaption > p').first()).toHaveText(
+      'Patrimônio em R$, no fechamento de cada pregão.',
+    );
+  });
+
   // A leitura pelo teclado (a peça da beUI): um controle deslizante nativo e invisível sobre o desenho, uma parada de Tab; as setas, o Home e o
   // End andam entre os pregões, o leitor de tela ouve a data e o valor de cada série à vista, e o painel mostra o mesmo; o Esc o fecha.
   test('o gráfico se lê pelo teclado: o controle diz a data e o valor de cada série, e o painel mostra o mesmo', async ({
