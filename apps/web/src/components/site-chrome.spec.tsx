@@ -21,7 +21,7 @@ const linksOf = (html: string) =>
   ]);
 
 // O cabeçalho do site (ADR 0041): a marca e os links à esquerda, e "Entrar" à direita, numa faixa da página regrada. Ele não lê a sessão (as
-// páginas públicas da arena são dinâmicas com cache de dados, e o LCP da home tem pouca folga contra o teto de 2,5 s): os links são os mesmos
+// páginas públicas da arena são dinâmicas com cache de dados, e o LCP da home tem pouca folga contra o teto de 2,8 s): os links são os mesmos
 // com ou sem login.
 // O e2e (layout.spec.ts) confere a folha do menu em 360 px e os links em 1280 px.
 describe('SiteHeader', () => {

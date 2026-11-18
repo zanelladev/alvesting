@@ -5,7 +5,7 @@ import { REFERENCE_TICKER, readBars } from '../lib/quotes';
 import { LINK } from './ui';
 
 // O rodapé de toda tela (plano §12), nas duas cascas (a do site e a do app, que o põe compacto no pé da coluna principal): o aviso fixo, as
-// atribuições que as fontes pedem e o aviso de marca dos logos dos laboratórios (ADR 0035). Nada aqui depende da api, menos a data do dado
+// atribuições que as fontes pedem e o aviso de marca dos logos dos laboratórios (ADR 0041). Nada aqui depende da api, menos a data do dado
 // das cotações, que chega por streaming e some (sem data) se a api falhar: o aviso não pode depender de dado.
 
 // ponytail: as fontes de notícia estão escritas aqui à mão, e a lista de verdade é a da api (apps/api/src/modules/news/domain/sources.ts).

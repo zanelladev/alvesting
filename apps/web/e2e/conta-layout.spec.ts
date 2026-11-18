@@ -147,7 +147,7 @@ for (const screen of SCREENS) {
         expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
         expect(bodyWidth).toBeLessThanOrEqual(clientWidth);
 
-        // a navegação cabe na largura, cada link com 44 px de altura (ADR 0035). Na conta e nas telas de entrar e criar conta (a casca do app) a
+        // a navegação cabe na largura, cada link com 44 px de altura (ADR 0041). Na conta e nas telas de entrar e criar conta (a casca do app) a
         // barra de abas está sempre na tela: a marca e os cinco links (o sexto alvo é o botão "Mais"). Nos textos legais (a casca do site), a
         // folha que o botão "Menu" abre: a marca, os quatro links e o "Entrar", e o Esc a fecha. A contagem vem antes das medidas: sem ela o
         // laço passaria em vazio se o cabeçalho sumisse

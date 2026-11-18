@@ -21,7 +21,7 @@ retroativo; a Wiki não está publicada; o SonarCloud não está ligado; o PAC V
 | **Produto** | A arena, a conta com a LGPD, a carteira (com a comparação com a arena) e o painel de admin, testados (no CI do commit `291a150`, de 17/11/2026: 3.221 testes na api, 979 no site, 504 nos contratos e 2.132 execuções do e2e em três aparelhos), no ar na Azure, com a Temporada 1 real ao vivo desde 16/11/2026 | Marcar no site os pregões retroativos (seção 9.3) e manter o sistema no ar e estável até a divulgação das notas |
 | **Documentação mínima** | Requisitos, user stories com os fluxos completos, C4 e instruções de deploy, 40 ADRs | Publicar a Wiki: o gerador está pronto, e falta o Artur criar a primeira página no GitHub |
 | **Engenharia** | CI/CD rodando no GitHub Actions (o `291a150` passou no CI e foi implantado pelo deploy), cobertura de 91,2% na api e 67,6% no site, análise estática no CI, observabilidade implantada na Azure, com alertas que já dispararam de verdade | O SonarCloud ligado (o projeto e o segredo são do Artur); achar por que a regra de log dos alertas nunca disparou (seção 3, item 4) |
-| **Riscos do critério 5 (eliminatório)** | O código de terceiros registrado com licença; o retroativo marcado no banco e na API pública; a correção do RAIZ4 registrada na metodologia | **O design copiado do Rallies AI** (seção 9.1; o redesenho para se afastar dele começou em 18/11/2026), **o retroativo sem rótulo no site** (seção 9.3) e **o histórico curto do git, sem PR** (seção 2, item 5): o desenho e o histórico são decisões do Artur |
+| **Riscos do critério 5 (eliminatório)** | O código de terceiros registrado com licença; o retroativo marcado no banco e na API pública; a correção do RAIZ4 registrada na metodologia | **O que ficou do sistema visual anterior** (seção 9.1: a arquitetura de informação e algumas medidas; desde 18/11/2026 o sistema visual é o do ADR 0041), **o retroativo sem rótulo no site** (seção 9.3) e **o histórico curto do git, sem PR** (seção 2, item 5): o desenho e o histórico são decisões do Artur |
 
 ---
 
@@ -68,7 +68,7 @@ retroativo; a Wiki não está publicada; o SonarCloud não está ligado; o PAC V
 | Dashboards com visualizações de dados | **atende** | O patrimônio com a faixa do Monte Carlo (em R$ ou em % desde 17/11/2026, com a leitura do maior patrimônio do pregão para o menor), o gráfico de posições, as velas, a sparkline, a rosca da carteira e a comparação da carteira com a arena ([TELAS.md](TELAS.md)) |
 | Camada de segurança (JWT, XSS, CSRF) | **atende** | Sessão em cookie `HttpOnly` com `SameSite=Lax` e a conferência do `Origin` nas mutações (CSRF); o texto de terceiro sempre como texto (XSS, `e2e/fixture.spec.ts`); na produção, a api fora da internet, atrás do site, e no perfil padrão a trava de origem e o WAF |
 | Suporte multilíngue | não feito | Só português |
-| Design System ou biblioteca de componentes | **atende** | Os tokens nos dois temas (`apps/web/src/app/globals.css`), o `docs/DESIGN.md` e a tabela de peças do ADR 0037. A ressalva da origem do desenho está na seção 9.1 |
+| Design System ou biblioteca de componentes | **atende** | Os tokens nos dois temas (`apps/web/src/app/globals.css`), o `docs/DESIGN.md` (a página regrada, ADR 0041) e a tabela de peças do ADR 0037. O que ficou do sistema visual anterior está na seção 9.1 |
 | Testes de usabilidade com usuários reais | **pendente**; depende do Artur | Não houve. É também a evidência do PAC VIII (seção 7) |
 | Domínio próprio | **pendente**; depende do Artur | O Bicep aceita no perfil padrão; no econômico, o da produção, o domínio próprio no ingress do Container Apps não foi implementado (`docs/INFRA.md`, seção 8.4) |
 | Processamento assíncrono com mensageria | **atende** | O Service Bus com seis filas e DLQ, os agendadores que só publicam e os workers que escalam pela fila (ADR 0004, 0006 e 0007), rodando na produção |
@@ -81,9 +81,9 @@ retroativo; a Wiki não está publicada; o SonarCloud não está ligado; o PAC V
 | Item | Status | Evidência e ressalva |
 |---|---|---|
 | Estilo visual inconsistente ou não responsivo | **atende** | Um sistema visual só, nos dois temas; o e2e em três aparelhos |
-| Interface genérica ou desorganizada | **atende** | Cada tela responde a uma pergunta (`docs/PRODUCT.md`); a ressalva da origem do desenho está na seção 9.1 |
+| Interface genérica ou desorganizada | **atende** | Cada tela responde a uma pergunta (`docs/PRODUCT.md`); o que ficou do sistema visual anterior está na seção 9.1 |
 | Ausência de feedback ao usuário | **atende** | Estados vazios e de erro com texto, confirmações na página, avisos anunciados (`e2e/fixture.spec.ts`, "a api fora do ar vira uma tela de erro com texto útil..."; `e2e/carteira.spec.ts`, "as falhas do envio dizem o que fazer...") |
-| Bibliotecas, templates ou temas prontos sem personalização | **parcial** (risco) | As peças da Arc, da beUI e da ReUI foram copiadas do registro e adaptadas (as mudanças estão no topo de cada arquivo e no `docs/DEPENDENCIAS.md`), mas a linguagem visual veio do Rallies AI: seção 9.1, onde está o redesenho que começou em 18/11/2026 |
+| Bibliotecas, templates ou temas prontos sem personalização | **parcial** (risco) | As peças da Arc, da beUI e da ReUI foram copiadas do registro e adaptadas (as mudanças estão no topo de cada arquivo e no `docs/DEPENDENCIAS.md`), e o sistema visual em volta delas é próprio desde 18/11/2026 (ADR 0041; seção 9.1) |
 | Falta de modularidade | **atende** | Monorepo com módulos em camadas ([ARQUITETURA.md](ARQUITETURA.md), seção 3) |
 | Vibecoding (código improvisado, sem planejamento) | **atende**, com a ressalva | O plano (`docs/PLANO.md`), 40 ADRs, os relatórios das ondas e os testes. O código foi escrito com agentes do Claude Code sob a direção do Artur (o README, "Uso de IA no desenvolvimento"): quem prova que não é improviso é a prova de autoria, e o `docs/GUIA-DO-CODIGO.md` é o material de estudo dela |
 | Documentação em Notion ou Obsidian | **atende** | Tudo em Markdown no repositório, e a Wiki é gerada dele |
@@ -147,25 +147,22 @@ retroativo; a Wiki não está publicada; o SonarCloud não está ligado; o PAC V
 O critério 5 do Demo Day reprova na hora por "cópias de código, design ou texto", "falsificação de resultados" e "uso indevido de dados".
 O critério 1 aceita "projeto inspirado em app conhecido, mas com proposta diferente ou contexto local".
 
-### 9.1 O design inspirado no Rallies AI (risco alto; decisão do Artur)
+### 9.1 O sistema visual (decisão do Artur)
 
-**O que existe.** O ADR 0035 registra o pedido "Quero que copie o Design do Rallies AI" e decide copiar a linguagem visual e a estrutura: a
-casca do app (o trilho de ícones, a barra de abas, a folha "Mais"), as pílulas, as tabelas, a escala de tipo e os valores das cores (os
-deles, ajustados o mínimo para passar o AA). O `docs/TELAS.md` chama as telas de "A Arena do Rallies", "O Discover do Rallies" e "O Chat do
-Rallies", e o `docs/PLANO.md`, seção 1, tem a coluna "Copiamos". **O que não veio de lá** (ADR 0035 e `docs/DEPENDENCIAS.md`, "Desenho de
-terceiros"): o código, o CSS, o JavaScript, a marca, o nome, o logo, as ilustrações, os avatares e os textos. Desde 05/11/2026 a cor primária é
-a do logo da Alvesting (`#14144C`, ADR 0037), e a arte do hero e da 404 é a do Artur. **A proposta é outra:** o Rallies é um produto
-financeiro comercial (com uma arena de LLMs comparada ao SPY, `docs/PLANO.md`, seção 1); a Alvesting é um experimento acadêmico na B3, com o mesmo prompt oculto e o hash
-publicado, a entrada congelada e o controle aleatório para separar habilidade de sorte.
+**O que existe.** Desde 18/11/2026 o sistema visual é a página regrada (ADR 0041), no lugar do sistema visual de 05/11/2026: os tokens, as
+cascas, as formas das peças, os títulos e a landing foram desenhados para a Alvesting, com a referência de ritmo da landing nova de outro
+projeto do Artur (as linhas, a coluna no centro e a lateral à esquerda), sem código, componente, texto, arquivo, cor nem fonte dela. O que
+veio de fora tem licença e registro em `docs/DEPENDENCIAS.md`: as peças das bibliotecas MIT (seção 9.2) e os logos dos laboratórios
+(LobeHub, MIT); a arte do hero e da 404 é a do Artur, e a cor primária é a do logo da Alvesting (`#14144C`, ADR 0037). **A proposta é
+própria:** um experimento acadêmico na B3, com o mesmo prompt oculto e o hash publicado, a entrada congelada e o controle aleatório para
+separar habilidade de sorte.
 
-**Por que é risco.** O Playbook veda "cópia de design" no critério eliminatório, e as palavras dos documentos ("copie", "Copiamos", "a Arena
-do Rallies") são as primeiras que um avaliador vai ler. **O que dá para fazer, decisão do Artur:** (1) trocar o que ainda é deles pelo que é
-nosso (os neutros e as cores de dado, a escala de tipo, a casca), a partir dos tokens do `globals.css`; (2) reescrever a origem nos documentos
-como referência ("inspirado em"), dizendo o que foi tomado e o que é próprio, sem esconder o que aconteceu; (3) levar a questão ao
-orientador antes de 30/11/2026 e registrar a resposta num ADR; (4) creditar o Rallies como referência no README e no pôster (o README já faz).
+**O que ficou do sistema anterior.** A arquitetura de informação e o comportamento das telas (ADR 0041, decisão 10: as áreas do app e a
+barra de abas no celular, o Explorar, a carteira e o chat desligado) e algumas medidas (a escala de tipo em px e o campo dos formulários).
+O Playbook veda "cópia de design" no critério eliminatório. **O que dá para fazer, decisão do Artur:** trocar o que ainda vem de lá, ou
+levar a questão ao orientador antes de 30/11/2026 e registrar a resposta num ADR.
 
-**Em andamento.** Em 18/11/2026 começou, fora da `main`, o redesenho para se afastar do Rallies. Até ele entrar, o que está no ar é o
-desenho descrito acima.
+**O estado.** O desenho do ADR 0041 entra na `main` com o redesenho, e o site publicado passa a ele no deploy seguinte.
 
 ### 9.2 O código copiado das bibliotecas MIT
 

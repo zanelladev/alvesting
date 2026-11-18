@@ -4,13 +4,13 @@ Tarefa `task_a139effd635c` (dispatch `ctx_48f65fbcc642`), 05/11/2026. Revisão *
 (T0, T0b, T1a, T1b, T2a e T2b), para a tarefa de fechamento consertar. Nada foi editado no repositório além deste relatório; sem commit,
 `git add`, build, e2e nem Lighthouse.
 
-**Como foi feita.** Li os relatórios das seis tarefas, o CLAUDE.md, o `docs/PRODUCT.md`, o `docs/DESIGN.md` e os ADR 0033, 0035, 0036 e 0037,
+**Como foi feita.** Li os relatórios das seis tarefas, o CLAUDE.md, o `docs/PRODUCT.md`, o `docs/DESIGN.md` e os ADR 0033, 0036 e 0037 (e o do sistema visual de então),
 e depois o `git diff` e os arquivos novos inteiros. A T1a (as telas da arena) e a T2a (o Explorar e o terminal) foram lidas também por duas
 revisões paralelas, só de leitura; **cada achado delas foi conferido de novo no código** antes de entrar aqui. A T2b foi revista por último,
 depois de ela soltar a trava, e as linhas citadas são as do working tree no fim desta revisão.
 
 **Fora do alvo.** O working tree também guarda o trabalho de duas tarefas da onda anterior que ainda não foi para o índice
-(`docs/redesign-rallies/relatorios/logos-api.md`: a api dos logos, o contrato `internal.ts` e o `infra/tests/check.mjs`; e
+(os relatórios `logos-api.md`: a api dos logos, o contrato `internal.ts` e o `infra/tests/check.mjs`; e
 `linhas-barras.md`: a moldura de 1.550 px, as barras de rolagem e o "›" da faixa). Não revi esse trabalho, só o que a onda premium mudou por
 cima dele.
 
@@ -133,7 +133,7 @@ apontou (M18 e M19). A decisão que a T2b deixou para a revisão (o radio de lan
 ### M3. A regra nova do "simulado" (uma vez por contexto) não chegou ao CLAUDE.md nem ao começo do TELAS.md
 
 - **Onde:** `CLAUDE.md:31` ("O logo do laboratório é máscara … com o nome e a etiqueta "simulado" sempre ao lado"); `docs/TELAS.md:50` (o
-  mesmo); `docs/adr/0035-design-do-rallies-ai-nos-dois-temas.md:69-70` (a decisão 5), que o ADR 0037 não lista entre o que "Muda".
+  mesmo); o ADR do sistema visual de então (a decisão 5), que o ADR 0037 não lista entre o que "Muda".
 - **Cenário:** a tarefa seguinte lê a regra do CLAUDE.md e põe a etiqueta em cada nome de novo, contra o `docs/DESIGN.md` e o
   `TELAS.md:305`.
 - **Conserto:** trocar a frase do CLAUDE.md e da linha 50 pela regra nova e pôr a mudança na lista "Muda" do ADR 0037.

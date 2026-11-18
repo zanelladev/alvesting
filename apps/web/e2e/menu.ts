@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 
-// A navegação principal (ADR 0035). Na casca do site (components/site-chrome.tsx), abaixo de 1024 px ela é uma folha `popover`, fechada
+// A navegação principal (ADR 0041). Na casca do site (components/site-chrome.tsx), abaixo de 1024 px ela é uma folha `popover`, fechada
 // (display: none) até o botão "Menu" a abrir; a partir de 1024 px os links já estão na tela. Na casca do app (components/app-shell.tsx) ela
 // está sempre na tela (a lateral no desktop, a barra de abas no pé no celular), e não há nada a abrir. `getByRole` não acha link escondido:
 // todo spec que usa um link do cabeçalho (fora a marca) chama esta função antes, nas duas cascas.

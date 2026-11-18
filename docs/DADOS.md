@@ -204,7 +204,7 @@ fator de cota, `quote_factor`, saiu do schema em 04/11/2026, seção 1).
 
 ### 3a. Os logos das ações (ADR 0036, 05/11/2026)
 
-O logo da empresa ao lado do ticker, como o Rallies faz nas carteiras. A brapi dá acesso aos logos em todos os planos (o FAQ, citado no
+O logo da empresa ao lado do ticker, a pedido do Artur (05/11/2026). A brapi dá acesso aos logos em todos os planos (o FAQ, citado no
 ADR), e a lista que a atualização semanal já pede (`/api/quote/list`, seção 2) traz em cada ação o campo `logo`, o endereço de um SVG em
 `https://icons.brapi.dev/icons/<TICKER>.svg`. Decisão do Artur: **"Cópia guardada por nós"**. O job baixa o SVG, recusa o inseguro e o
 guarda no banco; o site o serve do próprio domínio (rota da T3), lendo-o das rotas internas da api (`docs/API.md`, seção 6). Nenhum dado

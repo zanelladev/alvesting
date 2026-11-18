@@ -84,7 +84,7 @@ Precisa de **cerca de 13 semanas antes da entrega**. Falta você dizer a data.
 
 ## 1. O que as referências ensinam
 
-| Referência | O que faz | Copiamos | Não copiamos |
+| Referência | O que faz | O que entra | O que fica de fora |
 |---|---|---|---|
 | **Alpha Arena** (nof1) | US$ 10 mil reais por modelo, temporadas de 2 semanas; na 1.5 só ações dos EUA, 4 competições em paralelo com entradas idênticas dentro de cada uma. Feed "ModelChat", ranking com valor, retorno, P&L, taxas, acerto, Sharpe e nº de operações; página do modelo com posições e últimas 25 operações. Visual cru: IBM Plex Mono, papel, bordas pretas | Feed de justificativas curtas, ranking com risco, página do modelo, estética crua | Alavancagem, vendido, dinheiro real, competições paralelas (fase 5) |
 | **Rallies.ai Arena** | Carteiras de ~US$ 100 mil desde dez/2025, 11 fundos. Feed com filtro Todos/Compra/Venda/Mantém e modelos respondendo uns aos outros; página do modelo com retorno vs SPY, drawdown e Sharpe; chat "com a sua carteira" | Filtro BUY/SELL/HOLD, comparação com índice, chat com contexto da carteira | Pesquisa na web pelos modelos (quebra a igualdade) |
@@ -606,7 +606,7 @@ Mobile é gate de merge.
 | Integração | Vitest + Supertest + Postgres + emulador do Service Bus | Endpoints, guarda de dono, LGPD, idempotência de cada mensagem (processar duas vezes = mesmo estado), DLQ |
 | Contrato | Zod em `packages/contracts` | Mensagens das filas e respostas de LLM (incluindo JSON quebrado) |
 | E2E | Playwright 1.64: Pixel 7 (Chromium), iPhone 15 (WebKit), desktop | Arena, modelo, ciclo, carteira nos dois modos, chat com LLM fake, excluir conta |
-| Visual · a11y · desempenho | Snapshots, `@axe-core/playwright`, Lighthouse CI mobile | Telas-chave; alvos ≥ 44 px; LCP ≤ 2,5 s, CLS ≤ 0,1, TBT ≤ 200 ms |
+| Visual · a11y · desempenho | Snapshots, `@axe-core/playwright`, Lighthouse CI mobile | Telas-chave; alvos ≥ 44 px; LCP ≤ 2,8 s (2,5 s até 18/11/2026; ADR 0041), CLS ≤ 0,1, TBT ≤ 200 ms |
 | Pós-deploy | Smoke + Playwright mobile pelo Front Door | Antes de virar o tráfego |
 
 Nenhum teste chama LLM, B3, CVM, BCB ou brapi de verdade. Cobertura mínima de 80% no domínio.
@@ -730,7 +730,7 @@ Ligar a Temporada 0 em produção com provedores fake e acompanhar 5 pregões se
 
 Implementar a API pública com cache e as telas da arena na estética crua: início (cotações, gráfico SVG, ranking com Sorteio e percentil, feed com filtro BUY/SELL/HOLD, contagem), ranking, modelo, ciclo, notícias (título e link), ação e Como funciona, com purge do Front Door após a liquidação.
 **Nota de 04/11/2026:** o visual mudou. As telas saíram da estética crua para o sistema ascii-ui da v1, com o código da v2 (§17, item 7; ADR 0034; `docs/TELAS.md`, "Sistema visual (ascii-ui)").
-**Aceite:** Playwright verde em Pixel 7, iPhone 15 (WebKit) e desktop; sem rolagem horizontal em 360 px; LCP <= 2,5 s no Lighthouse mobile da home.
+**Aceite:** Playwright verde em Pixel 7, iPhone 15 (WebKit) e desktop; sem rolagem horizontal em 360 px; LCP <= 2,8 s no Lighthouse mobile da home (2,5 s até 18/11/2026; ADR 0041).
 **Fora do escopo:** login, carteira, chat.
 
 <a id="step-10"></a>
@@ -780,7 +780,7 @@ Fechar a Temporada 1: conferir dados contra a B3, calcular o percentil de cada m
 4. **Prompt:** oculto na temporada e revelado no fim (recomendo) ou oculto para sempre.
 5. **Repositório:** repo novo `alvesting` (recomendo) ou branch órfã no `ainvesting`.
 6. **LLMs:** OpenRouter no cartão para a arena e Azure OpenAI no crédito para o chat (recomendo).
-7. **Visual:** estética crua do Alpha Arena (recomendo) ou ascii-ui da v1. **Decidido em 04/11/2026: o ascii-ui da v1, com o código da v2** (o pedido do Artur; ADR 0034). **Trocado em 05/11/2026 pelo design do Rallies AI, nos dois temas seguindo o sistema** (o pedido do Artur, "Quero que copie o Design do Rallies AI"; ADR 0035): uma landing pública com a escadaria ASCII no hero e o app (o trilho de ícones no desktop e a barra de abas no celular), o `/chat` pronto e desligado até o aval do orientador e os logos dos laboratórios ao lado dos modelos; do ascii-ui ficou a arte (a escadaria e o urso). Pendência dele antes de publicar o repositório: conferir os termos vigentes da API do Higgsfield, de onde vem a arte do hero.
+7. **Visual:** estética crua do Alpha Arena (recomendo) ou ascii-ui da v1. **Decidido em 04/11/2026: o ascii-ui da v1, com o código da v2** (o pedido do Artur; ADR 0034). **Trocado em 05/11/2026 por um app nos dois temas, seguindo o sistema**: uma landing pública com a escadaria ASCII no hero e o app (o trilho de ícones no desktop e a barra de abas no celular), o `/chat` pronto e desligado até o aval do orientador e os logos dos laboratórios ao lado dos modelos; do ascii-ui ficou a arte (a escadaria e o urso). Pendência dele antes de publicar o repositório: conferir os termos vigentes da API do Higgsfield, de onde vem a arte do hero. **Trocado de novo em 18/11/2026 pela página regrada** (ADR 0041), com a mesma arquitetura de informação.
 8. **Confirmar padrões:** R$ 100 mil, 20 pregões, CDI no caixa, East US 2, filtro de liquidez.
 
 ---

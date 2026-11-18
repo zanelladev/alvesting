@@ -4,7 +4,7 @@ import { formatBps, formatPercentile } from '../lib/format';
 import { labOf } from '../lib/laboratorio';
 import { LINK, NavLink, NotaSimulada, SimulatedTag, direction, isSimulated } from './ui';
 
-// O competidor como o site mostra um modelo (ADR 0041; plano, g.4): o logo do laboratório num círculo, o nome e a etiqueta "simulado"
+// O competidor como o site mostra um modelo (ADR 0041; plano, g.4): o logo do laboratório num quadrado branco, o nome e a etiqueta "simulado"
 // do modelo da arena simulada. O logo é decorativo (aria-hidden), por atributo (globals.css, `.logo`): o do laboratório; o ícone nosso do
 // Sorteio e de cada referência (o dado, o "%" do CDI, o gráfico do BOVA11, a balança do igual-peso); e, sem nenhum dos dois (um modelo de
 // laboratório sem logo), a inicial. Nada vira texto: o textContent e o innerText do nome, que o e2e lê, continuam "Nome" e "Nome simulado".

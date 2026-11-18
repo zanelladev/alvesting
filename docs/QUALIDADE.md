@@ -120,13 +120,13 @@ de passar. Os relatórios das ondas registram o vermelho de cada um; alguns exem
 
 | Onde | O teste | O vermelho antes do código | Relatório |
 |---|---|---|---|
-| Backend | O validador dos logos SVG da brapi (`apps/api/src/modules/market-data/domain/svg-check.spec.ts`): `<script>`, `@import`, `url()` externo, `<foreignObject>` e dezenas de truques recusados | `66 failed \| 11 passed` contra um stub que aceitava tudo; depois, `77 passed` | commit `43ce40c` (o relatório da onda do Rallies saiu do repositório em 09/11/2026) |
-| Backend | O endereço do logo na lista da brapi (`brapi.client.spec.ts`): 20 valores tortos numa lista só, e só o bom passa | `expected { PETR4: undefined, …(19) }` | commit `43ce40c` (o relatório da onda do Rallies saiu do repositório em 09/11/2026) |
-| Backend | A atualização semanal com os logos (`weekly-refresh.spec.ts`) e os argumentos do `market:logos` (`market-cli-args.spec.ts`) | `2 failed` e `5 failed` | commit `43ce40c` (o relatório da onda do Rallies saiu do repositório em 09/11/2026) |
+| Backend | O validador dos logos SVG da brapi (`apps/api/src/modules/market-data/domain/svg-check.spec.ts`): `<script>`, `@import`, `url()` externo, `<foreignObject>` e dezenas de truques recusados | `66 failed \| 11 passed` contra um stub que aceitava tudo; depois, `77 passed` | commit `43ce40c` (o relatório da onda de 05/11/2026 saiu do repositório em 09/11/2026) |
+| Backend | O endereço do logo na lista da brapi (`brapi.client.spec.ts`): 20 valores tortos numa lista só, e só o bom passa | `expected { PETR4: undefined, …(19) }` | commit `43ce40c` (o relatório da onda de 05/11/2026 saiu do repositório em 09/11/2026) |
+| Backend | A atualização semanal com os logos (`weekly-refresh.spec.ts`) e os argumentos do `market:logos` (`market-cli-args.spec.ts`) | `2 failed` e `5 failed` | commit `43ce40c` (o relatório da onda de 05/11/2026 saiu do repositório em 09/11/2026) |
 | Frontend | O ranking por dia do gráfico de posições (`apps/web/src/lib/chart.spec.ts`, `rankByDay` e `serieDe`) | `11 failed` (`rankByDay is not a function`) e `2 failed` | `docs/redesign-premium/relatorios/arena.md`, seção 4 |
 | Frontend | A geometria e o desenho das velas (`components.spec.tsx`, "velas: a geometria") | o módulo `./velas` não existia | `docs/redesign-premium/relatorios/explorar.md`, seção 4 |
 | Frontend | A leitura dos logos no servidor (`apps/web/src/lib/logos.spec.ts`) | `Cannot find module '/src/lib/logos'` | `docs/redesign-premium/relatorios/logos.md` |
-| Frontend | Uma carteira que falha não derruba a arena (`app/(app)/(arena)/arena/page.spec.tsx`) | a página inteira virava "Não foi possível carregar os dados" | commit `3c9db10` (o relatório da onda do Rallies saiu do repositório em 09/11/2026) |
+| Frontend | Uma carteira que falha não derruba a arena (`app/(app)/(arena)/arena/page.spec.tsx`) | a página inteira virava "Não foi possível carregar os dados" | commit `3c9db10` (o relatório da onda de 05/11/2026 saiu do repositório em 09/11/2026) |
 | Scripts | O resumo do `pnpm coverage` (`scripts/coverage.test.mjs`) e a reescrita dos links da Wiki (`scripts/wiki.test.mjs`) | `ERR_MODULE_NOT_FOUND` nos dois, antes de o script existir; depois, duas falhas plantadas no `wiki.mjs` reprovam 4 e 1 testes | `docs/temporada-1/relatorios/t2-playbook-docs-qualidade.md` |
 
 **Honestidade sobre o histórico.** Nas etapas 1 a 12 a regra já era teste em todo caso de uso e endpoint (`CLAUDE.md`), mas os relatórios

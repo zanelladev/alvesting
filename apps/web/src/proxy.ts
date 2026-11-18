@@ -62,7 +62,7 @@ export function proxy(request: NextRequest) {
   const toApi = forwardToApi(request);
   if (toApi) return toApi;
 
-  // O feed de decisões era da home, e foi para a /arena (ADR 0035): o `/?filtro=` e o `/?cursor=` de antes (links
+  // O feed de decisões era da home, e foi para a /arena (ADR 0041): o `/?filtro=` e o `/?cursor=` de antes (links
   // guardados, buscadores) levam ao mesmo feed, com a query inteira e 308 (o `#feed` o navegador mantém). Mora aqui, DEPOIS da trava, e não
   // no `redirects()` do next.config.ts, que roda antes do proxy e responderia sem o X-Azure-FDID: não é exceção à trava.
   const { searchParams } = request.nextUrl;

@@ -205,7 +205,7 @@ As rodadas de antes, para o registro:
 
 `pnpm lighthouse` (5 coletas, mediana; o Lighthouse 12.6.1 no celular simulado: tela pequena, CPU 4x mais lenta e 4G lenta), no build final
 (12:55), das 13:16 às 13:17. **Passou**: o `lhci` saiu com 0. O "antes" é a medida final da onda anterior, no mesmo Mac e com o mesmo
-Lighthouse (05/11, 10:46 e 10:48, `docs/redesign-rallies/relatorios/linhas-barras.md`, seção 6; os relatórios ficaram em
+Lighthouse (05/11, 10:46 e 10:48, o relatório `linhas-barras.md` da onda anterior, seção 6; os relatórios ficaram em
 `apps/web/.lighthouseci`):
 
 | | Antes (a onda anterior) | Depois (a fundação) |

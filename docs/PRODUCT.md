@@ -28,8 +28,8 @@ investimento nem aposta.
 **Precisa, calma, premium.** Voz em português simples e direto, sem jargão; números exatos; afirmações modestas ("simulado", "não é
 recomendação"). A emoção buscada é confiança e clareza, nunca euforia.
 
-Referências: o Rallies AI (limpo: muito respiro, o dado em primeiro plano, fios finos, movimento discreto) e, para o dado animado com cara
-premium, as bibliotecas que o Artur escolheu: o bloco market-terminal da uiarc.dev e os gráficos da beui.dev e da reui.io.
+Referências: para o ritmo da página, a landing nova de outro projeto do Artur (as linhas, a coluna no centro e as faixas; ADR 0041), com
+muito respiro, o dado em primeiro plano, fios finos e movimento discreto; e, para o dado animado com cara premium, as bibliotecas que o Artur escolheu: o bloco market-terminal da uiarc.dev e os gráficos da beui.dev e da reui.io.
 
 ## Anti-references
 

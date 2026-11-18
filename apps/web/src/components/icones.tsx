@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-// Os ícones da casca (ADR 0035 e ADR 0041): SVG em linha, desenhados à mão, formas genéricas (colunas, bússola, carteira, balão, três pontos, lupa,
+// Os ícones da casca (ADR 0041): SVG em linha, desenhados à mão, formas genéricas (colunas, bússola, carteira, balão, três pontos, lupa,
 // pessoa), sem biblioteca. 20 px (`size` muda: o chat os usa em 16 e 18), traço de 1,5 na cor do texto (o tema pinta). Decorativos: o nome
 // vem sempre ao lado, em texto. O chat (components/chat/chat-desligado.tsx) desenha os dele com o mesmo `Icone`.
 type Tamanho = { size?: number };

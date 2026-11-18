@@ -226,27 +226,27 @@ scratchpad).
 | 13 | `#ebdaac` | `#d2dafc` | 15,16 → 15,17 |
 | 16 | `#fbe3a7` | `#dfe4fd` | 16,65 → 16,65 |
 
-## 2. A landing mais limpa, como o Rallies
+## 2. A landing mais limpa
 
-Medido na referência (`.data/rallies-referencia/landing-1440-light*.jpeg` e `landing-390-light*.jpeg`, com as árvores), no ponto de partida
-(`docs/redesign-premium/fundacao/landing-*.png`) e nas capturas novas (seção 10). A estrutura já era a do Rallies (o hero de texto em duas
+Medido no ponto de partida
+(`docs/redesign-premium/fundacao/landing-*.png`) e nas capturas novas (seção 10). A estrutura ficou a da fundação (o hero de texto em duas
 colunas, a moldura grande com o recorte por cima, a faixa de marcas, os quatro painéis alternados, o FAQ em três colunas, o CTA e o rodapé com
 o nome gigante); o que pesava eram os detalhes.
 
-| O quê | Rallies | Antes (a fundação) | Agora |
-|---|---|---|---|
-| A fonte no que é da landing | uma sans só, com algarismos tabulares | a mono em 5 lugares do principal: o `[!]` do aviso, as duas voltas da fita, a versão e o SHA-256 do prompt (o e2e novo os listou no build das 14:02) | **a sans em tudo**; a mono só na grade da arte (a célula do ASCII) e no `.hash` (a versão e o SHA-256, identificadores em hexadecimal) |
-| A faixa de marcas | 8 ladrilhos cinza com o logo e o nome | 6 ladrilhos com o logo, o nome e a etiqueta "simulado" com borda em cada um; "DeepSeek V4 Pro (0813)" e "Qwen3.8 Max (0902)" em duas e três linhas no celular | **uma etiqueta**, no cabeçalho da faixa (fora do título: o nome da região não muda), e o nome sem o sufixo de versão: uma linha em 1440 px, até duas em 390 |
-| O recorte de UI | a captura com a borda clara e a sombra larga | o fio de 1 px (`border-hairline`) e a sombra larga juntos (a Regra Plana do `DESIGN.md`: um dos dois sobra) | a sombra só: o anel de 1 px é a primeira camada dela (preto a 6% no claro, branco a 8% no escuro, a receita "shadow as border" do better-ui), que serve no preto da moldura e no cinza do painel, mais a sombra do recorte de antes |
-| A arte | a pintura deles | âmbar sobre preto | **o azul da marca** sobre preto |
-| A fita | não tem | a mono, um caractere por passo (`steps()`) | a sans tabular, contínua, a uns 8 caracteres por segundo |
-| A primária | o preto deles, só no CTA | já só nos dois "Abrir a arena" (a pílula do seletor de tema é a escolha atual, no cabeçalho) | a mesma, agora presa por teste nos dois temas |
-| O âmbar | — | a arte, e os comentários da `.moldura` e do hero | **nenhum** (o `grep` de `âmbar`, `amber` e `ffb000` nos meus arquivos e no `globals.css` sai vazio; só o teste da paleta fala do âmbar, que é o "antes" dele) |
+| O quê | Antes (a fundação) | Agora |
+|---|---|---|
+| A fonte no que é da landing | a mono em 5 lugares do principal: o `[!]` do aviso, as duas voltas da fita, a versão e o SHA-256 do prompt (o e2e novo os listou no build das 14:02) | **a sans em tudo**; a mono só na grade da arte (a célula do ASCII) e no `.hash` (a versão e o SHA-256, identificadores em hexadecimal) |
+| A faixa de marcas | 6 ladrilhos com o logo, o nome e a etiqueta "simulado" com borda em cada um; "DeepSeek V4 Pro (0813)" e "Qwen3.8 Max (0902)" em duas e três linhas no celular | **uma etiqueta**, no cabeçalho da faixa (fora do título: o nome da região não muda), e o nome sem o sufixo de versão: uma linha em 1440 px, até duas em 390 |
+| O recorte de UI | o fio de 1 px (`border-hairline`) e a sombra larga juntos (a Regra Plana do `DESIGN.md`: um dos dois sobra) | a sombra só: o anel de 1 px é a primeira camada dela (preto a 6% no claro, branco a 8% no escuro, a receita "shadow as border" do better-ui), que serve no preto da moldura e no cinza do painel, mais a sombra do recorte de antes |
+| A arte | âmbar sobre preto | **o azul da marca** sobre preto |
+| A fita | a mono, um caractere por passo (`steps()`) | a sans tabular, contínua, a uns 8 caracteres por segundo |
+| A primária | já só nos dois "Abrir a arena" (a pílula do seletor de tema é a escolha atual, no cabeçalho) | a mesma, agora presa por teste nos dois temas |
+| O âmbar | a arte, e os comentários da `.moldura` e do hero | **nenhum** (o `grep` de `âmbar`, `amber` e `ffb000` nos meus arquivos e no `globals.css` sai vazio; só o teste da paleta fala do âmbar, que é o "antes" dele) |
 
-As medidas do hero, da moldura e do rodapé batem com as do Rallies e não mudaram: o título de 30 px em duas linhas a partir de x = 112 em
-1440 px, a moldura de 1.216 px na mesma coluna, os CTAs de 44 px (os do Rallies têm 40: o alvo de toque do projeto), a pílula de contorno do
-anúncio, o parágrafo de 15 px no secundário, e o nome gigante cortado no pé. A diferença que fica é o aviso da arena simulada na coluna da
-direita (quatro linhas de 12 px), que o Rallies não tem e a honestidade pede: ele empurra a moldura uns 65 px para baixo.
+As medidas do hero, da moldura e do rodapé não mudaram: o título de 30 px em duas linhas a partir de x = 112 em
+1440 px, a moldura de 1.216 px na mesma coluna, os CTAs de 44 px (o alvo de toque do projeto), a pílula de contorno do
+anúncio, o parágrafo de 15 px no secundário, e o nome gigante cortado no pé. O aviso da arena simulada fica na coluna da
+direita (quatro linhas de 12 px), que a honestidade pede: ele empurra a moldura uns 65 px para baixo.
 
 **O cartão "Arena agora", o painel "A justificativa" e o "Sorte ou habilidade?"** mostram as peças da T1a (a `FaixaDeModelos`, o
 `DecisionCard` e a `LeaderboardTable`), com a etiqueta em cada nome, o sufixo "(0902)" e a mono nos tickers, como estavam. Decisão do
@@ -278,7 +278,7 @@ acrescenta nada nesses três recortes, e eles mudam sozinhos quando a T1a entreg
 
 ## 5. A casca do site
 
-O cabeçalho e o rodapé já eram os do Rallies; o que sobrava eram os comentários da Geist (o `site-chrome.tsx` e a `.nome-gigante` falavam da
+O cabeçalho e o rodapé vieram prontos da fundação; o que sobrava eram os comentários da Geist (o `site-chrome.tsx` e a `.nome-gigante` falavam da
 "Geist 600": agora "a sans 600"). O seletor de tema ficou como a fundação o deixou, antes de "Entrar". O `.menu`, o `error.tsx` e o
 `layout.tsx` do grupo `(site)` não precisaram mudar.
 
@@ -386,11 +386,11 @@ arte no quadro 0 e a fita parada no começo, para a imagem ser estável) e as fo
 | Como funciona | `como-funciona-1440-claro.png`, `como-funciona-1440-escuro.png` | `como-funciona-390-claro.png`, `como-funciona-390-escuro.png` | — |
 | A 404 (`/rota-que-nao-existe`) | `nao-encontrada-1440-claro.png`, `nao-encontrada-1440-escuro.png` | `nao-encontrada-390-claro.png`, `nao-encontrada-390-escuro.png` | — |
 
-**Comparadas com as do Rallies** (as `landing-1440-light*.jpeg` e `landing-390-light*.jpeg`, fora do git) e **com as da fundação**
+**Comparadas com as da fundação**
 (`docs/redesign-premium/fundacao/landing-*.png`): a escadaria azul clara no lugar da âmbar, na mesma moldura preta, nos dois temas (no
 escuro, a moldura continua mais escura que a página, e o recorte ganha o anel branco a 8%, que o fio cinza fazia antes); o `[!]` do aviso na
-sans; a fita na sans; a faixa dos laboratórios com o nome numa linha e uma etiqueta só, como a faixa de marcas do Rallies (que não tem
-etiqueta nenhuma); o resto do hero, dos painéis, do FAQ, do CTA e do rodapé na mesma posição da fundação e do Rallies. O cartão "Arena
+sans; a fita na sans; a faixa dos laboratórios com o nome numa linha e uma etiqueta só; o resto do hero, dos painéis, do FAQ, do CTA e do rodapé na mesma
+posição da fundação. O cartão "Arena
 agora" e os recortes dos painéis 2 e 3 ainda têm as etiquetas em cada nome e a mono nos tickers: são as peças da T1a (seção 2). Nas de 390 px
 (o desktop do Playwright com o toque emulado), o botão "›" da faixa do cartão aparece, porque essa emulação ainda responde `pointer: fine`;
 num celular de verdade ele não aparece (é a faixa da onda anterior, e o `layout.spec.ts` o confere no desktop).

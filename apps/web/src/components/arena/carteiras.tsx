@@ -73,9 +73,9 @@ function Anel({ bps }: { bps: number }) {
 }
 
 // O cabeçalho de coluna em versalete: o e2e lê o texto do DOM (em caixa normal), nunca o innerText. Ele fica numa linha: o
-// "Resultado %" mostra só o "%" ao lado do "Resultado" (o resto do nome vai para o leitor de tela, que ouve "Resultado %"), como o "P&L" e o
-// "P&L %" (o QA do fechamento, achado 16: ele quebrava em dois andares). As colunas têm a mesma largura em toda carteira (o
-// `colgroup`; a largura que o conteúdo pedir a mais ainda alarga a coluna, sem encavalar), e os números vão alinhados à esquerda, como o P&L
+// "Resultado %" mostra só o "%" ao lado do "Resultado" (o resto do nome vai para o leitor de tela, que ouve "Resultado %"; o QA
+// do fechamento, achado 16: ele quebrava em dois andares). As colunas têm a mesma largura em toda carteira (o
+// `colgroup`; a largura que o conteúdo pedir a mais ainda alarga a coluna, sem encavalar), e os números vão alinhados à esquerda:
 // o glifo ▲ ▼ ■ fica no mesmo lugar de uma linha para a outra e de uma carteira para a outra. A Regra do Glifo (docs/DESIGN.md):
 // ele vai só no resultado em reais, o número principal da linha; o resultado % leva o sinal, na cor do texto. A tabela cabe nos 320 px da
 // coluna do celular em 360 px, com o resultado do tamanho de "-R$ 1.330,30" (o QA do fechamento, achado 1): o respiro entre as colunas é de

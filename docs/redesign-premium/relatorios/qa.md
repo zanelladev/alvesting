@@ -42,7 +42,7 @@ pelo seletor ou guardado no navegador pinta exatamente como o do sistema (seçã
 
 - **As ferramentas**: o `@playwright/test` 1.64.1 do `apps/web` (o Chromium 156.0.8078.4 e o WebKit 27.2 do iPhone 15) e o
   `@axe-core/playwright` de lá. Um navegador por vez, fechado no fim de cada script. Os scripts ficaram em `.data/orquestracao/premium/qa/`
-  (fora do git), com base nos da onda anterior (`.data/orquestracao/rallies/qa/`): `comum.mjs` (as telas, as larguras e o contexto),
+  (fora do git), com base nos da onda anterior: `comum.mjs` (as telas, as larguras e o contexto),
   `medir.mjs` (o que roda dentro da página), `entrar.mjs`, `varredura.mjs`, `axe.mjs`, `tema.mjs`, `pintura.mjs`, `interacao.mjs`,
   `graficos.mjs`, `rolagem.mjs`, `toque.mjs`, `sondas1.mjs` a `sondas4.mjs`, `wk.mjs`, `evidencias.mjs` e `sair.mjs`; o que cada um mediu está
   em `out/*.ndjson`, que deixei lá como registro das medidas.
@@ -67,7 +67,7 @@ pelo seletor ou guardado no navegador pinta exatamente como o do sistema (seçã
   escala); a mono fora do hash e do código; a transição de `all`; a cor crua em atributo de SVG ou em `style`; as animações no `load` e
   depois da espera (`document.getAnimations()`); o CLS (`layout-shift`); a moldura de 1.550 px; o contraste do logo no círculo; a navegação e
   o item marcado; no celular, o rodapé contra a barra de abas; os erros de console e os pedidos que falham. O quadro e a página inteira de
-  cada combinação ficaram em `shots/` para a revisão a olho, comparada com as capturas do Rallies em `.data/rallies-referencia/` e com as
+  cada combinação ficaram em `shots/` para a revisão a olho, comparada com as
   "depois" das tarefas em `docs/redesign-premium/*/`.
 - **O axe** (18:09 a 18:13 e 18:41 a 18:44): todas as regras e todas as gravidades, depois de 400 ms parado (as transições de 150 a 250 ms
   terminam antes da leitura das cores): as 27 telas × 360, 390, 1024, 1440 e 1920 px × os dois temas = **270** no Chromium e as 11 principais
@@ -228,8 +228,8 @@ todos, o tema foi o do sistema, nos dois; a escolha guardada e o seletor dão a 
 **7. "Decisões | Carteiras" na arena parecem abas, mas são âncoras, e nenhuma fica marcada.**
 - **Onde**: `/arena` e `/arena?filtro=SELL`, abaixo de 1280 px (e no iPhone 15), claro e escuro.
 - **O que está errado**: a navegação "Seções da arena" usa o desenho das abas grandes (`Abas grandes`), mas os dois itens são links para
-  `#feed` e `#carteiras`, na mesma página: nenhum fica marcado, os dois ficam no cinza, e o toque só desce a página. No Rallies, "Feed |
-  Portfolios" são abas de verdade, com a escolhida na tinta. Parece um controle quebrado.
+  `#feed` e `#carteiras`, na mesma página: nenhum fica marcado, os dois ficam no cinza, e o toque só desce a página.
+  Parece um controle quebrado.
 - **Passo**: `/arena` em 390 px, logo abaixo do aviso.
 - **Captura**: `docs/redesign-premium/qa/07-arena-390-claro.png`.
 - **Conserto sugerido**: ou abas de verdade (a vista das decisões e a das carteiras), ou links com cara de link ("Ir para as decisões ›"),
@@ -308,7 +308,7 @@ todos, o tema foi o do sistema, nos dois; a escolha guardada e o seletor dão a 
 - **Onde**: a barra das carteiras da `/arena` e do `/ranking`, de 1280 a 1920 px, e as carteiras no pé da arena em 360 e 390 px e no iPhone 15;
   claro e escuro.
 - **O que está errado**: "Resultado %" quebra em "RESULTADO" / "%", e os outros três títulos ficam encostados embaixo, numa linha de 40 px: o
-  cabeçalho fica desigual (o "P&L %" do Rallies cabe numa linha). Já estava na onda anterior (o achado 10 de lá).
+  cabeçalho fica desigual. Já estava na onda anterior (o achado 10 de lá).
 - **Captura**: `docs/redesign-premium/qa/16-arena-1440-claro.png`.
 - **Conserto sugerido**: o título "%" (com o "Resultado" do lado dizendo que é em reais), ou "Result. %" com o nome inteiro no `abbr`, ou a coluna
   com largura para ele numa linha.
@@ -329,8 +329,8 @@ todos, o tema foi o do sistema, nos dois; a escolha guardada e o seletor dão a 
 - Nenhuma rolagem horizontal nas 432 combinações do Chromium e nas 22 do iPhone 15, **fora o achado 1** (as seis de 360 px da arena e do
   ranking). Nenhum elemento passa da largura nas outras.
 - Nenhum texto por cima de outro (as caixas de linha de cada nó de texto), fora o 10, que pede a interação.
-- O texto cortado de propósito: a descrição dos cartões do Explorar em duas linhas (`line-clamp-2`, como o Discover do Rallies) e o
-  "Igual-peso do uni…" com reticências na barra "Populares" (o Rallies corta igual: "Trump Administrat…", "Bridgewater Asso…"). Os cortados
+- O texto cortado de propósito: a descrição dos cartões do Explorar em duas linhas (`line-clamp-2`) e o
+  "Igual-peso do uni…" com reticências na barra "Populares". Os cortados
   que não são de propósito são o 3 e o 4.
 - Os valores do contador, os hashes (a `.hash` quebra em qualquer ponto), os tickers e os nomes da faixa cabem em toda largura.
 
@@ -362,7 +362,7 @@ todos, o tema foi o do sistema, nos dois; a escolha guardada e o seletor dão a 
   fundo do tema no `DOMContentLoaded` (5 telas × as duas escolhas, Chromium e WebKit): o script em linha do `<head>` vem antes do `<body>`.
 - **A primária** (a escala do `#14144C`, conferida em sRGB): no claro, só os botões primários, a marca e a escolha atual (a pílula do seletor e o
   filtro do feed, desenhados no `::before`); no escuro, o 300 nos mesmos lugares, com o texto no 950. O que sai da regra está nos achados 8 e 9.
-  O item ativo do trilho é o cinza do trilho (o círculo cheio do Rallies), e não a primária, como o `DESIGN.md` descreve.
+  O item ativo do trilho é o cinza do trilho (o círculo cheio), e não a primária, como o `DESIGN.md` descreve.
 - **O axe**: nenhuma violação em 292 análises (as 27 telas × 360, 390, 1024, 1440 e 1920 px × os dois temas no Chromium; as 11 principais × os
   dois temas no iPhone 15). O "incompleto" de contraste (de 17 a 24 nós por tela) é o de sempre: a pílula desenhada no `::before` (o filtro
   escolhido, os chips, a "Entrar"), o cartão da faixa que passa por baixo do "›", as etiquetas do gráfico de posições cortadas (o 3) e a arte;
@@ -423,7 +423,7 @@ o 15.
   título das carteiras; o modelo, a etiqueta junto do título; o Explorar, uma vez na grade dos modelos e uma na barra "Populares". Nenhuma
   pílula com borda em nome nenhum (a única pílula com borda que sobrou é a do 12, que não é do "simulado").
 - **O logo e o nome numa linha** na faixa, nas carteiras, nas legendas e nas tabelas do desktop; no feed e nos cartões do Explorar o logo maior
-  fica ao lado de duas linhas (o nome e a data) ou em cima (o desenho do Discover), como no Rallies. As exceções são o 5 e o 17.
+  fica ao lado de duas linhas (o nome e a data) ou em cima. As exceções são o 5 e o 17.
 - **O Sorteio e as referências neutros**: a inicial no círculo cinza (S, C, I, B), sem "simulado" e sem cor de laboratório; as páginas deles
   mostram só o patrimônio, com a frase da licença.
 
@@ -451,24 +451,23 @@ e-mail inválido na `/entrar`, na `/esqueci-senha` e na `/cadastro` e a quantida
 pedido saiu para a api. A carteira da demo não tem lançamentos (o "Nenhuma compra ainda"), então a rosca, o toast e o contador dela não
 aparecem aqui (têm o e2e da T2b).
 
-### 4.12 A cara, contra o Rallies (item 12)
+### 4.12 A cara (item 12)
 
-Comparei a arena em 1920 com a captura do Artur, a landing, a arena e o Discover em 1440 e 390 com as do Rallies e as telas com as "depois" das
-tarefas. O que ficou mais limpo e certo: a moldura de 1.550 px com os fios, o trilho, a faixa com o nome numa linha e o "›", o gráfico com as
-pílulas do fim das linhas e a faixa do Monte Carlo leve, a legenda sem etiquetas, os cartões do Explorar no desenho do Discover, a sans em tudo
+Comparei as telas com as "depois" das tarefas. O que ficou mais limpo e certo: a moldura de 1.550 px com os fios, o trilho, a faixa com o nome numa linha e o "›", o gráfico com as
+pílulas do fim das linhas e a faixa do Monte Carlo leve, a legenda sem etiquetas, os cartões do Explorar, a sans em tudo
 (nenhuma mono fora do hash e do código em nenhuma tela), nenhum `transition: all`, nenhuma cor crua em SVG ou `style`, o escuro coerente. O que
-parece erro ou menos limpo que o Rallies está nos achados 3, 4, 5, 7, 12, 16 e 17.
+parece erro ou menos limpo está nos achados 3, 4, 5, 7, 12, 16 e 17.
 
 ## 5. Observações que não são achados
 
 - **A fita da landing anda desde a abertura**: é a decisão da onda anterior (ADR 0034) mantida pela T1b; para com movimento reduzido.
 - **O quarto painel da landing ("Sua carteira, anotada por você") não tem recorte** e fica com a metade direita vazia: decisão do plano
-  (`docs/redesign-rallies/plano.md`, d.5: "Só texto [...] a landing não lê a sessão"). Se o Artur quiser, um recorte sem número (o formulário de
+  (o plano da onda anterior, d.5: "Só texto [...] a landing não lê a sessão"). Se o Artur quiser, um recorte sem número (o formulário de
   lançar vazio, por exemplo) preencheria sem ler a sessão.
 - **As telas da conta (entrar, criar conta, esqueci a senha) não têm seletor de tema**: o ADR 0037 põe o seletor em três lugares (o trilho, a
   folha "Mais" e o cabeçalho do site), e a tela dividida não é nenhum deles; a escolha feita no resto do site vale ali.
-- **No celular, o gráfico da arena fica abaixo da dobra** (o título, a descrição e o aviso vêm antes, e a faixa começa perto dos 300 px); no
-  Rallies, o gráfico é a primeira coisa. É escolha de hierarquia, e o aviso é obrigatório; fica a anotação.
+- **No celular, o gráfico da arena fica abaixo da dobra** (o título, a descrição e o aviso vêm antes, e a faixa começa perto dos 300 px).
+  É escolha de hierarquia, e o aviso é obrigatório; fica a anotação.
 - **O contador do painel gira por uns 480 ms** quando o pregão muda (a mola da Arc assentando), mais do que os 150 a 250 ms dos outros
   movimentos; só gira quando o número muda, como o pedido pede.
 - **O erro de leitura do `/admin`** ("Não deu para ler a DLQ [...]", a demo sem o Service Bus) aparece na caixa com o fio vermelho do erro de

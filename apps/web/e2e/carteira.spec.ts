@@ -332,7 +332,7 @@ test.describe('lançar uma compra', () => {
     await expect(launch(page)).toHaveClass(/\bbtn-primary\b/);
     await expect(createForm(page)).toHaveCount(0);
 
-    // o painel "Perguntar" (o chat desligado; ADR 0035): a frase e o link para o /chat, e nada para digitar nem tocar
+    // o painel "Perguntar" (o chat desligado; ADR 0041): a frase e o link para o /chat, e nada para digitar nem tocar
     const ask = region(page, 'Perguntar');
     await expect(ask).toContainText('O chat sobre a sua carteira ainda está desligado');
     await expect(ask.getByRole('link', { name: 'Abrir o chat' })).toHaveAttribute('href', '/chat');

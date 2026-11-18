@@ -17,12 +17,12 @@ os mudei), nenhuma rota nova (o dado das telas é o que a api e as rotas interna
   as velas são SVG do servidor, com o resumo em texto. Um teste novo (`e2e/quotes.spec.ts`) lê o HTML da página **e o payload do React** e
   reprova campo de barra (a `RAW_FIELD`) e fechamento do meio da série (escrito ou em centavos). Foi **visto falhar** com dois componentes
   de cliente de mentira (seção 4).
-- **O Explorar no desenho do Discover**: os cartões dos competidores (o logo do laboratório, o nome curto, o que ele é, as posições, o
+- **O Explorar**: os cartões dos competidores (o logo do laboratório, o nome curto, o que ele é, as posições, o
   retorno com o glifo e o percentil), o "simulado" **uma vez por contexto**, o universo da semana em linhas com o logo, o ticker, o
   fechamento e a variação, e o **tooltip da Arc** onde explicar ajuda (o nome inteiro e o percentil no cartão, o que é o universo e, no
   terminal, a confiança).
 - **A lista de ações e as notícias**: a sans no lugar da mono (nenhuma mono nas quatro telas) e o logo de cada ação à esquerda do ticker
-  nos chips das notícias e no universo da semana (na lista das ações e no cabeçalho da ação ele já estava, da T0b); os fios do Rallies e o
+  nos chips das notícias e no universo da semana (na lista das ações e no cabeçalho da ação ele já estava, da T0b); os fios e o
   filtro por ticker como antes.
 - **Movimento calmo**: o cartão acende e o conteúdo sobe 2 px, as linhas acendem e as velas recuam sob o véu, tudo em 150 ms com a saída
   forte; nada anima na abertura; com `prefers-reduced-motion`, nada se move (há teste).
@@ -66,13 +66,13 @@ os mudei), nenhuma rota nova (o dado das telas é o que a api e as rotas interna
 - **As notícias da ação**: a lista das notícias (abaixo), com o logo nos chips, e "Todas as notícias de X".
 
 **O Explorar** (`app/(app)/(explorar)/explorar/page.tsx`, `components/arena/explorar.tsx`):
-- O título "Explore as carteiras da arena" e a busca, com o fio de uma borda à outra do principal embaixo (como o do Discover).
+- O título "Explore as carteiras da arena" e a busca, com o fio de uma borda à outra do principal embaixo.
 - **Os cartões** (um por competidor, em duas grades, "Modelos" e "Controle e referências"; uma coluna no celular, duas a partir de 640 px e
   quatro a partir de 1024 px): o logo do laboratório (ou a inicial), **o nome curto numa linha** (o sufixo de versão vai para o leitor de
   tela e para o tooltip), o que o competidor é em até duas linhas, o número de posições (só os modelos têm composição pública; nos outros, o
   traço) e o retorno com o glifo, com **o percentil embaixo**. Sem etiqueta "simulado" em nenhum nome: a nota vai **uma vez**, no cabeçalho
   da grade dos modelos (e nada no Controle e nas referências, que não decidem). No hover o cartão acende no cinza do painel e o conteúdo
-  sobe 2 px em 150 ms (o levantar discreto do Discover: sobe o conteúdo, não o cartão, para o ponteiro não sair dele no meio); no toque,
+  sobe 2 px em 150 ms (o levantar discreto: sobe o conteúdo, não o cartão, para o ponteiro não sair dele no meio); no toque,
   acende no cinza do trilho. **O tooltip da Arc** em cada cartão de modelo: o nome inteiro e "Percentil X: o retorno ficou acima de X% das
   carteiras sorteadas do Monte Carlo." (a mesma frase da faixa da arena).
 - **O universo da semana**: cada papel numa linha com fio, com o logo à esquerda do ticker, o fechamento e a variação com o glifo, em
@@ -87,7 +87,7 @@ posto dentro do link (a 14 px). A busca, o aviso da busca inválida e o resto co
 
 **As notícias** (`app/(app)/(explorar)/noticias/page.tsx`, `components/news-list.tsx`): **os chips de ticker com o logo da ação à
 esquerda** (a 6 px, como os do feed), na sans 500 (eram a mono, sem logo), no `/noticias` e na página da ação (o `NewsList` recebe o índice
-dos logos). O item de feed (o fio `hairline`, o título em 15/600, o respiro que dá os 44 px) já era da onda do Rallies; o filtro por ticker,
+dos logos). O item de feed (o fio `hairline`, o título em 15/600, o respiro que dá os 44 px) já era da onda anterior; o filtro por ticker,
 "Limpar filtro", o aviso do ticker torto e "Mais antigas" como antes.
 
 ## 2. As peças e de onde vêm
@@ -100,7 +100,7 @@ dos logos). O item de feed (o fio `hairline`, o título em 15/600, o respiro que
 | Casca do grupo, aviso e nota "simulado", nome curto e logo do laboratório | T1a (`arena/pagina.tsx`: `ComBarra`, `NavegacaoDaArea`, `AvisoSimulado`; `ui.tsx`: `NotaSimulada`; `competidor.tsx`: `Competidor`, `NomeCurto`, `Logo`; `decisions.tsx`: `ActionBadge`) | as quatro telas | como estão |
 
 **Não entraram**: o **controle segmentado da Arc** (a troca entre "Modelos" e "Papéis da semana" não virou escolha dentro da tela: as duas
-seções ficam na página, uma embaixo da outra, como as grades do Discover; nada a escolher) e a **escolha do período das velas** (a rota
+seções ficam na página, uma embaixo da outra; nada a escolher) e a **escolha do período das velas** (a rota
 interna entrega uma janela fixa, `INTERNAL_BARS_LIMIT` = 60 pregões, sem parâmetro; recortar janelas menores no servidor seria só enfeite
 sobre o mesmo dado). Nenhuma peça fora da tabela do ADR 0037, então o ADR não mudou.
 
@@ -113,7 +113,7 @@ sobre o mesmo dado). Nenhuma peça fora da tabela do ADR 0037, então o ADR não
 | Ao lado no desktop, abaixo no celular: quem tem a ação, as decisões e as notícias | `explorar.spec.ts` (as duas colunas e o painel preso a 24 px no desktop; uma embaixo da outra no celular, na ordem da leitura); `arena.spec.ts` (o conteúdo de cada uma, por igualdade) |
 | **A regra das cotações**: a série nunca vai ao navegador como dado; nenhum componente de cliente recebe barra; o resumo em texto; o realce só com a data e sem parada de Tab | `quotes.spec.ts` ("a página da ação não entrega a série de preços", visto falhar com os dois componentes de mentira, seção 4); `components.spec.tsx` ("nenhum fechamento do meio da série aparece no HTML"; o realce `aria-hidden` sem foco); `explorar.spec.ts` (o realce mostra só a data; nada no desenho recebe o foco); `velas.tsx` é de servidor (sem `'use client'`), e o tooltip da Arc, de cliente, recebe só o texto da explicação e o elemento que ele envolve (o cartão, o termo), nenhum preço da série |
 | A leitura das quatro cotações pelo cursor fica de fora | não foi feita (seção 7) |
-| O Explorar no desenho do Discover: os cartões (o logo do laboratório, o nome sem o sufixo, o "simulado" uma vez) e os papéis da semana (o logo, o ticker, o fechamento e a variação) | `arena.spec.ts` (os cartões e o universo, por igualdade); `explorar.spec.ts` (o "simulado" uma vez por contexto e o nome numa linha); `components.spec.tsx` (o cartão, a barra e o universo) |
+| O Explorar: os cartões (o logo do laboratório, o nome sem o sufixo, o "simulado" uma vez) e os papéis da semana (o logo, o ticker, o fechamento e a variação) | `arena.spec.ts` (os cartões e o universo, por igualdade); `explorar.spec.ts` (o "simulado" uma vez por contexto e o nome numa linha); `components.spec.tsx` (o cartão, a barra e o universo) |
 | A lista de ações e as notícias: o logo, a sans, os fios e o filtro por ticker como hoje | `arena.spec.ts` e `fixture.spec.ts` (a busca, as notícias e o filtro, como antes); `explorar.spec.ts` ("as quatro telas são todas na sans") |
 | O logo à esquerda do ticker nas quatro telas, e o monograma sem logo | `explorar.spec.ts` ("o logo de cada ação à esquerda do ticker, em toda linha com ticker das quatro telas": o primeiro filho do link, a imagem ou o monograma pelo índice da rota interna); `logos.spec.ts` (a T0b) |
 | Movimento: 150 ms nos cartões e nas linhas, o realce da vela, o tooltip onde ajuda; nada na abertura; com movimento reduzido nada se move | `explorar.spec.ts` (o cartão em 150 ms e 2 px; o tooltip no cartão, no universo e na confiança; "movimento reduzido": sem transição, sem subir, o véu na hora e nenhuma animação rodando) |
@@ -205,17 +205,6 @@ bloco no CSS único**: 31 regras, 6.037 B crus e uns **494 B no fio** (o gzip do
 `acoes-*` com a busca `?q=MO`, `acao-*` com o MOVE3 e `noticias-*`), o realce de um pregão (`acao-1440-claro-realce.png` e
 `acao-1440-escuro-realce.png`, só a figura) e o tooltip do cartão no hover (`explorar-1440-claro-dica.png` e
 `explorar-1440-escuro-dica.png`). As de antes estão em `antes/`, tiradas no começo da tarefa sobre o build final da T1a.
-
-**Contra o Discover do Rallies** (`.data/rallies-referencia/discover-1440-*.jpeg` e `discover-390-*.jpeg`): o mesmo esqueleto, com a barra
-de 300 px com o acordeão "Populares" e os grupos com a seta, o título em duas linhas, a busca com o fio de uma borda à outra e a grade de
-quatro colunas. Cada cartão tem o logo, o nome, a descrição em duas linhas e a linha dos números (Posições e Retorno, como o Holdings e o
-YTD Return dele) sobre um fio. Onde ficamos diferentes de propósito:
-- a busca é um campo com o botão "Buscar", que funciona sem JavaScript;
-- o topo não tem ilustração (o `docs/PRODUCT.md` pede calma, e a arte mora na moldura da landing);
-- o percentil fica embaixo do retorno;
-- a nota "simulado" aparece uma vez por contexto, e o glifo só no retorno;
-- a primária `#14144C` só na marca do trilho e no foco (o item ativo do trilho é o cinza do trilho; correção do fechamento da onda, M15 da
-  revisão de código).
 
 **Contra as de antes**, tela a tela:
 - **O Explorar**: os nomes cabem numa linha, sem etiqueta e sem sufixo; antes, "Qwen3.8 Max (0902) simulado" quebrava em duas linhas nos

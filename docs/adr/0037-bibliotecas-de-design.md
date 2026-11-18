@@ -3,18 +3,16 @@
 - **Status:** aceita
 - **Data:** 05/11/2026
 - **Origem:** o pedido do Artur de 05/11/2026 ("Quero que use libs para design: https://uiarc.dev/components/blocks/market-terminal
-  https://beui.dev/charts https://reui.io/components/chart pode misturar libs as vezes, eu quero tudo animado com cara de premium [...] O
-  Rallies parece muito mais clean, quero switch de temas também. A cor da aplicação, primária será em vez de amarelo #14144C (esse tom de
+  https://beui.dev/charts https://reui.io/components/chart pode misturar libs as vezes, eu quero tudo animado com cara de premium [...]
+  quero switch de temas também. A cor da aplicação, primária será em vez de amarelo #14144C (esse tom de
   azul é o da logo)") e as decisões dele na mesma conversa: só o que é gratuito e MIT das três; nada Pro (o market terminal da Arc é Pro, e o
   terminal será montado com peças grátis); a primária #14144C com uma variante clara no escuro; o seletor claro, escuro e sistema (o padrão
   continua o sistema), animado e guardado no navegador. A tarefa T0 da onda "design premium" (a fundação), relatório em
   `docs/redesign-premium/relatorios/fundacao.md`.
-- **Completa:** o ADR 0035 (o design do Rallies AI nos dois temas; desde 18/11/2026 o sistema visual é o do ADR 0041, e esta tabela
-  continua a de peças, com as peças redesenhadas por ele). Ficavam dele a linguagem visual, as cascas, os nomes dos tokens, a moldura
-  e a arte. **Muda:** o "sem botão de tema" (agora há o seletor), a Geist 600 dos títulos (saiu: uma sans só, a do sistema), o âmbar da marca
+- **Completa:** o sistema visual do site (o de 05/11/2026 e, desde 18/11/2026, o do ADR 0041, que redesenhou as peças desta tabela).
+  Ficavam do de 05/11/2026 as cascas, os nomes dos tokens, a moldura e a arte. **Muda:** o "sem botão de tema" (agora há o seletor), a Geist 600 dos títulos (saiu: uma sans só, a do sistema), o âmbar da marca
   (agora a primária do logo), o anel de foco na tinta (agora na primária), a regra "nenhuma dependência npm nova" das telas (as peças das
-  bibliotecas trazem o `motion` e o tooltip da Radix, só onde são usadas) e a etiqueta "simulado" ao lado de todo nome (a decisão 5 do 0035:
-  agora ela é visível, discreta e **uma vez por contexto**, a nota no cabeçalho da faixa, da tabela e da barra das carteiras, a etiqueta junto
+  bibliotecas trazem o `motion` e o tooltip da Radix, só onde são usadas) e a etiqueta "simulado" ao lado de todo nome (agora ela é visível, discreta e **uma vez por contexto**, a nota no cabeçalho da faixa, da tabela e da barra das carteiras, a etiqueta junto
   do título na página do modelo, o aviso de página na arena e no ciclo; o fechamento da onda).
 
 ## Contexto
@@ -31,7 +29,7 @@ tempo). A ReUI (reui.io, MIT, Copyright (c) 2025 Keenthemes Inc) é o shadcn com
 componentes grátis são os do shadcn sobre o Recharts 3. Quase tudo é componente de cliente com o Motion; o site é de servidor (as cascas e a
 landing não têm JavaScript de cliente acima da dobra, e o LCP mobile da landing ficou em 2.488 e 2.521 ms na última medida, contra o teto de 2,5 s).
 
-Critério de cada escolha: **cabe no visual do site (o do ADR 0035 na época; hoje o do ADR 0041), tem o ramo de movimento reduzido, funciona pelo teclado e pesa pouco** (o que a peça
+Critério de cada escolha: **cabe no visual do site (o de 05/11/2026 na época; hoje o do ADR 0041), tem o ramo de movimento reduzido, funciona pelo teclado e pesa pouco** (o que a peça
 traz para a página que a usa). Foram lidos o `llms.txt` das três e o markdown (ou o código, no registro) de cada candidata.
 
 ## Decisão
@@ -41,7 +39,7 @@ traz para a página que a usa). Foram lidos o `llms.txt` das três e o markdown 
 | Tipo | A peça | De onde | Por quê | Instalada agora | Ficou de fora |
 |---|---|---|---|---|---|
 | Botão | as classes `.btn` (o de apoio: desde o ADR 0041, o canvas com o fio forte por dentro e raio 8) e `.btn-primary` (a primária, uma por superfície) | nossa | O botão vive em tela de servidor, em `<a>`, em `<button>` e no envio dos formulários: a classe é o mesmo botão em toda parte, sem JavaScript. 44 px, `scale(0.96)` no toque em 150 ms, transição só do que muda, o anel único | já existia; refeita nos tokens | o Button da Arc (cliente, com Motion e a largura que segue o rótulo), o da beUI (Motion), o do shadcn na ReUI (cva e tailwind-merge) |
-| Abas e controle segmentado | os links `.abas` e `.segmentado`, do servidor: as telas de uma área, o filtro do feed e as vistas da arena no celular (`?vista=decisoes\|carteiras`, com o `aria-current` na escolhida); e, desde 06/11/2026, o modo de preço do lançamento da carteira (o `RadioField` do `form-kit.tsx`: os radios nativos no desenho do segmentado, com a escolha que desliza até a opção em 250 ms, só CSS, num módulo); e, desde 17/11/2026, a escala do gráfico do patrimônio ("R$ \| %", na arena e na página do modelo: o mesmo `RadioField`, fora de um formulário, com a legenda só para o leitor de tela e desativado até a hidratação) | nossa; o Segmented control da Arc (`segmented-control`) foi o escolhido para a vista dentro de uma tela, e a primeira que pediu uma (a escala do gráfico) ficou com o `RadioField` | O desenho do segmentado (desde o ADR 0041, o trilho do segundo plano e a escolha num quadrado do canvas; antes, o do Rallies). A escala do gráfico (17/11/2026) é a primeira escolha de vista de cliente: o `RadioField` já estava no site, faz a pílula só por CSS e não traz uma peça nova; as vistas da arena seguem do servidor, sem JavaScript | o da Arc: copiada e retirada em 05/11/2026 por falta de uso, e não voltou com a escala do gráfico | as Tabs da Arc e da beUI (o painel junto, que as telas não pedem), as da ReUI (sem a pílula que anda) |
+| Abas e controle segmentado | os links `.abas` e `.segmentado`, do servidor: as telas de uma área, o filtro do feed e as vistas da arena no celular (`?vista=decisoes\|carteiras`, com o `aria-current` na escolhida); e, desde 06/11/2026, o modo de preço do lançamento da carteira (o `RadioField` do `form-kit.tsx`: os radios nativos no desenho do segmentado, com a escolha que desliza até a opção em 250 ms, só CSS, num módulo); e, desde 17/11/2026, a escala do gráfico do patrimônio ("R$ \| %", na arena e na página do modelo: o mesmo `RadioField`, fora de um formulário, com a legenda só para o leitor de tela e desativado até a hidratação) | nossa; o Segmented control da Arc (`segmented-control`) foi o escolhido para a vista dentro de uma tela, e a primeira que pediu uma (a escala do gráfico) ficou com o `RadioField` | O desenho do segmentado (desde o ADR 0041, o trilho do segundo plano e a escolha num quadrado do canvas; antes, o trilho cinza com a escolha numa pílula). A escala do gráfico (17/11/2026) é a primeira escolha de vista de cliente: o `RadioField` já estava no site, faz a pílula só por CSS e não traz uma peça nova; as vistas da arena seguem do servidor, sem JavaScript | o da Arc: copiada e retirada em 05/11/2026 por falta de uso, e não voltou com a escala do gráfico | as Tabs da Arc e da beUI (o painel junto, que as telas não pedem), as da ReUI (sem a pílula que anda) |
 | Tooltip | Tooltip, sobre o da Radix | Arc, `tooltip` | O Esc fecha, ele abre no foco do teclado e no hover, e o ponteiro passa para o balão (WCAG 1.4.13); 250 ms no primeiro e nenhum nos seguintes; transições interrompíveis (`@starting-style`); movimento reduzido sem deslocamento. No toque ele não abre: o que ele diz é complemento, e o que o toque precisa fica em texto na tela | sim (`components/arc/tooltip`, com `@radix-ui/react-tooltip` 1.4.1): a faixa e as carteiras da arena, os cartões do Explorar, os termos da carteira | o da beUI (floating-ui e Motion), o do shadcn na ReUI (sem a espera compartilhada) |
 | Termo com explicação | o botão `Termo` (`components/wallet-charts.tsx`: a caixa de 44 px, o tooltip da Arc) e o sublinhado pontilhado no fio de controle (`.termo`) | nossa | Um desenho só para o "há mais a ler aqui" (o fechamento da onda juntou os três que havia: o `.dica`, o `.termo` e o rótulo do radio); a explicação também fica em texto na tela, para o toque. O radio "Valor total pago" do lançamento saiu do tooltip em 06/11/2026: o balão numa metade do segmentado não abre no toque, e a explicação é a dica à vista do campo de valor no modo total (e a descrição do radio para o leitor de tela) | sim (a carteira) | o termo de `tabIndex` sem papel nem caixa de 44 px (saiu do Explorar e do terminal, que agora mostram a explicação em texto) |
 | Contador de número que rola | Animated counter (uma roda por algarismo, no sentido em que o número andou) | Arc, `animated-counter` | Gira só quando o número muda (nada na abertura da página), o leitor de tela lê o número inteiro uma vez, o idioma é fixo (pt-BR: o servidor e o navegador escrevem os mesmos algarismos), e com movimento reduzido troca na hora | sim (`components/arc/animated-counter`): o painel do gráfico do patrimônio, o resumo e a rosca da carteira | o Number Ticker da beUI (entra rolando na abertura) e o Animated Number (conta do zero ao aparecer) |
@@ -127,7 +125,7 @@ para o português. **Nada Pro**: nenhum item Pro foi lido, baixado nem refeito a
 
 A do sistema (`ui-sans-serif, system-ui`: a SF no Apple, a Roboto no Android, a Segoe no Windows), com os pesos de verdade dela (400, 500 e
 600) e **algarismos tabulares em todo número** (no `body`). A Geist 600 dos títulos saiu: era um pedido de 13,4 KB de alta prioridade no
-caminho crítico da landing, e o Rallies usa uma sans só. O `font-display` continua como nome (os títulos que o usam não mudam), e aponta para
+caminho crítico da landing. O `font-display` continua como nome (os títulos que o usam não mudam), e aponta para
 a mesma sans. **A mono é só para hash e código** (a classe `.hash`: a mono que quebra em qualquer ponto); tirar a mono dos tickers, dos
 títulos das colunas e dos rótulos de cada tela é das tarefas de tela. O espaçamento dos títulos grandes para em -0,04 em.
 

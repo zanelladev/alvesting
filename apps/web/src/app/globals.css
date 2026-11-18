@@ -1859,7 +1859,8 @@ html[data-tema-revelar]::view-transition-new(root) {
 @layer components {
   /* A pilha de avisos (components/beui/animated-toast-stack.tsx, components/avisos.tsx): fixa no pé da tela, sobre o conteúdo e abaixo do tooltip
      (a casca é z 30, o tooltip 90). No celular, acima da barra de abas e da área segura, na largura da tela menos 16 px de cada lado; a partir
-     de 640 px, 384 px no canto direito; a partir de 1024 px, no canto da coluna do app (que acima de 1.550 px fica no centro). A lista não
+     de 640 px, 384 px no canto direito; a partir de 1024 px, no canto da coluna do app, a 1,5rem da borda dela: a coluna (`--coluna`) fica no
+     centro do que sobra da lateral de 248 px, com a borda a 50% − (coluna + lateral) ÷ 2 da direita, e abaixo disso a célula de 2rem. A lista não
      recebe o toque, só os avisos. O mais novo fica embaixo, perto da borda. */
   .aviso-pilha {
     @apply pointer-events-none fixed inset-x-4 z-40 flex flex-col gap-2;
@@ -1874,7 +1875,7 @@ html[data-tema-revelar]::view-transition-new(root) {
   @media (width >= 64rem) {
     .aviso-pilha {
       bottom: 1.5rem;
-      right: max(1.5rem, calc(50% - 775px + 1.5rem));
+      right: max(3.5rem, calc(50% + 1.5rem - (var(--coluna) + 15.5rem) / 2));
     }
   }
   /* o aviso: o canvas que flutua (a sombra de elevação, sem o fio junto: a Regra Plana), raio 12, o ícone, o texto inteiro e o fechar de 44 px */

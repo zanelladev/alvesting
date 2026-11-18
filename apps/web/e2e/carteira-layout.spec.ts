@@ -244,7 +244,7 @@ for (const screen of SCREENS) {
         expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
         expect(bodyWidth).toBeLessThanOrEqual(clientWidth);
 
-        // a barra de abas da casca do app (ADR 0035) fica na tela, com o link "Carteira", e cabe na largura: a marca e os cinco links (o sexto
+        // a barra de abas da casca do app (ADR 0041) fica na tela, com o link "Carteira", e cabe na largura: a marca e os cinco links (o sexto
         // alvo é o botão "Mais"), cada um com 44 px de altura. As contagens vêm antes das medidas: sem elas os laços passariam em vazio se o
         // cabeçalho sumisse (o endereço de cada link é conferido no layout.spec.ts)
         await abrirMenu(page);

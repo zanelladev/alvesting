@@ -1,7 +1,7 @@
 # T0b: os logos das ações no site (05/11/2026)
 
-Onda do design premium. A T1 da onda anterior guardou no banco a cópia dos SVG da brapi e deu ao site duas rotas internas (ADR 0036;
-`docs/redesign-rallies/relatorios/logos-api.md`, "O contrato das rotas para a T3"). Esta tarefa lê os logos, serve-os do nosso domínio com
+Onda do design premium. A T1 da onda anterior guardou no banco a cópia dos SVG da brapi e deu ao site duas rotas internas (ADR 0036; o
+relatório `logos-api.md` da onda anterior, "O contrato das rotas para a T3"). Esta tarefa lê os logos, serve-os do nosso domínio com
 segurança e entrega o componente que as telas vão usar, provado na lista e na página da ação. O desenho e o uso estão em `docs/TELAS.md`, seção
 4a; a decisão, no ADR 0036, "Como o site mostra"; a rota, no `docs/API.md`, seção 6.
 
@@ -90,9 +90,7 @@ continuou com 0 linhas).
   dentro da borda (`outline`, `-outline-offset-1`, `light-dark(rgb(0 0 0 / 0.1), rgb(255 255 255 / 0.1))`). Sem a versão: o monograma,
   `<span aria-hidden="true" data-logo="monograma" data-inicial="P">`, com a letra pelo `::before` (fora do texto), em `bg-surface-strong`,
   `border-hairline` e `text-muted` (o desenho da inicial do competidor). Dois tamanhos: `lista` (16 px) e `cabecalho` (40 px).
-- **As medidas do Rallies** (as capturas de `.data/rallies-referencia/`, todas em 1x): o círculo tem 16 × 16 px nas três (`arena-1440-dark`,
-  `arena-1440-light` e `arena-1917-logado`); a primeira tinta do ticker fica a 15 px do círculo; no claro o círculo branco some no fundo e só o
-  desenho aparece. As nossas, medidas nas capturas: 16 × 16, 14 px do círculo à caixa do texto (`mr-3.5`) e o centro do texto no centro do
+- **As medidas**, nas capturas: 16 × 16, 14 px do círculo à caixa do texto (`mr-3.5`) e o centro do texto no centro do
   logo; no cabeçalho, 40 × 40, 12 px (`mr-3`) e 3,25 px entre os centros.
 - O contorno: o `light-dark()` segue o `color-scheme` da página, que a fundação da T0 põe por `data-tema` (o claro e o escuro escolhidos) ou
   deixa `light dark` (o sistema). O `dark:` não serviria: a T0 o ligou à classe `.dark`. O Tailwind compila o `light-dark()` para as variáveis
@@ -164,12 +162,10 @@ Com a trava pesada (12:12 a 12:15 e 13:19 a 14:00; o disco entre 12 e 9 GB livre
 
 Em `.data/logos-capturas/` (fora do git), no build de produção (o standalone na 4331), lendo a minha api na 4330 sobre o `alvesting_dev` só para
 leitura, em Chromium, nos dois temas: `lista-*` (`/acoes?q=CA`: CALI3, CASN3 e CASN4 sem logo e o resto com), `acao-petr4-*` (o logo da
-Petrobras, sem viewBox no banco) e `acao-sem-logo-casn3-*` (o monograma), cada uma em 1440 × 900 (1x, como a do Rallies) e em 390 × 844 (2x, como
-a `arena-390` dele), com um recorte do primeiro logo; `comparacao-rallies-1440-claro.png` e `-escuro.png` põem o recorte da Arena do Rallies e o
-da nossa lista lado a lado, na mesma ampliação (4x); e `medidas.json` guarda as medidas de cada uma. Nas 12, nenhum pedido a outro host. O que
-elas mostram: no escuro o círculo branco aparece em volta de cada logo, como no Rallies; no claro ele some no fundo e fica o desenho; o logo
-sem viewBox (o PETR4) aparece inteiro, encolhido; e o tamanho e o respiro são os do Rallies (a altura da linha da lista é a da tela, das tarefas
-de tela). A primeira rodada mostrou o achado do `inline-block` (o logo do cabeçalho numa linha acima do ticker); as capturas de agora são da
+Petrobras, sem viewBox no banco) e `acao-sem-logo-casn3-*` (o monograma), cada uma em 1440 × 900 (1x) e em 390 × 844 (2x),
+com um recorte do primeiro logo; e `medidas.json` guarda as medidas de cada uma. Nas 12, nenhum pedido a outro host. O que
+elas mostram: no escuro o círculo branco aparece em volta de cada logo; no claro ele some no fundo e fica o desenho; o logo
+sem viewBox (o PETR4) aparece inteiro, encolhido; e a altura da linha da lista é a da tela, das tarefas de tela. A primeira rodada mostrou o achado do `inline-block` (o logo do cabeçalho numa linha acima do ticker); as capturas de agora são da
 rodada depois da correção.
 
 ## Como as telas usam o componente e o auxiliar

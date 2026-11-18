@@ -167,7 +167,7 @@ for (const route of ROUTES) {
       await expect(footer).toContainText('Resoluções CVM 19 e 20');
       await expect(footer).toContainText('Contém dados da CVM, licença ODbL');
       await expect(footer).toContainText('Fonte: Banco Central do Brasil');
-      // os logos dos laboratórios: as marcas são dos donos (ADR 0035)
+      // os logos dos laboratórios: as marcas são dos donos (ADR 0041)
       await expect(footer).toContainText(
         'Os nomes e os logos dos modelos são marcas dos seus donos (OpenAI, Anthropic, Google, xAI, DeepSeek e Alibaba Cloud); a Alvesting não tem relação com eles.',
       );

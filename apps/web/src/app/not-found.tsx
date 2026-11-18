@@ -3,7 +3,7 @@ import { Arte } from '../components/arte';
 import { SiteShell } from '../components/site-chrome';
 import { BUTTON, Faixa, NavLink } from '../components/ui';
 
-// A página 404, uma só para o site inteiro (ADR 0035): o endereço não existe, ou o dado ainda não foi publicado
+// A página 404, uma só para o site inteiro (ADR 0041): o endereço não existe, ou o dado ainda não foi publicado
 // (temporada, modelo, ciclo ou ação que a api não conhece). Diz o que fazer em vez de largar o leitor num beco. Nenhum dado entra aqui, então
 // o texto sai mesmo com a api fora do ar. O título no vazio e a arte embaixo, nunca atrás do texto: o urso derrubando as colunas (a página que
 // caiu, numa arena de bolsa), na moldura escura nos dois temas.

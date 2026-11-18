@@ -1,12 +1,12 @@
 ---
 name: ascii-ui
-description: Desde 05/11/2026, só a arte ASCII da Alvesting (a escadaria e o urso); as telas seguem o design do Rallies AI (docs/TELAS.md, seção 10; ADR 0035). O estilo da onda anterior (ADR 0034) — o canvas preto da v1 com a interface nas medidas do Arc (uiarc.dev), o ASCII onde há dado e a arte ASCII "com brasa" (grade de glifos cinza, topo em ladrilho vazado, foco aceso em âmbar) como imagem, na gramática do WAERK (@basit_designs). Use ao pôr, gerar ou ajustar uma arte ASCII numa tela (a escadaria, o urso) ou ao revisar a arte; para desenhar ou revisar uma tela, o docs/TELAS.md, seção 10.
+description: Desde 05/11/2026, só a arte ASCII da Alvesting (a escadaria e o urso); as telas seguem a página regrada (docs/TELAS.md, seção 10; ADR 0041). O estilo da onda anterior (ADR 0034) — o canvas preto da v1 com a interface nas medidas do Arc (uiarc.dev), o ASCII onde há dado e a arte ASCII "com brasa" (grade de glifos cinza, topo em ladrilho vazado, foco aceso em âmbar) como imagem, na gramática do WAERK (@basit_designs). Use ao pôr, gerar ou ajustar uma arte ASCII numa tela (a escadaria, o urso) ou ao revisar a arte; para desenhar ou revisar uma tela, o docs/TELAS.md, seção 10.
 when_to_use: "estilo ascii", "ascii-ui", "design da v1", "como o WAERK", "arte ascii com cor", "brasa", "hero com arte ascii", "medidas do Arc", "uiarc", "refazer a tela nesse estilo", arte para hero/404/vazio, revisar tela contra o docs/TELAS.md
 ---
 
 # ascii-ui
 
-> **Desde 05/11/2026 as telas seguem o design do Rallies AI, nos dois temas** (`docs/TELAS.md`, seção 10; ADR 0035):
+> **As telas seguem a página regrada, nos dois temas** (desde 18/11/2026; `docs/TELAS.md`, seção 10; ADR 0041):
 > a casca, os tokens, as peças e o tipo descritos abaixo são os da onda anterior e valem só como
 > história. **Esta skill vale para a arte ASCII** (a escadaria do hero da landing e o urso da 404): o arquivo
 > pré-renderizado com brasa, a moldura escura em que ela mora nos dois temas, o quadro 0 e o laço (`references/arte.md` e a seção "ASCII e

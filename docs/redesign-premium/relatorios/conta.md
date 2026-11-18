@@ -20,7 +20,7 @@ tocada.
   tela; a confirmação sem caixa; a escadaria azul parada na tela dividida, como estava; nos termos e na política, o aviso do rascunho sem
   caixa e sem mono e o sumário **"Nesta página"** preso à direita a partir de 1280 px (só HTML e CSS), que serve também ao `/como-funciona`.
   **Nenhuma palavra dos textos legais mudou** (o SHA-256 e o aceite são os mesmos; os testes congelados continuam).
-- **O chat desligado (`/chat`)**: já estava no desenho do Rallies desde a onda anterior; ganhou o movimento dos chips em 150 ms e o controle
+- **O chat desligado (`/chat`)**: já estava desenhado desde a onda anterior; ganhou o movimento dos chips em 150 ms e o controle
   desativado que não acende no hover. Continua desligado: nenhum pedido sai da página.
 - **A prova**: o `pnpm check` com exit 0 (o site com 50 arquivos e 914 testes), o `pnpm build` com exit 0, **o e2e inteiro nos seis
   projetos, um por vez e com 1 worker, sem nenhuma falha e sem nenhum instável** (só os pulados de sempre), o Lighthouse com LCP de 2.416 ms,
@@ -31,7 +31,7 @@ tocada.
 ## 1. O que mudou em cada tela
 
 **A `/carteira`** (`app/(app)/(carteira)/carteira/page.tsx`, `components/wallet-panels.tsx`, `wallet-lots.tsx` e o novo `wallet-charts.tsx`):
-- A coluna da carteira (o "Portfolio" do Today do Rallies): o valor estimado, o resultado (o sinal, o percentual e a palavra ganho ou perda,
+- A coluna da carteira: o valor estimado, o resultado (o sinal, o percentual e a palavra ganho ou perda,
   com o glifo uma vez) e o custo total no contador da Arc (`Dinheiro`, em `wallet-charts.tsx`): o leitor de tela lê o texto inteiro do
   `formatBRL` (em `sr-only`, sem float), e as rodas ficam escondidas dele. Nada rola na abertura: o servidor refaz a página depois de lançar,
   editar ou apagar, e só o número que mudou anda.
@@ -47,14 +47,14 @@ tocada.
   sublinhado só no hover); o "Resultado" e o "Preço médio" do cabeçalho são termos com o tooltip da Arc (a mesma explicação está em texto no
   parágrafo das posições, para quem usa o toque); as células a 6 px de cada lado (com o logo, as seis colunas cabem no painel do meio em
   1440 px); nenhuma mono.
-- Os lançamentos: a lista com os fios do Rallies (e não um cartão por item), o logo à esquerda do ticker; editar no próprio item e apagar com a
+- Os lançamentos: a lista com os fios (e não um cartão por item), o logo à esquerda do ticker; editar no próprio item e apagar com a
   confirmação no próprio item, como antes; o "Valor total pago" do radio com o tooltip da Arc (e a mesma explicação como descrição do radio e
   na dica do campo). O que acabou de acontecer (lançado, salvo, apagado) é um aviso da pilha da página (`components/avisos.tsx`): o texto que o
   leitor de tela lia antes é o mesmo, anunciado pela região viva da pilha, e o foco vai ao aviso quando o botão que enviou sumiu (lançar e
   apagar).
 - O "Perguntar" (o chat desligado, à direita no desktop) não mudou.
 
-**A `/conta`** (`app/(app)/(conta)/conta/page.tsx`, `components/account-forms.tsx`): os cartões com o fio do Rallies; a pilha de avisos logo
+**A `/conta`** (`app/(app)/(conta)/conta/page.tsx`, `components/account-forms.tsx`): os cartões com o fio; a pilha de avisos logo
 abaixo do título; o "Baixar meus dados" continua um link comum (sem JavaScript, a api manda o arquivo), e com JavaScript o aviso confirma que
 o download começou; o aceite dos termos recarrega a conta como sempre, e a confirmação chega depois da recarga, na pilha (o texto guardado no
 `sessionStorage`, lido uma vez; o navegador que recusa o armazenamento só perde o aviso).
@@ -99,7 +99,7 @@ estavam. Nada Pro.
 
 | Critério | Evidência |
 |---|---|
-| A sans com algarismos tabulares nos números e nos tickers; a mono só no hash | unidade: `WalletPositions: o desenho limpo do Rallies` (nenhuma mono na tabela), `a citação do rascunho: sem caixa e sem a mono`; o `/como-funciona` e o painel na `.hash` e na sans; capturas |
+| A sans com algarismos tabulares nos números e nos tickers; a mono só no hash | unidade: `WalletPositions: o desenho limpo` (nenhuma mono na tabela), `a citação do rascunho: sem caixa e sem a mono`; o `/como-funciona` e o painel na `.hash` e na sans; capturas |
 | A primária só na ação principal de cada superfície | A pílula "Lançar compra" (a carteira), o envio dos formulários (`form-kit.tsx`); a fatia maior da rosca num tom da escala, e não a primária; capturas `carteira-*` |
 | A Regra do Glifo uma vez por linha; o `[!]` sem caixa; nenhum âmbar | O resultado do resumo e o de cada posição com um glifo só (os testes de unidade do resumo e das posições); o aviso da carteira e o do rascunho legal sem caixa (unidade e capturas); `grep -i "âmbar\|amber"` nos meus arquivos e no bloco da T2b: nada. Os comentários velhos ("pílula preta", "Geist") reescritos |
 | O logo de cada ação à esquerda do ticker, nas posições e nos lançamentos | e2e "o logo de cada ação fica à esquerda do ticker, ligado à página dela, nas posições, na legenda e nos lançamentos" (nos seis projetos); unidade: `o ticker na sans 500 com o logo à esquerda` |
@@ -196,10 +196,6 @@ lançamento no pé da tela). Comparadas:
 - Com as "antes": a carteira trocou a coluna de três números parados por o contador, a rosca e a pílula primária; a tabela ganhou o logo e
   os termos; os lançamentos perderam os cartões. A conta e o painel ficaram iguais à vista (a mudança é o aviso, o select e a sans). O
   entrar e os termos: o aviso do rascunho sem caixa e o sumário à direita em 1440 px. O chat ficou igual (a mudança é o movimento).
-- Com o Rallies: a carteira segue o "Portfolio" da captura do Artur (`arena-1917-logado.png`: os números grandes na sans, a lista de fios e a
-  alocação com a legenda); o `/chat` segue o "O que vamos olhar hoje?" do Today do Rallies desde a onda anterior. As capturas "chat" do
-  Rallies (`chat-1440-*`, `chat-390-*`) são a porta de cadastro do chat dele, de quem não entrou, e não a tela do chat: não há o que copiar
-  delas para um chat que está desligado.
 
 **Achados no caminho**: o tooltip no e2e (seção 4); o radio do formulário de lançar (seção 7).
 

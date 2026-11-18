@@ -334,10 +334,8 @@ da T0, o `pnpm lint` passou** (código 0: o ESLint dos 5 pacotes e o `prettier -
 
 ## Riscos que o checklist destaca (decisões do Artur)
 
-1. **O design copiado do Rallies AI** (`docs/CONFORMIDADE-PLAYBOOK.md`, seção 9.1): o ADR 0035 registra o pedido "copie o Design do Rallies
-   AI", os valores de cor vieram de lá (ajustados para o AA), o `docs/TELAS.md` chama as telas de "a Arena do Rallies" e o `docs/PLANO.md`,
-   seção 1, tem a coluna "Copiamos". O Playbook veda "cópia de design" no critério eliminatório. Não mexi nesses documentos (não são meus):
-   o checklist lista as saídas.
+1. **O sistema visual e o critério eliminatório** (`docs/CONFORMIDADE-PLAYBOOK.md`, seção 9.1): o Playbook veda "cópia de design" no
+   critério eliminatório, e o desenho é decisão do Artur; o checklist lista as saídas. Desde 18/11/2026 o sistema visual é o do ADR 0041.
 2. **O histórico do git tem 6 commits** (um em 04/11/2026 e cinco em 06/11/2026), e o Playbook pede commits frequentes e revistos por pares.
    O checklist diz para não reescrever o histórico (datas inventadas seriam falsificação) e seguir com um commit por tarefa e PR revisado.
 3. **Nada no ar ainda**, e o Playbook pede o sistema público e estável de 30/11/2026 até a divulgação das notas, sem depender do notebook.

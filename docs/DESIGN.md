@@ -180,8 +180,8 @@ components:
 
 # Design System: Alvesting
 
-Este arquivo descreve o sistema visual do site (`apps/web`) desde 18/11/2026: **a página regrada** (ADR 0041, que substituiu o visual do
-ADR 0035), a primária do logo, os dois temas com o seletor e as peças das bibliotecas (ADR 0037). Os valores do cabeçalho são normativos e
+Este arquivo descreve o sistema visual do site (`apps/web`) desde 18/11/2026: **a página regrada** (ADR 0041, que substituiu o sistema visual
+anterior), a primária do logo, os dois temas com o seletor e as peças das bibliotecas (ADR 0037). Os valores do cabeçalho são normativos e
 vêm do `apps/web/src/app/globals.css`, a única fonte; cada cor tem o par claro e escuro (o sufixo `-dark`). O `docs/PRODUCT.md` diz para
 quem e por quê; aqui fica só o visual.
 
@@ -203,7 +203,7 @@ só eleva, o anel de foco visível, os estados completos.
 
 O sistema recusa, pelo `docs/PRODUCT.md`: o **cassino de cripto** (neon, gradiente, contagem regressiva, cara de aposta), a **corretora
 tradicional** (home broker carregado, cheio de caixas, menus e banners), o **painel SaaS genérico** (cards iguais com ícone, números gigantes
-soltos, gradiente roxo) e o **terminal hacker** (tudo preto, fonte mono em tudo, verde de matriz). E recusa voltar ao Rallies: o trilho de
+soltos, gradiente roxo) e o **terminal hacker** (tudo preto, fonte mono em tudo, verde de matriz). E recusa voltar ao sistema anterior: o trilho de
 ícones, a pílula em todo controle, o logo no círculo, a faixa com o "›" de rolar e a pílula colorida no fim da linha do gráfico saíram.
 
 **Key Characteristics:**
@@ -517,7 +517,7 @@ fica no quadro de partida. A série que a legenda mostra de novo se desenha da e
 - **Don't** pareça uma **corretora tradicional**: home broker carregado, cheio de caixas, menus e banners.
 - **Don't** pareça um **painel SaaS genérico**: cards iguais com ícone, números gigantes soltos, gradiente roxo.
 - **Don't** pareça um **terminal hacker**: tudo preto, fonte mono em tudo, verde de matriz.
-- **Don't** volte às marcas do Rallies: o trilho de ícones, a pílula em todo controle, o logo do laboratório no círculo, o "›" de rolar a
+- **Don't** volte às marcas do sistema anterior: o trilho de ícones, a pílula em todo controle, o logo do laboratório no círculo, o "›" de rolar a
   faixa, o valor numa pílula colorida no fim da linha, o nome gigante no rodapé.
 - **Don't** pinte link, ticker ou nome de tabela na primária, nem use a mono nos tickers, nos títulos das colunas ou nos rótulos.
 - **Don't** repita o `▲ ▼` em duas colunas da mesma linha, nem ponha o sufixo de versão ("(0902)") no nome em lugar apertado.

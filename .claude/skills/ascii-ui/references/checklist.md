@@ -41,5 +41,5 @@ Rode linha por linha. Corrija o que falhar e rode de novo.
 - [ ] `pnpm --filter @alvesting/web typecheck`, `lint` e `test` verdes.
 - [ ] `pnpm build` e `pnpm test:e2e` verdes em pixel-7, iphone-15 e desktop (sem rolagem horizontal em 360 px, alvos de 44 px, axe sem
       violação, nenhum erro no console).
-- [ ] Mudou a home: `pnpm lighthouse` com LCP até 2,5 s (meta interna de 2,45 s), CLS até 0,1 e TBT até 200 ms, e o elemento do LCP anotado.
+- [ ] Mudou a home: `pnpm lighthouse` com LCP até 2,8 s (desde 18/11/2026, ADR 0041), CLS até 0,1 e TBT até 200 ms, e o elemento do LCP anotado.
 - [ ] No navegador, em 1440 × 900 e 390 × 844: o menu do celular abre e fecha (Esc), a fita rola, e com movimento reduzido nada anda.

@@ -170,6 +170,14 @@ test.describe('cadastro, verificação, entrar, conta, exportar, sair e excluir'
     await expect(
       page.getByRole('list', { name: 'Avisos', exact: true }).getByRole('listitem'),
     ).toContainText('Pedimos o arquivo dos seus dados ao servidor');
+    // e a pilha fica dentro da coluna do app (no desktop, no canto dela; ADR 0041), e não na borda da tela
+    const coluna = (await page.locator('.coluna-app').first().boundingBox())!;
+    await expect
+      .poll(async () => {
+        const aviso = (await page.locator('[data-aviso]').first().boundingBox())!;
+        return aviso.x >= coluna.x && aviso.x + aviso.width <= coluna.x + coluna.width;
+      })
+      .toBe(true);
     const raw = await readFile(await download.path(), 'utf8');
     const exported = envelopeSchema(userExportSchema).parse(JSON.parse(raw));
     if (!exported.success) throw new Error('a exportação veio com erro');

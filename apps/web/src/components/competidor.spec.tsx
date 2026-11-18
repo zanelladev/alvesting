@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { LeaderboardRow, PublicCompetitor } from '@alvesting/contracts';
 import { Competidor, FaixaDeModelos, Logo, partesDoNome } from './competidor';
 
-// O competidor com o logo do laboratório (ADR 0035; plano, g.4): o logo é decorativo e não muda o texto que o leitor de tela e o e2e leem
+// O competidor com o logo do laboratório (ADR 0041; plano, g.4): o logo é decorativo e não muda o texto que o leitor de tela e o e2e leem
 // ("Nome" e "Nome simulado"); quem não tem laboratório leva a inicial pelo atributo, fora do texto.
 const html = (node: React.ReactNode) => renderToStaticMarkup(<>{node}</>);
 // o texto como o textContent o veria: sem as tags (o ::before do logo e da inicial não é texto)

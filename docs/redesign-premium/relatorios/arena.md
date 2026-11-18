@@ -6,7 +6,7 @@ Nada foi commitado nem posto no índice: o trabalho está só no working tree (`
 
 ## Resumo
 
-- **As quatro telas mais limpas como o Rallies** (a `/arena`, o `/ranking`, a página do modelo e a do ciclo): a sans 500 com algarismos
+- **As quatro telas mais limpas** (a `/arena`, o `/ranking`, a página do modelo e a do ciclo): a sans 500 com algarismos
   tabulares nos tickers, nos títulos das colunas, nos rótulos e nos selos (a mono só no SHA-256 do ciclo, `.hash`); o "simulado" visível,
   discreto e **uma vez por contexto** (a nota no cabeçalho da faixa, da tabela do ranking e da barra das carteiras; a etiqueta junto do título
   na página do modelo; o aviso de página uma vez na arena e no ciclo); o sufixo de versão ("(0902)") fora dos lugares apertados (no tooltip,
@@ -38,7 +38,7 @@ Nada foi commitado nem posto no índice: o trabalho está só no working tree (`
 - O gráfico do patrimônio é o **Line Chart da beUI** (seção 2), com as referências (o CDI, o igual-peso e o BOVA11) escondidas até a legenda
   as mostrar.
 - As carteiras: o logo de cada ação, o ticker na sans 500, o nome curto do modelo com o tooltip do nome inteiro, a linha que acende, o glifo
-  só no resultado em reais (o resultado % com o sinal) e os nomes sem o sublinhado em repouso, como os do Rallies.
+  só no resultado em reais (o resultado % com o sinal) e os nomes sem o sublinhado em repouso.
 - O feed: o rótulo "Decisões" na sans 13/500, o segmentado do filtro na sans 12/500, cada ordem com o logo da ação dentro do chip do ticker e
   o selo BUY, SELL ou HOLD na sans 500; o filtro por modelo lista os nomes sem a etiqueta.
 
@@ -169,12 +169,12 @@ execução e apagado depois; o dado é o sintético do e2e; o tema escolhido pel
 (`arena-1440-claro-grafico.png`, `-escuro-`) e no celular (`arena-390-*-grafico.png`), e o gráfico de posições (`ranking-1440-*-posicoes.png`,
 `ranking-390-*-posicoes.png`).
 
-O que elas mostram, contra a captura do Artur (`.data/rallies-referencia/arena-1917-logado.png`) e as da fundação
+O que elas mostram, contra as da fundação
 (`docs/redesign-premium/fundacao/arena-*.png`): os nomes da faixa numa linha só (na fundação, "Qwen3.8 Max (0902)" e "DeepSeek V4 Pro (0813)"
-quebravam em duas e três linhas com a pílula "simulado"), como os cartões do Rallies; nenhuma pílula com borda em nome nenhum; o aviso em linha,
-sem a caixa cinza; os tickers e os rótulos na sans, com o logo à esquerda, como as carteiras do Rallies (o círculo de 16 px); o resultado % sem o
-segundo glifo; a faixa do Monte Carlo quase só um véu (a da fundação era um bloco cinza) e as etiquetas do fim das linhas menores, perto das do
-Rallies; nos dois temas.
+quebravam em duas e três linhas com a pílula "simulado"); nenhuma pílula com borda em nome nenhum; o aviso em linha,
+sem a caixa cinza; os tickers e os rótulos na sans, com o logo à esquerda (o círculo de 16 px); o resultado % sem o
+segundo glifo; a faixa do Monte Carlo quase só um véu (a da fundação era um bloco cinza) e as etiquetas do fim das linhas menores; nos dois
+temas.
 
 **Os achados no caminho**:
 
@@ -193,7 +193,7 @@ Rallies; nos dois temas.
 ## 7. Desvios e decisões
 
 1. **As referências no gráfico da arena começam escondidas.** O pedido diz "ficam a faixa do Monte Carlo, as referências e as cores dos
-   laboratórios": o gráfico de hoje desenhava só os modelos e o Sorteio, e o Rallies desenha a referência dele (o S&P). As três referências
+   laboratórios": o gráfico de hoje desenhava só os modelos e o Sorteio. As três referências
    entraram como séries escondidas, que a legenda mostra (e então a linha se desenha: é o "dado que muda" da peça); a vista de abertura continua
    a de antes, sem quatro linhas cinza a mais, e a tabela escondida tem todas. Na página do modelo, uma linha só e a faixa, como antes (as
    referências pediriam mais uma leitura da api). Se o Artur preferir as referências à vista, é o `defaultHidden` da página.

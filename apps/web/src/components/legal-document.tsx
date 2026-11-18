@@ -20,7 +20,7 @@ export async function LegalDocumentPage({ id }: { id: LegalDocumentId }) {
   return (
     <Faixa>
       {/* o h1 e os pares (a versão, a vigência, o SHA-256 na mono e, na política, o controlador e o contato) num cartão cinza, acima da prosa
-          (ADR 0035) */}
+          (ADR 0041) */}
       <PageHead title={doc.title}>
         <div className="max-w-2xl rounded-lg bg-surface-card px-4 [&_dl>div:last-child]:border-b-0">
           <Facts>

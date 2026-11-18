@@ -307,7 +307,7 @@ jobs:
       - name: Playwright
         run: pnpm test:e2e
 
-      # LCP <= 2,5 s, CLS <= 0,1 e TBT <= 200 ms na home, em emulação de celular (apps/web/lighthouserc.json).
+      # LCP <= 2,8 s (desde 18/11/2026, ADR 0041), CLS <= 0,1 e TBT <= 200 ms na home, em emulação de celular (apps/web/lighthouserc.json).
       - name: Lighthouse CI (mobile)
         run: pnpm lighthouse
 

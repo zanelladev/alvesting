@@ -491,6 +491,6 @@ Como rodar esse SQL no Postgres privado: uma execução do `job-migrate` com o c
   string, então o caminho por identidade só roda no primeiro deploy.
 - **Imagem da api com cerca de 900 MB** (e uns 40 MB a mais com o `postgresql-client-17`, não medidos: `docker build` não roda onde isto foi escrito; o job `images` do CI imprime o tamanho no resumo), porque leva o CLI do Prisma para o `job-migrate`. Se pesar, o caminho é uma
   imagem só de migração.
-- **Lighthouse mobile na home** (já com o conteúdo da etapa 9) mediu LCP de 1,9 a 2,34 s (o valor de referência é 2,34 s; meta: 2,5 s).
-  A margem é de uns 160 ms; um runner mais lento pode estourar. Se o gate piscar, o ajuste é na página, não na meta (as saídas estão
-  em `docs/TELAS.md`, seção 5).
+- **Lighthouse mobile na home**: na etapa 9 mediu LCP de 1,9 a 2,34 s, contra a meta de 2,5 s; a landing da página regrada (ADR 0041) mede
+  uns 2,72 s, e o teto subiu para 2,8 s (decisão do Artur, 18/11/2026). A margem é de uns 80 ms; um runner mais lento pode estourar. Se o
+  gate piscar, o ajuste é na página, não no teto (as saídas estão em `docs/TELAS.md`, seção 5).

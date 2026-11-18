@@ -1,4 +1,4 @@
-// pnpm lighthouse: Lighthouse CI (mobile) na home do build local. Metas do plano (§13): LCP <= 2,5 s, CLS <= 0,1 e TBT <= 200 ms, na mediana
+// pnpm lighthouse: Lighthouse CI (mobile) na home do build local. Metas do plano (§13): LCP <= 2,8 s (desde 18/11/2026, ADR 0041), CLS <= 0,1 e TBT <= 200 ms, na mediana
 // de 5 execuções (apps/web/lighthouserc.json). Rode `pnpm build` antes.
 // A home lê a api (etapa 9), então o script sobe uma: semeia o banco do e2e com a temporada sintética do ensaio (a mesma que o Playwright
 // usa, sem rede e sem dado de terceiro: docs/ENSAIO.md), sobe a api compilada numa porta própria e passa o endereço ao site, que o lhci

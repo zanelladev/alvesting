@@ -2,11 +2,11 @@
 
 - **Status:** aceita
 - **Data:** 05/11/2026
-- **Origem:** o pedido do Artur de 05/11/2026 ("Quero as logos das ações", com a captura da Arena do Rallies logado); `docs/DADOS.md`, seção 3a; `docs/API.md`, seção 6; `docs/JOBS.md`, seção 2.1; ADR 0028 (o papel mínimo do Postgres da api), 0032 (a brapi como fonte e o banco como cache), 0033 (a rota interna para o site) e 0035 (o design do Rallies AI)
+- **Origem:** o pedido do Artur de 05/11/2026 ("Quero as logos das ações"); `docs/DADOS.md`, seção 3a; `docs/API.md`, seção 6; `docs/JOBS.md`, seção 2.1; ADR 0028 (o papel mínimo do Postgres da api), 0032 (a brapi como fonte e o banco como cache) e 0033 (a rota interna para o site)
 
 ## Contexto
 
-O Rallies mostra o logo da empresa ao lado do ticker nas carteiras, e o Artur pediu o mesmo. A fonte é a brapi: o FAQ dela diz que todos os
+O Artur pediu o logo da empresa ao lado do ticker nas carteiras. A fonte é a brapi: o FAQ dela diz que todos os
 planos, inclusive o gratuito, "incluem acesso às logos oficiais das empresas brasileiras listadas em bolsa" (o texto vem do pedido da onda,
 de 05/11/2026; esta tarefa não releu a página: a única rede dela foi a lista e os SVG), e a lista que o job semanal já pede
 (`/api/quote/list`, ADR 0032) traz, em cada ação, o campo `logo` com o endereço de um SVG em `https://icons.brapi.dev/icons/<TICKER>.svg`.
@@ -111,7 +111,7 @@ sem logo).
 - **Buscar direto da brapi no navegador** (`<img src="https://icons.brapi.dev/...">`): descartada. Cada visitante mandaria o próprio IP (e o
   `Referer` da página) à brapi e ao GitHub Pages, e a política de privacidade teria de dizer isso; o site ficaria preso à disponibilidade e
   ao conteúdo de um host de terceiros, servido sem nenhuma conferência, e a CSP do site teria de abrir o `img-src` para fora.
-- **Só o monograma** (as iniciais do ticker, sem logo nenhum): descartada pelo Artur, que quer o logo como o Rallies. Fica como o que o
+- **Só o monograma** (as iniciais do ticker, sem logo nenhum): descartada pelo Artur, que quer o logo da empresa. Fica como o que o
   site mostra quando o papel não tem logo.
 - **Reconferir o SVG ao servir** (na rota de um logo): descartada no item 7 (a lista e a rota discordariam; a reconferência da passada
   cobre a regra nova, e o `<img>` e a CSP cobrem o que está no banco).
