@@ -200,7 +200,7 @@ laboratório). O movimento explica o método e a mudança, nunca decora: a cena 
 linha que se desenha, o tema novo que se revela a partir do controle tocado.
 
 A densidade é a de um produto de dados (o registro `product`): tabelas densas de 13 px com algarismos tabulares, painéis separados por
-fios, a coluna no centro com a lateral de navegação à esquerda. A calma vem das faixas com respiro (o vão de 48 px entre as seções), de uma
+fios, a coluna junto da lateral de navegação, e as duas no centro. A calma vem das faixas com respiro (o vão de 48 px entre as seções), de uma
 sans só, dos títulos em dois tons e de uma cor só de acento. Premium nos detalhes: o alinhamento exato, os raios concêntricos, a sombra que
 só eleva, o anel de foco visível, os estados completos.
 
@@ -211,7 +211,8 @@ soltos, gradiente roxo) e o **terminal hacker** (tudo preto, fonte mono em tudo,
 
 **Key Characteristics:**
 
-- A página regrada: a folha no fundo, as células no canvas, os fios de 1 px nos vãos, a coluna no centro (1.140 px no site, 1.040 no app).
+- A página regrada: a folha no fundo, as células no canvas, os fios de 1 px nos vãos, a coluna no centro (1.140 px no site; no app, 1.040 px junto da
+  lateral, com as duas no centro).
 - Uma sans só (a do sistema), algarismos tabulares em todo número, a mono só para hash e código, os títulos em dois tons.
 - Neutros tingidos do azul do logo, uma primária (`#14144C`) em até um décimo da tela, o escuro azul-noite.
 - Dois temas com o mesmo desenho: claro, escuro e sistema, escolhidos no seletor e guardados no navegador.
@@ -443,11 +444,12 @@ adaptada do Theme Toggle da beUI); o teclado e o movimento reduzido trocam na ho
 
 ### Navigation
 
-- **O app:** a partir de 1024 px, a lateral de 248 px à esquerda (o canvas com o fio da direita): a marca no topo, o "Buscar" como o
-  primeiro item, desenhado como o campo de busca, os itens com o ícone de 20 px ao lado do rótulo (44 px, raio 9; o atual no segundo plano
-  com o fio por dentro, e o ícone na primária), o "Mais" e, no pé, o seletor de tema e a "Conta". Abaixo de 1024 px, a marca numa linha no
+- **O app:** a partir de 1024 px, a lateral de 248 px, que fica na tela enquanto a página rola, junto da coluna, com um fio só entre as
+  duas, e o conjunto no centro, entre as células de fora (o pedido do Artur em 18/11/2026: "a navbar perto da página, grudada"): a marca no
+  topo, os itens com o ícone de 20 px ao lado do rótulo (44 px, raio 9; o atual no segundo plano com o fio por dentro, e o ícone na
+  primária), o "Mais" e, no pé, o seletor de tema e a "Conta". A busca mora nas telas (o Explorar e as Ações), e não na lateral. Abaixo de 1024 px, a marca numa linha no
   topo e a barra de abas de 56 px no pé (o ícone em cima e o rótulo embaixo; o atual na tinta, com o ícone na primária). O "Mais" abre o
-  `popover` das telas de apoio: a folha da tela inteira no celular, um menu curto a 8 px da lateral no desktop.
+  `popover` das telas de apoio: a folha da tela inteira no celular, um menu curto a 8 px do fio da lateral no desktop.
 - **A área:** no celular, a trilha ("Início › Arena") e o segmentado das sub-telas; a partir de 1024 px, a linha de abas, a primeira faixa
   da coluna (56 px, o fio embaixo), com o botão de contorno "Regras da arena" à direita.
 - **O site:** o cabeçalho de 68 px numa faixa, preso no topo: a marca e os links logo depois dela (14/500, apoio, a tinta e o segundo plano

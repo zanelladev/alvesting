@@ -117,7 +117,8 @@ para o português. **Nada Pro**: nenhum item Pro foi lido, baixado nem refeito a
   cansa), e o movimento reduzido e o navegador sem a API também. **Nenhuma transição roda durante a troca** (uma folha de estilo com
   `transition: none` entra, as cores mudam, e ela sai dois quadros depois): sem ela, todo elemento com transição de cor andaria junto, o
   "borrão" da troca de tema.
-- **Onde ele fica:** no pé do trilho do app, em pé, entre o "Buscar" e a "Conta", com o rótulo "Tema" embaixo; no celular, na folha "Mais",
+- **Onde ele fica:** no pé da lateral do app, acima da "Conta", com o rótulo "Tema" ao lado (desde o ADR 0041; antes, no pé do trilho, entre
+  o "Buscar" e a "Conta"); no celular, na folha "Mais",
   como a linha "Tema"; e no cabeçalho do site, antes de "Entrar" (no celular, na folha do "Menu"). A landing não carrega nada por ele: é
   HTML, CSS e o script do `<head>`.
 

@@ -233,9 +233,8 @@ test.describe('casca do app', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/ranking');
     const nav = page.getByRole('navigation', { name: 'Principal' });
-    // a busca no topo da lateral, as quatro áreas e a conta no pé
+    // as quatro áreas e a conta no pé (a busca mora nas telas, o Explorar e as Ações: o "Buscar" saiu do topo da lateral em 18/11/2026)
     const links = [
-      ['Buscar', '/acoes'],
       ['Arena', '/arena'],
       ['Explorar', '/explorar'],
       ['Carteira', '/carteira'],
@@ -265,8 +264,9 @@ test.describe('casca do app', () => {
     }
   });
 
-  // Em 1280 px a lateral de 248 px fica à esquerda, e todo link do banner tem o alvo de 44 px (o laço de ROUTES mede os alvos só em 360 px).
-  test('em 1280 px é a lateral de 248 px à esquerda, sem botão "Menu", e todo link do banner tem 44 px', async ({
+  // Em 1280 px a lateral de 248 px encosta na coluna, depois da célula de fora de 2rem e do fio, e todo link do banner tem o alvo de 44 px (o
+  // laço de ROUTES mede os alvos só em 360 px).
+  test('em 1280 px a lateral de 248 px encosta na coluna, sem botão "Menu", e todo link do banner tem 44 px', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -275,24 +275,29 @@ test.describe('casca do app', () => {
       await document.fonts.ready;
     });
     await expect(page.getByRole('button', { name: 'Menu', exact: true })).toHaveCount(0);
+    // a célula de fora de 32 px e o fio de 1 px antes da lateral (a coluna não cabe com 1.040 px, e as células ficam no mínimo)
     const banner = (await page.getByRole('banner').boundingBox())!;
-    expect(banner).toMatchObject({ x: 0, y: 0, width: 248, height: 720 });
+    expect(banner).toMatchObject({ x: 33, y: 0, width: 248, height: 720 });
     const links = await page.getByRole('banner').getByRole('link').all();
-    expect(links).toHaveLength(7);
+    expect(links).toHaveLength(6);
     for (const link of links) {
       const box = (await link.boundingBox())!;
       expect(box.width, await link.innerText()).toBeGreaterThanOrEqual(43.95);
       expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
-      expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(248);
+      expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(33 + 248);
     }
-    // o principal começa depois da lateral
-    expect((await page.getByRole('main').boundingBox())!.x).toBeGreaterThanOrEqual(248);
+    // o principal começa logo depois da lateral, com um fio só entre os dois, e a lateral fica na tela quando a página rola
+    expect((await page.getByRole('main').boundingBox())!.x).toBe(33 + 248 + 1);
+    await page.evaluate(() => window.scrollTo(0, 1500));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    expect((await page.getByRole('banner').boundingBox())!.y).toBe(0);
+    expect((await page.getByRole('banner').boundingBox())!.height).toBe(720);
   });
 
-  // A página regrada do app: o principal é o que sobra da lateral, e a coluna de até 1.040 px fica no centro dele, entre as duas células
-  // laterais, com o fio de 1 px de cada lado (a folha no vão). A barra secundária é a célula da direita: na arena, ao lado só do feed (as
-  // carteiras, de 380 px, na faixa de baixo); no explorar, ao lado de tudo (300 px). O chat fica no centro da coluna.
-  test('em 1440 px a coluna do app tem 1.040 px no centro do principal, a barra fica à direita e o chat no centro', async ({
+  // A página regrada do app: a lateral e a coluna de até 1.040 px ficam juntas, com um fio só entre as duas, e o conjunto fica no centro,
+  // entre as duas células de fora, com o fio de 1 px de cada lado (a folha no vão). A barra secundária é a célula da direita: na arena, ao
+  // lado só do feed (as carteiras, de 380 px, na faixa de baixo); no explorar, ao lado de tudo (300 px). O chat fica no centro da coluna.
+  test('em 1440 px a lateral e a coluna de 1.040 px ficam juntas no centro, a barra fica à direita e o chat no centro', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -310,29 +315,30 @@ test.describe('casca do app', () => {
           h1: box(document.querySelector('h1'))[0],
         };
       });
-    // (1440 − 248 − 1040 − 2) ÷ 2 = 75: a célula lateral, e o fio de 1 px entre ela e a coluna
+    // (1440 − 248 − 1040 − 3) ÷ 2 = 74,5: cada célula de fora; a lateral começa depois dela e do fio (75,5), e a coluna depois da lateral
+    // e de um fio só (75,5 + 248 + 1 = 324,5)
     await page.goto('/arena');
     expect(await measure()).toEqual({
-      main: [248, 1192],
-      column: [324, 1040],
-      bar: [324 + 1040 - 380, 380],
-      h1: 348,
+      main: [324.5, 1040],
+      column: [324.5, 1040],
+      bar: [324.5 + 1040 - 380, 380],
+      h1: 348.5,
     });
     await page.goto('/explorar');
     expect(await measure()).toEqual({
-      main: [248, 1192],
-      column: [324, 1040],
-      bar: [324 + 1040 - 300, 300],
-      h1: 348,
+      main: [324.5, 1040],
+      column: [324.5, 1040],
+      bar: [324.5 + 1040 - 300, 300],
+      h1: 348.5,
     });
     await page.goto('/chat');
     const chat = (await page.getByRole('group', { name: 'O chat, desligado' }).boundingBox())!;
-    expect(Math.abs(chat.x + chat.width / 2 - (324 + 1040 / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs(chat.x + chat.width / 2 - (324.5 + 1040 / 2))).toBeLessThanOrEqual(1);
   });
 
-  // Mais largo, a coluna continua com 1.040 px no centro e as células laterais crescem; os fios entre as carteiras vão de uma borda da barra à
-  // outra, e o placar, de uma borda da coluna à outra. Abaixo de 1024 px as laterais somem e a coluna enche a tela.
-  test('em 1920 px a coluna do app fica no centro, com as células e o fio de cada lado, e os fios vão de borda a borda', async ({
+  // Mais largo, a lateral e a coluna de 1.040 px seguem juntas no centro, e as células de fora crescem por igual; os fios entre as carteiras
+  // vão de uma borda da barra à outra, e o placar, de uma borda da coluna à outra. Abaixo de 1024 px as células somem e a coluna enche a tela.
+  test('em 1920 px a lateral e a coluna ficam juntas no centro, com as células e o fio de cada lado, e os fios vão de borda a borda', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -343,19 +349,19 @@ test.describe('casca do app', () => {
           const b = el!.getBoundingClientRect();
           return [b.x, b.width];
         };
-        const main = document.querySelector('main')!;
+        const app = document.querySelector('.app')!;
         const column = document.querySelector('.coluna-app')!;
+        const side = (pseudo: string) =>
+          getComputedStyle(app, pseudo).content === 'none'
+            ? 0
+            : parseFloat(getComputedStyle(app, pseudo).width);
         return {
-          main: box(main),
+          main: box(document.querySelector('main')),
           column: box(column),
-          sides: [
-            getComputedStyle(main, '::before').display === 'none'
-              ? 0
-              : parseFloat(getComputedStyle(main, '::before').width),
-            getComputedStyle(main).columnGap,
-          ],
-          // o vão entre as células é a folha: o fundo do principal, diferente do da coluna
-          rule: getComputedStyle(main).backgroundColor !== getComputedStyle(column).backgroundColor,
+          lateral: box(document.querySelector('header')),
+          sides: [side('::before'), side('::after'), getComputedStyle(app).columnGap],
+          // o vão entre as trilhas é a folha: o fundo da casca, diferente do da coluna
+          rule: getComputedStyle(app).backgroundColor !== getComputedStyle(column).backgroundColor,
           h1: box(document.querySelector('h1'))[0],
           bar: box(document.querySelector('#carteiras')!.parentElement),
           faixa: box(document.querySelector('[role="region"][aria-label^="Modelos e Sorteio"]')),
@@ -363,27 +369,27 @@ test.describe('casca do app', () => {
         };
       });
     const wide = await measure();
-    // (1920 − 248 − 1040 − 2) ÷ 2 = 315
-    expect(wide.main).toEqual([248, 1672]);
-    expect(wide.column).toEqual([564, 1040]);
-    expect(wide.sides).toEqual([315, '1px']);
+    // (1920 − 248 − 1040 − 3) ÷ 2 = 314,5: as duas células de fora, iguais; a lateral em 315,5 e a coluna logo depois dela, com um fio só
+    expect(wide.lateral).toEqual([315.5, 248]);
+    expect(wide.main).toEqual([564.5, 1040]);
+    expect(wide.column).toEqual([564.5, 1040]);
+    expect(wide.sides).toEqual([314.5, 314.5, '1px']);
     expect(wide.rule).toBe(true);
-    expect(wide.h1).toBe(564 + 24);
-    expect(wide.bar).toEqual([564 + 1040 - 380, 380]);
-    expect(wide.faixa).toEqual([564, 1040]);
+    expect(wide.h1).toBe(564.5 + 24);
+    expect(wide.bar).toEqual([564.5 + 1040 - 380, 380]);
+    expect(wide.faixa).toEqual([564.5, 1040]);
     expect(wide.carteiras.length).toBeGreaterThan(0);
-    for (const carteira of wide.carteiras) expect(carteira).toEqual([564 + 1040 - 380, 380]);
-    // o menu "Mais" abre ao lado da lateral, onde quer que a coluna esteja
+    for (const carteira of wide.carteiras) expect(carteira).toEqual([564.5 + 1040 - 380, 380]);
+    // o menu "Mais" abre a 8 px do fio da lateral, onde quer que ela esteja
     await page.getByRole('button', { name: 'Mais', exact: true }).click();
     const menu = (await page.locator('#mais').boundingBox())!;
-    expect(menu.x).toBeGreaterThanOrEqual(248);
-    expect(menu.x).toBeLessThanOrEqual(264);
+    expect(menu.x).toBe(315.5 + 248 + 1 + 8);
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 390, height: 844 });
     const narrow = await measure();
     expect(narrow.main).toEqual([0, 390]);
     expect(narrow.column).toEqual([0, 390]);
-    expect(narrow.sides[0]).toBe(0);
+    expect(narrow.sides.slice(0, 2)).toEqual([0, 0]);
   });
 
   // A linha de abas é a primeira faixa da coluna: 56 px com o fio embaixo, de uma borda à outra dela (na arena e na página do modelo), ou do
@@ -629,9 +635,9 @@ test.describe('casca do app', () => {
     await expect(menu.getByRole('link')).toHaveCount(5);
     const item = (await button.boundingBox())!;
     const box = (await menu.boundingBox())!;
-    // ao lado da lateral de 248 px, na altura do item "Mais"
-    expect(box.x).toBeGreaterThanOrEqual(248);
-    expect(box.x).toBeLessThanOrEqual(264);
+    const lateral = (await page.getByRole('banner').boundingBox())!;
+    // a 8 px do fio da lateral de 248 px (que vem depois da célula de fora de 32 px e do fio), na altura do item "Mais"
+    expect(box.x).toBe(lateral.x + lateral.width + 1 + 8);
     expect(Math.abs(box.y - item.y)).toBeLessThanOrEqual(1);
     expect(box.width).toBeLessThanOrEqual(260);
     expect(box.y + box.height).toBeLessThanOrEqual(720);

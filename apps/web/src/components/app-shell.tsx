@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { ThemeSelector } from './beui/theme-selector';
 import {
   IconeArena,
-  IconeBuscar,
   IconeCarteira,
   IconeChat,
   IconeConta,
@@ -18,13 +17,13 @@ import { NavLink } from './ui';
 // um layout (app/(app)/(área)/layout.tsx) que diz qual é ela, e o item dela leva `aria-current="page"`. A troca de área remonta a casca (é
 // de servidor, custa pouco).
 // Uma `nav "Principal"` só, dentro do `<header>` (o banner, com o link "Alvesting"), desenhada de dois jeitos pelo CSS (globals.css): a
-// partir de 1024 px, a lateral de 248 px à esquerda, com a busca no topo, o ícone ao lado do rótulo em cada item, e o tema e a conta no pé;
-// abaixo disso, a marca numa linha no topo e a barra de abas fixa no pé, com seis itens (Arena, Explorar, Carteira, Chat, Mais e Conta: 60 ×
-// 56 px em 360; a busca e o tema moram no "Mais" e no Explorar). O "Mais" abre um `popover` com as telas de apoio. Os itens e os links da
-// folha são `<a>` comuns: numa navegação suave dentro da mesma área a casca não remonta, e a folha aberta ficaria aberta sobre a página nova.
-// A marca e o "Buscar" ficam fora da folha (o toque neles a fecha antes) e usam o Link do Next, como a marca do site.
-// O principal é a página regrada: a coluna de até 1.040 px no centro, entre as duas laterais (o ::before e o ::after de `.app-principal`), com
-// o fio de 1 px de cada lado; o rodapé, na mesma coluna, embaixo.
+// partir de 1024 px, a lateral de 248 px, com o ícone ao lado do rótulo em cada item, e o tema e a conta no pé; abaixo disso, a marca numa
+// linha no topo e a barra de abas fixa no pé, com seis itens (Arena, Explorar, Carteira, Chat, Mais e Conta: 60 × 56 px em 360; o tema mora
+// no "Mais"). O "Mais" abre um `popover` com as telas de apoio. Os itens e os links da folha são `<a>` comuns: numa navegação suave dentro
+// da mesma área a casca não remonta, e a folha aberta ficaria aberta sobre a página nova. A marca fica fora da folha (o toque nela a fecha
+// antes) e usa o Link do Next, como a marca do site. A busca mora nas telas (o Explorar e as Ações), e não na casca.
+// O principal é a página regrada: a partir de 1024 px, a lateral e a coluna de até 1.040 px ficam juntas, com um fio só entre as duas, e o
+// conjunto fica no centro, entre as duas células de fora (o ::before e o ::after de `.app`); o rodapé, na mesma coluna, embaixo.
 // O cabeçalho não lê a sessão (não há avatar): a carteira e a conta mandam quem não entrou para a entrada.
 export type Area = 'arena' | 'explorar' | 'carteira' | 'chat' | 'conta';
 
@@ -58,15 +57,6 @@ export function AppShell({ area, children }: { area: Area; children: ReactNode }
         </NavLink>
         <nav aria-label="Principal" className="app-nav">
           <ul className="app-itens">
-            {/* a busca, no topo da lateral, desenhada como o campo de busca (no celular ela mora no Explorar) */}
-            <li className="app-buscar">
-              <NavLink href="/acoes" className="app-item">
-                <span className="app-icone">
-                  <IconeBuscar />
-                </span>
-                Buscar
-              </NavLink>
-            </li>
             {ITENS.map(([id, label, href, Icone]) => (
               <li key={id}>
                 <a href={href} aria-current={atual(id)} className="app-item">

@@ -200,8 +200,8 @@ test.describe('carteira em 1440 px', () => {
   });
 });
 
-// Nenhuma rolagem horizontal da página de 360 a 1920 px, com as posições, a rosca e os lançamentos (a coluna do app vai até 1.040 px e fica no
-// centro do que sobra da lateral), e nenhuma barra de rolagem à vista (globals.css).
+// Nenhuma rolagem horizontal da página de 360 a 1920 px, com as posições, a rosca e os lançamentos (a coluna do app vai até 1.040 px e fica junto
+// da lateral, com as duas no centro), e nenhuma barra de rolagem à vista (globals.css).
 test.describe('carteira de 360 a 1920 px', () => {
   test.use({ baseURL: FRONT_DOOR_URL });
   test(

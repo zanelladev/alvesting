@@ -40,11 +40,14 @@ arquivo, cor nem fonte.
    caminho do LCP. Os títulos ganham **dois tons** na mesma frase (a tinta e o apoio, `.tom2`); o h1 do topo da landing e o título de cada
    seção dela crescem com a tela até o teto (`text-titulo`, de 40 a 58 px; `text-secao`, de 30 a 44 px), e o título de página do app é fixo
    (`text-pagina`, 34 px).
-4. **A casca do app.** A partir de 1024 px, a **lateral de 248 px à esquerda**, fixa: a marca no topo, o "Buscar" como o primeiro item,
-   desenhado como o campo de busca, os itens com o ícone ao lado do rótulo (44 px, raio 9; o atual no segundo plano com o fio, e o ícone na
-   primária), o "Mais", o seletor de tema e a "Conta" no pé. Abaixo de 1024 px, a marca numa linha no topo e a barra de abas fixa no pé
-   (seis itens de 60 × 56 px em 360, o atual na tinta, sem o círculo atrás do ícone). O principal é a página regrada, com a coluna de 1.040
-   px no centro do que sobra. A barra secundária é a célula da direita: na arena, ao lado só do feed (`junto`: as carteiras, de 380 px, na
+4. **A casca do app.** A partir de 1024 px, a **lateral de 248 px**, que fica na tela enquanto a página rola: a marca no topo, os itens com
+   o ícone ao lado do rótulo (44 px, raio 9; o atual no segundo plano com o fio, e o ícone na primária), o "Mais", o seletor de tema e a
+   "Conta" no pé. A lateral e a coluna de 1.040 px ficam juntas, com um fio só entre as duas, e o conjunto fica no centro, entre as duas
+   células de fora (uma grade de quatro trilhas no `.app`, com o vão de 1 px; as células têm pelo menos 2rem, e a coluna cresce até 1.040 px
+   antes delas): o pedido do Artur em 18/11/2026, olhando o site num monitor de 1.915 px, onde a lateral presa na borda deixava um vão de
+   uns 315 px até a coluna ("a navbar perto da página, grudada, linha com linha"). No mesmo pedido saiu o "Buscar" do topo da lateral: a
+   busca mora nas telas (o Explorar e as Ações). Abaixo de 1024 px, a marca numa linha no topo e a barra de abas fixa no pé (seis itens de
+   60 × 56 px em 360, o atual na tinta, sem o círculo atrás do ícone). O principal é a página regrada. A barra secundária é a célula da direita: na arena, ao lado só do feed (`junto`: as carteiras, de 380 px, na
    faixa das decisões); no ranking e no Explorar, ao lado de tudo; na página da ação, embaixo do terminal (`embaixo`), porque ao lado ela
    não deixaria às duas colunas dele os 52rem que elas pedem. A linha de abas é a primeira faixa da coluna, 56 px com o fio embaixo, na
    mesma altura do título da barra secundária. A pilha de avisos fica no canto da coluna, dentro dela.
@@ -108,8 +111,9 @@ arquivo, cor nem fonte.
 ## Consequências
 
 - **O e2e.** As garantias não mudam (360 px sem rolagem horizontal, os alvos de 44 px, o axe nos dois temas, a primária só onde a regra
-  deixa, o dado conferido contra a api). Mudaram as medidas e os nomes: o `layout.spec.ts` mede a lateral de 248 px, a coluna de 1.040 px
-  no centro (em 1440 e 1920 px) e a linha de abas de 56 px; o "Mais" do desktop abre a 8 px da lateral; o fundo da página no `tema.spec.ts`
+  deixa, o dado conferido contra a api). Mudaram as medidas e os nomes: o `layout.spec.ts` mede a lateral de 248 px junto da coluna de
+  1.040 px, com um fio só, e o conjunto no centro (em 1440 e 1920 px), a lateral na tela quando a página rola e a linha de abas de 56 px;
+  o "Mais" do desktop abre a 8 px do fio da lateral; o fundo da página no `tema.spec.ts`
   é a folha; o `landing.spec.ts` confere as seções novas (o placar, o método com o dado do último ciclo, a justificativa, o elenco, a
   carteira, o FAQ e o rodapé na faixa escura); a tinta e o apoio que a carteira e a conta leem trocaram de valor; o teste do "›" da faixa
   virou o da rolagem do placar pelo teclado; e o `conta.spec.ts` confere que a pilha de avisos fica dentro da coluna.

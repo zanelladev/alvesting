@@ -733,11 +733,12 @@
     }
   }
 
-  /* A casca do app (components/app-shell.tsx). A partir de 1024 px: a lateral de 248 px à esquerda, fixa, com a marca no topo, a busca, os
-     itens com o ícone ao lado do rótulo (40 px, raio 9; o atual no segundo plano com o fio, e o ícone na primária), e o tema e a conta no
-     pé. Abaixo: a marca numa linha no topo e a barra de abas fixa no pé, de 56 px mais a área segura do iPhone, com seis itens (o ícone em
-     cima e o rótulo embaixo; o atual na tinta, com o ícone na primária). É a mesma `nav`, desenhada de dois jeitos. O principal é a página
-     regrada: a coluna de até 1.040 px no centro do que sobra (`.app-principal`, o ::before e o ::after são as laterais). */
+  /* A casca do app (components/app-shell.tsx). A partir de 1024 px: a lateral de 248 px, que fica na tela enquanto a página rola, com a marca
+     no topo, os itens com o ícone ao lado do rótulo (40 px, raio 9; o atual no segundo plano com o fio, e o ícone na primária), e o tema e a
+     conta no pé. A lateral e a coluna de até 1.040 px ficam juntas, com um fio só entre as duas, e o conjunto fica no centro, entre as duas
+     células de fora (o ::before e o ::after de `.app`): uma grade de quatro trilhas com o vão de 1 px de folha, e os fios vão de cima a
+     baixo. Abaixo de 1024 px: a marca numa linha no topo e a barra de abas fixa no pé, de 56 px mais a área segura do iPhone, com seis itens
+     (o ícone em cima e o rótulo embaixo; o atual na tinta, com o ícone na primária). É a mesma `nav`, desenhada de dois jeitos. */
   .app {
     @apply relative flex min-w-0 flex-1 flex-col;
     --coluna: 65rem;
@@ -758,31 +759,32 @@
     @apply text-primary;
   }
   .app-principal {
-    @apply flex min-w-0 flex-1 gap-px bg-folha;
-  }
-  .app-principal::before,
-  .app-principal::after {
-    @apply min-w-0 flex-1 bg-canvas content-[''];
+    @apply flex min-w-0 flex-1;
   }
   .coluna-app {
-    @apply min-w-0 shrink-0 bg-canvas px-5 py-6 lg:px-6;
+    @apply w-full min-w-0 bg-canvas px-5 py-6 lg:px-6;
     container-type: inline-size;
-    width: min(var(--coluna), calc(100% - 4rem));
   }
+  /* o rodapé, na mesma coluna, embaixo, com o fio de 1 px em cima */
   .app-rodape {
-    @apply flex gap-px bg-folha pt-px;
-  }
-  .app-rodape::before,
-  .app-rodape::after {
-    @apply min-w-0 flex-1 bg-canvas content-[''];
+    @apply bg-folha pt-px;
   }
   .app-rodape > footer {
-    @apply min-w-0 shrink-0 bg-canvas;
-    width: min(var(--coluna), calc(100% - 4rem));
+    @apply min-w-0 bg-canvas;
   }
   @media (width >= 64rem) {
+    /* as células de fora dividem o que sobra, com pelo menos 2rem cada: a coluna cresce até 1.040 px antes delas, e em tela larga o
+       conjunto fica no centro */
+    .app {
+      @apply grid gap-px bg-folha;
+      grid-template-columns: minmax(2rem, 1fr) 15.5rem minmax(0, var(--coluna)) minmax(2rem, 1fr);
+    }
+    .app::before,
+    .app::after {
+      @apply bg-canvas content-[''];
+    }
     .app-topo {
-      @apply fixed inset-y-0 left-0 z-30 flex w-62 flex-col gap-1 overflow-y-auto border-r border-folha bg-canvas px-3 pt-3.5 pb-4;
+      @apply sticky top-0 flex h-dvh flex-col gap-1 self-start overflow-y-auto bg-canvas px-3 pt-3.5 pb-4;
     }
     .app-marca {
       @apply mb-1.5 px-2.5;
@@ -800,18 +802,8 @@
     .app-icone {
       @apply size-5;
     }
-    /* "Buscar" é o primeiro item, desenhado como o campo de busca: o segundo plano com o fio, e o atalho "/" à direita */
-    .app-buscar {
-      @apply mb-2.5;
-    }
-    .app-buscar .app-item {
-      @apply bg-surface-card font-normal text-muted shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:shadow-[inset_0_0_0_1px_var(--color-hairline-strong)];
-    }
     .app-tema {
       @apply mt-auto border-t border-hairline pt-3;
-    }
-    .app-coluna {
-      @apply pl-62;
     }
   }
   @media (width < 64rem) {
@@ -833,22 +825,11 @@
     .app-item[aria-current='page'] {
       @apply font-semibold;
     }
-    .app-buscar,
     .app-tema {
       @apply hidden;
     }
     .app-coluna {
       @apply pb-[calc(3.5rem+env(safe-area-inset-bottom))];
-    }
-    .app-principal::before,
-    .app-principal::after,
-    .app-rodape::before,
-    .app-rodape::after {
-      @apply hidden;
-    }
-    .coluna-app,
-    .app-rodape > footer {
-      @apply w-full;
     }
   }
   /* A folha "Mais". No celular, a tela inteira acima da barra de abas, como a folha do site: o título, o ✕ e a lista na própria folha, sem
@@ -875,9 +856,11 @@
     .app-mais {
       anchor-name: --mais;
     }
-    /* a 8 px do fio da lateral: o item vai até 12 px antes dele (o respiro da lateral), e sem a âncora o menu fica no mesmo lugar (256 px) */
+    /* a 8 px do fio da lateral: o item vai até 12 px antes dele (o respiro da lateral). Sem a âncora, o mesmo lugar pela conta da grade de
+       `.app`: a célula de fora, o fio, a lateral, o fio e os 8 px */
     .mais:popover-open {
-      @apply inset-auto top-40 left-64 w-60 rounded-xl border border-hairline p-1 shadow-(--shadow-raised);
+      @apply inset-auto top-40 w-60 rounded-xl border border-hairline p-1 shadow-(--shadow-raised);
+      left: calc(max(2rem, (100% - var(--coluna) - 15.5rem - 3px) / 2) + 15.5rem + 10px);
       position-anchor: --mais;
       top: anchor(top);
       left: calc(anchor(right) + 1.3125rem);
@@ -1875,8 +1858,9 @@ html[data-tema-revelar]::view-transition-new(root) {
 @layer components {
   /* A pilha de avisos (components/beui/animated-toast-stack.tsx, components/avisos.tsx): fixa no pé da tela, sobre o conteúdo e abaixo do tooltip
      (a casca é z 30, o tooltip 90). No celular, acima da barra de abas e da área segura, na largura da tela menos 16 px de cada lado; a partir
-     de 640 px, 384 px no canto direito; a partir de 1024 px, no canto da coluna do app, a 1,5rem da borda dela: a coluna (`--coluna`) fica no
-     centro do que sobra da lateral de 248 px, com a borda a 50% − (coluna + lateral) ÷ 2 da direita, e abaixo disso a célula de 2rem. A lista não
+     de 640 px, 384 px no canto direito; a partir de 1024 px, no canto da coluna do app, a 1,5rem da borda dela: a lateral de 248 px e a coluna
+     (`--coluna`) ficam juntas no centro, com a borda da coluna a 50% − (coluna + lateral + 1 px) ÷ 2 da direita, e abaixo disso depois da
+     célula de 2rem e do fio. A lista não
      recebe o toque, só os avisos. O mais novo fica embaixo, perto da borda. */
   .aviso-pilha {
     @apply pointer-events-none fixed inset-x-4 z-40 flex flex-col gap-2;
@@ -1891,7 +1875,7 @@ html[data-tema-revelar]::view-transition-new(root) {
   @media (width >= 64rem) {
     .aviso-pilha {
       bottom: 1.5rem;
-      right: max(3.5rem, calc(50% + 1.5rem - (var(--coluna) + 15.5rem) / 2));
+      right: max(3.5rem + 1px, 50% + 1.5rem - (var(--coluna) + 15.5rem + 1px) / 2);
     }
   }
   /* o aviso: o canvas que flutua (a sombra de elevação, sem o fio junto: a Regra Plana), raio 12, o ícone, o texto inteiro e o fechar de 44 px */

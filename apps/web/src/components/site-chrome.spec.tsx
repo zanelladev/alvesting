@@ -87,19 +87,18 @@ describe('AppShell', () => {
   const sheet = nav.slice(nav.indexOf('<div id="mais"'));
   const items = nav.slice(0, nav.indexOf('<div id="mais"'));
 
-  it('o banner tem a marca, e a navegação os itens na ordem: Buscar (no topo da lateral), Arena, Explorar, Carteira, Chat, Mais e Conta', () => {
+  it('o banner tem a marca, e a navegação os itens na ordem: Arena, Explorar, Carteira, Chat, Mais e Conta', () => {
     expect(linksOf(header)[0]).toEqual(['Alvesting', '/']);
     expect(linksOf(items)).toEqual([
-      ['Buscar', '/acoes'],
       ['Arena', '/arena'],
       ['Explorar', '/explorar'],
       ['Carteira', '/carteira'],
       ['Chat', '/chat'],
       ['Conta', '/conta'],
     ]);
-    // a busca é o primeiro item (o campo do topo da lateral; no celular ela some da barra de abas), e o "Mais" é um botão que abre a folha,
-    // depois do Chat
-    expect(items).toMatch(/^<ul class="app-itens"><li class="app-buscar">/);
+    // a Arena é o primeiro item (a busca mora nas telas, e não na casca: desde 18/11/2026 o "Buscar" saiu do topo da lateral), e o "Mais"
+    // é um botão que abre a folha, depois do Chat
+    expect(items).toMatch(/^<ul class="app-itens"><li><a href="\/arena"/);
     expect(items).toMatch(
       /Chat<\/a><\/li><li><button type="button" popoverTarget="mais" class="app-item app-mais">.*Mais<\/button><\/li><li class="app-tema">/s,
     );
@@ -131,8 +130,8 @@ describe('AppShell', () => {
     expect(sheet).not.toContain('mais-fechar');
   });
 
-  // os itens e os links da folha são <a> comuns, como os do site: a folha aberta não fica aberta sobre a página nova (a marca e o "Buscar",
-  // fora da folha, são o Link do Next)
+  // os itens e os links da folha são <a> comuns, como os do site: a folha aberta não fica aberta sobre a página nova (a marca, fora da folha,
+  // é o Link do Next)
   it('os itens da barra e os links da folha são <a> comuns, sem o Link do Next', () => {
     for (const href of ['/arena', '/explorar', '/carteira', '/chat', '/conta']) {
       expect(items).toMatch(
