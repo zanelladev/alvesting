@@ -123,7 +123,9 @@ Como o cliente (`brapi.client.ts`) trata cada resposta:
 | 5 papéis seguidos sem resposta | A brapi está fora do ar (ou a janela é recusada): a passada para e o resto fica como falta, em vez de gastar 2 requisições em cada um dos 300 papéis. O 400 e o 404 só contam enquanto **nenhum** papel respondeu bem nesta passada (a janela ou o plano recusando tudo); depois de uma resposta boa são do papel (suspenso, sem histórico) e não encerram a passada |
 | Acabou o orçamento de tempo | A passada para com `time`, e o resto fica como falta (ver "O orçamento de tempo", abaixo) |
 
-Falha num papel **nunca refaz a lista**: cada papel é gravado assim que chega, e a nova tentativa pede só a falta.
+Falha num papel **nunca refaz a lista**: cada papel é gravado assim que chega, e a nova tentativa pede só a falta. Cada falha sai do
+cliente com a causa (`FailCause`, `domain/bar-plan.ts`: `changed`, `not-found`, `refused`, `malformed` ou `transient`), e o `eod` separa
+daí a falta definitiva da passageira (seção 7, item 5).
 
 **O orçamento de tempo vale dentro de um papel.** A trava da fila `market` é renovada por 5 minutos (`QUEUES`); passar disso deixa
 outra entrega assumir o job e refazer as requisições (só a cota se perde; o dado fica protegido pelo `ON CONFLICT DO NOTHING`). O
@@ -367,7 +369,7 @@ e o plano gratuito (15 mil por mês) só dá conta assim. As regras:
 | Item | Conta | Requisições |
 |---|---|---|
 | Noites, o obrigatório | 21 pregões × 310 papéis (o universo de uns 306 mais o BOVA11 e as posições) | 6.510 |
-| Novas tentativas dos papéis sem negócio | 3 × uns 195 papéis-noite (uns 9 por noite) | 585 |
+| Novas tentativas (teto) | a conta de antes de 18/11/2026: 3 × uns 195 papéis-noite sem negócio (uns 9 por noite). Desde então a noite comum não as faz (a falta definitiva conclui na primeira tentativa, seção 7, item 5), e a linha fica como folga para as noites que esperam o prazo | 585 |
 | Carteiras dos usuários, o opcional | 21 × uns 20 papéis | 420 |
 | Domingos | 4 × (1 da lista + uns 100 candidatos fora do conjunto diário) | 404 |
 | **Um mês** | | **7.919** |
@@ -408,17 +410,41 @@ ainda abaixo da cota.
    janela até D, **um por vez e na ordem, o BOVA11 primeiro**. Cada papel é gravado assim que chega. Se a resposta do BOVA11 não traz a
    barra de D, o dia ainda não saiu na brapi (nenhum outro papel terá) e a passada acaba com **uma requisição só**. O orçamento de tempo
    (4 minutos, dentro dos 5 da trava da fila; vale também dentro de cada papel, seção 2) é dividido com o opcional.
-4. **Conclusão.** D está completo quando todo papel do obrigatório tem a barra de D. Enquanto falta papel e o prazo não chegou, a mesma
-   mensagem é publicada agendada para daqui a 60 minutos e a linha de `job_run` fica `WAITING` (o alerta de job falho não a conta); a
-   nova tentativa pede **só o que falta**. No **prazo das 00:30** de Brasília (`planMissingFile`) o dia conclui com o que tem, registra a
-   falta (a contagem e os 20 primeiros) e dispara o `eod-barras-ausentes` se faltar o BOVA11 ou mais de 10% do obrigatório
-   (`MISSING_ALERT_PERCENT`).
-5. **O papel sem negócio mantém as novas tentativas até o prazo.** A brapi não distingue "não negociou hoje" de "ainda não saiu" para
-   aquele papel; um papel suspenso (ou ilíquido num dia sem negócio) mantém as novas tentativas de 22:30, 23:30 e 00:30, e só ele é
-   pedido (uma requisição por tentativa). Consequência: **numa noite com algum papel sem negócio o dia conclui às 00:30, e não às
-   21:40** (o que é o normal para um universo de uns 300 papéis). A liquidação e o site esperam até então. Se isso incomodar, a saída é
-   concluir quando os faltantes todos "responderam sem a barra" com o BOVA11 presente; não foi feita, porque sem dado real não se sabe
-   separar o papel sem negócio do que a brapi entrega com atraso.
+4. **Conclusão.** D está completo quando todo papel do obrigatório tem a barra de D. Enquanto falta papel, a falta não é toda definitiva
+   (item 5) e o prazo não chegou, a mesma mensagem é publicada agendada para daqui a 60 minutos e a linha de `job_run` fica `WAITING` (o
+   alerta de job falho não a conta); a nova tentativa pede **só o que falta**. No **prazo das 00:30** de Brasília (`planMissingFile`) o
+   dia conclui com o que tem, registra a falta (a contagem e os 20 primeiros, com o motivo) e dispara o `eod-barras-ausentes` se faltar o
+   BOVA11 ou mais de 10% do obrigatório (`MISSING_ALERT_PERCENT`).
+5. **A falta definitiva conclui o dia sem esperar o prazo** (18/11/2026). A brapi não distingue "não negociou hoje" de "ainda não saiu"
+   para um papel, e a regra esperou as primeiras noites reais: em 16/11, às 21:35, a brapi já tinha 303 das 307 ações, e RAIZ4, MTSA4,
+   OSXB3 e NORD3 não vieram nas tentativas seguintes; em 17/11 a tentativa das 21:32 gravou 305 de 307, e as de 22:32 e 23:31 não
+   trouxeram nenhuma das duas. Em 17 dos 20 pregões até 13/11 pelo menos uma ação do universo passou o dia sem negócio, e o resultado
+   saía à 00:31 quase toda noite. A tentativa em que **a barra do BOVA11 está gravada** (o dia saiu na brapi), **toda falta é
+   definitiva** e **a falta cabe no limite do alerta** (até 10% do obrigatório: `missingTooMuch`, a mesma conta do
+   `eod-barras-ausentes`) conclui na hora, pelo mesmo caminho do prazo (o opcional, a confirmação, o calendário e a liquidação, item 6).
+   Definitiva é a resposta que uma nova tentativa nesta noite não muda. O cliente dá a causa de cada papel (`FailCause`,
+   `domain/bar-plan.ts`), e o `eod` a leva ao log como o motivo:
+
+   | Motivo (no `first` do log) | O que a brapi respondeu | Definitiva |
+   |---|---|---|
+   | `no-bar` | 200 no formato e sem a barra de D (ou com preço nulo, ou fora da escala): o papel não negociou, ou está suspenso | sim |
+   | `not-found` | 404, lido só pela situação HTTP (o corpo de uma resposta de erro nunca é lido): para um papel do universo, o mesmo que o 200 sem a barra | sim |
+   | `changed` | 200 com o ticker trocado (`changed` verdadeiro ou `symbol` diferente do pedido): a série é de outro código e não é gravada | sim |
+   | `refused` | outro 4xx (400) | não |
+   | `malformed` | 200 com corpo que não é JSON, fora do formato ou sem nenhuma data na forma | não |
+   | `transient` | rede, timeout ou 5xx depois da repetição, 429 depois das 3 | não |
+   | `not-asked` | nada: a passada parou antes dele (cota, tempo, queda, ou a sonda do BOVA11 sem a barra do dia) | não |
+
+   Com uma falta que não é definitiva, sem a barra do BOVA11, ou com a falta acima de 10% do obrigatório, o `eod` reagenda até o prazo,
+   como antes. **A falta que passa do limite espera até as 00:30** mesmo sendo toda definitiva: uma brapi que publicasse o BOVA11 antes do
+   resto fecharia o dia com boa parte do universo sem barra, e no prazo o alerta toca. Consequência: **numa noite comum (um a quatro papéis
+   sem negócio, de uns 300) o dia conclui na primeira tentativa**, uns minutos depois das 21:30, e a liquidação e o site não esperam a
+   00:31. O log de cada tentativa diz quem faltou e por quê: a espera (`eod reagendado: falta papel do conjunto obrigatório`) e o
+   fechamento (`eod concluído sem esperar o prazo: toda falta do dia é definitiva`, `eod concluído no prazo com papéis sem a barra do dia`
+   ou o alerta) trazem `first`, os 20 primeiros papéis com o motivo (`{ "RAIZ4": "changed", "MTSA4": "no-bar" }`). O risco que fica: o
+   papel que a brapi entregasse mais tarde depois de responder sem a barra, com o BOVA11 já gravado, fica fora do dia. A barra dele entra
+   na noite seguinte pela janela (item 3) e no resultado pela liquidação seguinte, que refaz a temporada do zero (seção 6, "O que já foi
+   liquidado não muda sozinho").
 6. **Concluiu:** o opcional é pedido **uma vez**, nesta tentativa, e não segura a conclusão (o que não vier hoje a janela de amanhã
    pede). Confirma como `BRAPI` os pregões da janela que têm barra e ainda não estavam confirmados, semeia o calendário futuro, e o
    `SettlementPublisher.afterEod` publica a liquidação **antes** de a linha concluir (uma publicação que falha repete o `eod`). Vão
@@ -538,7 +564,8 @@ O que a prova decidiu, item a item (as suposições que o código fazia e que o 
    `brapi.client.spec.ts`). Trocar para o `/api/v2/tickers` não foi avaliado, porque o v1 funcionou; a ADR 0032 mantém a escolha.
 6. **Papel sem negócio ou suspenso.** Não medido: todo papel da lista tinha volume no último pregão, e não havia um suspenso para
    pedir. O papel que a brapi não conhece é 404 `NOT_FOUND`, sem gastar cota. Segue em aberto se o 404 é comum no `eod` (seção 2) e se
-   vale a saída "concluir quando só os sem negócio faltam" (seção 7, item 5).
+   vale a saída "concluir quando só os sem negócio faltam" (seção 7, item 5). (A saída foi feita em 18/11/2026, depois das noites de 16 e
+   17/11, com o 404 contado como falta definitiva; quantas vezes o 404 aparece numa noite passa a estar no log do fechamento.)
 7. **Os cabeçalhos de cota.** `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, `X-RateLimit-Limit`,
    `X-RateLimit-Remaining` e `X-RateLimit-Window: rolling-30d`: a janela é **móvel de 30 dias**, e não o ciclo mensal que o FAQ
    descrevia (seção 2). O par sem `X` é "o limitador que serviu a resposta", e só o par com `X` é a cota: a carga do dev, abaixo,
@@ -606,7 +633,7 @@ universos e, do schema, o valor e as colunas que só existiam para o arquivo.
 | O que já foi liquidado não muda sozinho | O `eod` não reabre `settle`; reprocessar é decisão do admin (RUNBOOK) |
 | Janela de 5 pregões, pedido do mais antigo que falta até D | O dia que falhou é recuperado na noite seguinte, sem custar mais requisição |
 | BOVA11 primeiro e como sonda de "o dia saiu" | Se ele não tem a barra de D, nenhum outro papel terá: a passada custa 1 requisição |
-| O dia só conclui com o obrigatório inteiro, ou no prazo das 00:30 | Um papel que a brapi demora a entregar tem até 3 horas; o que falta é registrado, e o alerta só dispara acima de 10% ou sem o BOVA11 |
+| O dia conclui com o obrigatório inteiro; sem ele, na tentativa em que a falta é toda definitiva (com o BOVA11 e até 10% do obrigatório), ou no prazo das 00:30 | A falta definitiva (sem negócio, 404, ticker trocado) não muda numa nova tentativa: nas noites de 16 e 17/11/2026 os papéis que faltavam às 21:35 não vieram até as 00:30. A falha passageira tem até 3 horas, e a falta acima de 10% espera o prazo; o que falta é registrado com o motivo, e o alerta só dispara acima de 10% ou sem o BOVA11 |
 | Opcional (carteiras) pedido uma vez, na tentativa que conclui | O papel de um usuário não pode segurar a liquidação da arena |
 | Pausa nas 5 falhas seguidas, 429 com `Retry-After` e teto, 5xx repetido uma vez | Brapi fora do ar não gasta 2 requisições em cada um dos 300 papéis; o limite simultâneo (1) vira espera, não falha |
 | Reserva de 500 requisições | Não zerar a conta: sobra para a recuperação à mão |

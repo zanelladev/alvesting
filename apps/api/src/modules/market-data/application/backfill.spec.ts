@@ -21,6 +21,7 @@ function setup() {
         stopped: null,
         asked: 0,
         failed: [],
+        outcomes: new Map(),
         inserted: 0,
         divergent: [],
         unknown: [],

@@ -254,7 +254,7 @@ describe.skipIf(!ready)(title, () => {
     expect(await count('ensaio-llm-io')).toBe(3 * 6 * 3);
   }, 180_000);
 
-  it('a brapi falsa é servida pelo cliente de verdade, e as requisições seguem o plano: uma por papel que falta, só quem não veio é pedido de novo', async () => {
+  it('a brapi falsa é servida pelo cliente de verdade, e as requisições seguem o plano: uma por papel que falta, sem pedir de novo o papel sem negócio', async () => {
     const result = await run();
     const check = result.checks.find((c) => c.id === 'requisicoes');
     expect(check?.ok, check?.detail).toBe(true);
@@ -266,9 +266,9 @@ describe.skipIf(!ready)(title, () => {
     expect(check?.detail).toBe(
       market.sessionDays.map((d) => `${planned.get(d)}/${planned.get(d)}`).join(' · '),
     );
-    // 13 papéis no obrigatório (12 ações e o BOVA11): a 1ª noite pede 13; a do 2º pregão (barra atrasada) pede 1 de sonda, 13, e repete o SECA3
-    // até o prazo; a do 3º repete o PAUS3 (suspenso) nas três novas tentativas
-    expect([...planned.values()].every((n) => n >= 13)).toBe(true);
+    // 13 papéis no obrigatório (12 ações e o BOVA11): a 1ª noite pede 13; a do 2º pregão (barra atrasada) pede 1 de sonda e os 13; a do 3º,
+    // 13. O SECA3 (sem negócio no 2º) e o PAUS3 (suspenso do 3º em diante) não são pedidos de novo: a falta deles é definitiva
+    expect([...planned.values()]).toEqual([13, 14, 13]);
     expect(result.text).toContain('BRAPI FALSA');
     expect(result.text).toMatch(
       /carga inicial 13 \(uma por papel e o BOVA11\) \| listas de ações 2/,
@@ -283,8 +283,9 @@ describe.skipIf(!ready)(title, () => {
     expect(entries.sort()).toEqual([D1, D2, D3]);
     const check = result.checks.find((c) => c.id === 'eod-reagendado');
     expect(check?.ok, check?.detail).toBe(true);
-    // a barra do 2º pregão só sai às 22:10: a 1ª passada (21:30) é a sonda do BOVA11, e a 2ª (22:30) busca o conjunto
-    expect(check?.detail).toMatch(/o atrasado \(2026-11-04\) teve [4-9] entregas/);
+    // a barra do 2º pregão só sai às 22:10: a 1ª passada (21:30) é a sonda do BOVA11, e a 2ª (22:30) busca o conjunto e conclui, com o SECA3
+    // sem negócio (a falta definitiva não espera o prazo)
+    expect(check?.detail).toMatch(/1 pregão reagendado; o atrasado \(2026-11-04\) teve 2 entregas/);
   }, 180_000);
 });
 

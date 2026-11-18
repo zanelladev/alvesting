@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ALERT_LOG } from '../../../telemetry/alert-logs.js';
 import { JobBusyError, type ClaimResult } from '../../messaging/infrastructure/job-run.store.js';
+import type { FailCause } from '../domain/bar-plan.js';
 import type { IsoDate } from '../domain/dates.js';
 import { loadTradingCalendar } from '../domain/trading-calendar.js';
 import type { PaperResult } from '../infrastructure/brapi.client.js';
@@ -28,6 +29,8 @@ interface Options {
   have?: Record<string, IsoDate[]>;
   // os papéis que a brapi entrega nesta passada (ganham a barra de D)
   delivers?: string[];
+  // o que a passada deu a quem não foi entregue: 'ok' é a resposta boa sem a barra (sem negócio); sem entrada, a falha passageira
+  answers?: Record<string, 'ok' | FailCause>;
   confirmed?: IsoDate[];
   stopped?: LoadReport['stopped'];
 }
@@ -71,9 +74,13 @@ function setup(options: Options = {}) {
   const loader = {
     load: vi.fn((requests: Ask, loadOptions?: LoadOptions) => {
       loads.push({ requests: [...requests], options: loadOptions });
+      const outcomes = new Map<string, 'ok' | FailCause>();
       for (const request of requests) {
         if (options.delivers?.includes(request.ticker)) {
           have.set(request.ticker, new Set([...(have.get(request.ticker) ?? []), D]));
+          outcomes.set(request.ticker, 'ok');
+        } else {
+          outcomes.set(request.ticker, options.answers?.[request.ticker] ?? 'transient');
         }
       }
       return Promise.resolve({
@@ -82,6 +89,7 @@ function setup(options: Options = {}) {
         stopped: options.stopped ?? null,
         asked: requests.length,
         failed: [],
+        outcomes,
         inserted: 0,
         divergent: [],
         unknown: [],
@@ -160,7 +168,7 @@ describe('EodHandler (a decisão)', () => {
       expect(probe(ok('BOVA11', []))).toBe(true);
       expect(probe(ok('BOVA11', [D]))).toBe(false);
       expect(probe(ok('PETR4', []))).toBe(false); // só o BOVA11 é sonda
-      expect(probe({ ticker: 'BOVA11', status: 'failed' })).toBe(false); // sem resposta, não se sabe
+      expect(probe({ ticker: 'BOVA11', status: 'failed', cause: 'transient' })).toBe(false); // sem resposta, não se sabe
     });
 
     it('papel que já tem tudo não gera pedido nenhum', async () => {
@@ -226,14 +234,14 @@ describe('EodHandler (a decisão)', () => {
       expect(budget).toBeLessThanOrEqual(4 * 60_000);
     });
 
-    it('no prazo, com papel faltando: conclui com o que tem, e a falta vai ao registro (contagem e os 20 primeiros)', async () => {
+    it('no prazo, com papel faltando: conclui com o que tem, e a falta vai ao registro (contagem e os 20 primeiros, com o motivo)', async () => {
       const universe = Array.from({ length: 30 }, (_, i) => `ACAO${i}3`);
       const t = setup({ universe, delivers: ['BOVA11', ...universe.slice(1)] });
       await expect(t.handler.execute(D, DEADLINE)).resolves.toBe('closed_incomplete');
       // 1 de 31 (3%): abaixo do limite, só o registro
       expect(error).not.toHaveBeenCalled();
       expect(log).toHaveBeenCalledWith(
-        { date: D, missing: 1, required: 31, first: ['ACAO03'] },
+        { date: D, missing: 1, required: 31, first: { ACAO03: 'transient' } },
         'eod concluído no prazo com papéis sem a barra do dia',
       );
       expect(t.messaging.publishScheduled).not.toHaveBeenCalled();
@@ -241,11 +249,91 @@ describe('EodHandler (a decisão)', () => {
       expect(t.settlement.afterEod).toHaveBeenCalledWith([D]);
     });
 
+    it('antes do prazo, com o BOVA11 gravado e toda falta definitiva (sem negócio, ticker trocado): conclui já, pelo caminho do prazo, e o log diz o motivo', async () => {
+      const traded = Array.from({ length: 28 }, (_, i) => `ACAO${i}3`);
+      const t = setup({
+        universe: [...traded, 'VALE3', 'RAIZ4'],
+        portfolio: ['WEGE3'],
+        delivers: ['BOVA11', ...traded],
+        answers: { VALE3: 'ok', RAIZ4: 'changed' },
+      });
+      await expect(t.handler.execute(D, FIRST)).resolves.toBe('closed_incomplete');
+      expect(t.messaging.publishScheduled).not.toHaveBeenCalled();
+      expect(t.jobs.wait).not.toHaveBeenCalled();
+      // o mesmo caminho da última tentativa: o opcional uma vez, a confirmação, o calendário e a liquidação
+      expect(t.loads.map((l) => l.requests.length)).toEqual([31, 1]);
+      expect(t.loads[1]!.requests[0]!.ticker).toBe('WEGE3');
+      expect(t.market.confirmTradingDays).toHaveBeenCalled();
+      expect(t.market.seedCalendar).toHaveBeenCalled();
+      expect(t.settlement.afterEod).toHaveBeenCalledWith([D]);
+      expect(t.jobs.succeed).toHaveBeenCalledTimes(1);
+      // 2 de 31 (6%): abaixo do limite do alerta, só o registro
+      expect(error).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        { date: D, missing: 2, required: 31, first: { VALE3: 'no-bar', RAIZ4: 'changed' } },
+        'eod concluído sem esperar o prazo: toda falta do dia é definitiva',
+      );
+    });
+
+    it('uma falta passageira entre as definitivas segura o pregão: reagenda, e o log da espera diz o motivo de cada papel', async () => {
+      const traded = Array.from({ length: 28 }, (_, i) => `ACAO${i}3`);
+      const t = setup({
+        universe: [...traded, 'VALE3', 'RAIZ4'],
+        delivers: ['BOVA11', ...traded],
+        answers: { RAIZ4: 'changed' }, // o VALE3 fica com a falha passageira
+      });
+      // 2 de 31 (6%) ficam dentro do limite: quem segura é a falha passageira
+      await expect(t.handler.execute(D, FIRST)).resolves.toBe('rescheduled');
+      expect(t.messaging.publishScheduled).toHaveBeenCalledTimes(1);
+      expect(t.settlement.afterEod).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        {
+          date: D,
+          missing: 2,
+          retryAt: new Date('2026-11-05T01:30:05Z'),
+          first: { VALE3: 'transient', RAIZ4: 'changed' },
+        },
+        'eod reagendado: falta papel do conjunto obrigatório',
+      );
+    });
+
+    it('sem a barra do BOVA11, a falta definitiva dos outros não conclui: o dia pode não ter saído na brapi', async () => {
+      const t = setup({ delivers: ['PETR4'], answers: { BOVA11: 'ok', VALE3: 'ok' } });
+      await expect(t.handler.execute(D, FIRST)).resolves.toBe('rescheduled');
+      expect(t.settlement.afterEod).not.toHaveBeenCalled();
+    });
+
+    it('a falta definitiva acima do limite do alerta espera o prazo, como antes: reagenda, e no prazo conclui com o eod-barras-ausentes', async () => {
+      const universe = Array.from({ length: 20 }, (_, i) => `ACAO${i}3`);
+      const options = {
+        universe,
+        delivers: ['BOVA11', ...universe.slice(3)],
+        answers: { ACAO03: 'ok', ACAO13: 'ok', ACAO23: 'not-found' } as const,
+      };
+      // 3 de 21 (14%), todos sem negócio ou 404: passa dos 10%
+      const early = setup(options);
+      await expect(early.handler.execute(D, FIRST)).resolves.toBe('rescheduled');
+      expect(early.settlement.afterEod).not.toHaveBeenCalled();
+      vi.clearAllMocks();
+      const last = setup(options);
+      await expect(last.handler.execute(D, DEADLINE)).resolves.toBe('closed_incomplete');
+      expect(error).toHaveBeenCalledWith(
+        {
+          date: D,
+          missing: 3,
+          required: 21,
+          first: { ACAO03: 'no-bar', ACAO13: 'no-bar', ACAO23: 'not-found' },
+        },
+        ALERT_LOG.eodBarsMissing,
+      );
+      expect(last.settlement.afterEod).toHaveBeenCalledWith([D]);
+    });
+
     it('no prazo, sem o BOVA11: o eod-barras-ausentes', async () => {
       const t = setup({ delivers: ['PETR4', 'VALE3'] });
       await t.handler.execute(D, DEADLINE);
       expect(error).toHaveBeenCalledWith(
-        { date: D, missing: 1, required: 3, first: ['BOVA11'] },
+        { date: D, missing: 1, required: 3, first: { BOVA11: 'transient' } },
         ALERT_LOG.eodBarsMissing,
       );
     });
@@ -258,8 +346,8 @@ describe('EodHandler (a decisão)', () => {
         expect.objectContaining({ missing: 40, required: 41 }),
         ALERT_LOG.eodBarsMissing,
       );
-      const [context] = error.mock.calls[0] as unknown as [{ first: string[] }];
-      expect(context.first).toHaveLength(20);
+      const [context] = error.mock.calls[0] as unknown as [{ first: Record<string, string> }];
+      expect(Object.keys(context.first)).toHaveLength(20);
     });
 
     it('no prazo, sem nenhuma barra (a brapi fora a noite inteira): não confirma nem liquida, mas conclui a mensagem', async () => {

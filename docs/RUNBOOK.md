@@ -548,12 +548,12 @@ O orçamento de US$ 100 (`budgetAmount = 100`, o crédito do Azure for Students)
 
 ### 12.1 `eod-barras-ausentes`
 
-Quando: o `eod` concluiu o pregão no prazo das 00:30 de Brasília **sem o BOVA11 ou sem mais de 10% do conjunto obrigatório** (campos `date`, `missing`, `required` e os 20 primeiros tickers). Faltar um ou outro papel sem negócio **não** alerta: vai só ao registro.
+Quando: o `eod` concluiu o pregão no prazo das 00:30 de Brasília **sem o BOVA11 ou sem mais de 10% do conjunto obrigatório** (campos `date`, `missing`, `required` e `first`, os 20 primeiros papéis com o motivo de cada um: `no-bar`, `not-found`, `changed`, `refused`, `malformed`, `transient` ou `not-asked`; `docs/DADOS.md`, seção 7). Faltar um ou outro papel sem negócio **não** alerta: vai só ao registro, e o `eod` conclui sem esperar o prazo.
 
 1. **Veja a causa.** O log do `ca-worker-data` traz, na mesma noite, a linha do `eod` (`eod: barras do conjunto obrigatório pedidas à brapi`, com `asked`, `requests`, `remaining` (a cota restante, só o número), `failed` e `stopped`) e, se a brapi caiu, `brapi: papéis seguidos sem resposta` ou `brapi-cota-baixa`. `stopped` é `outage` (a brapi fora do ar, seção 12.4), `quota` (seção 12.2) ou `time` (o orçamento de 4 minutos acabou).
 2. **Nada a fazer na mesma noite se a brapi voltou.** A janela de 5 pregões recupera: o `eod` da noite seguinte pede, a cada papel, do pregão mais antigo que lhe falta até o de hoje, confirma os dois pregões e a liquidação do mais novo refaz a temporada em ordem. Conferir no dia seguinte: `SELECT d.date, d.source, (SELECT count(*) FROM daily_bar b WHERE b.date = d.date) AS barras FROM trading_day d WHERE d.date >= current_date - 7 AND d.source <> 'CALENDAR' ORDER BY d.date;` e o `job_run` do `eod` e do `settle` em `SUCCEEDED` (`GET /admin/jobs`).
 3. **Passou da janela** (a brapi fora por mais de 5 pregões): a carga manual recupera um intervalo, só o que falta (seção 12.5, com `--de` e `--ate`). A liquidação dos pregões recuperados entra na próxima liquidação regular, que recalcula a temporada do zero (ver "Lacunas conhecidas").
-4. **Sempre os mesmos papéis** (suspensos): é o esperado; eles mantêm as novas tentativas até as 00:30 e não alertam abaixo de 10%.
+4. **Sempre os mesmos papéis** (suspensos, ou com o ticker trocado, como o RAIZ4 nas noites de 16 e 17/11/2026): é o esperado. A falta deles é definitiva (`no-bar`, `not-found` ou `changed` no `first`): abaixo de 10% do obrigatório o `eod` conclui na primeira tentativa e não alerta; acima, espera o prazo das 00:30 e alerta.
 
 **Risco:** carregar à mão o que o `eod` já ia recuperar gasta cota à toa (uma requisição por papel).
 

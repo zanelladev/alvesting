@@ -66,6 +66,7 @@ function setup(options: Options = {}) {
           stopped: null,
           asked: requests.length,
           failed: [],
+          outcomes: new Map(),
           inserted: 0,
           divergent: [],
           unknown: [],

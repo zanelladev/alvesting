@@ -60,7 +60,7 @@ mensagem. Os agendadores são as mesmas classes que `src/role.ts` liga (`MarketS
 | 07:30:30 | `sched-briefing` | `freeze {pregão}`: congela o briefing (SHA-256) |
 | 07:30:45 | `sched-news` | 6 `fetch`, **depois do corte**: entram no briefing do dia seguinte |
 | 08:00:30 | `sched-cycle` | 1 `decide {ciclo, competidor}` por modelo (6) |
-| 21:30:20 | `sched-eod` | `eod {pregão}`; ao concluir (o conjunto obrigatório inteiro, ou o prazo das 00:30), o eod publica `settle {temporada, pregão}` |
+| 21:30:20 | `sched-eod` | `eod {pregão}`; ao concluir (o conjunto obrigatório inteiro, a falta toda definitiva ou o prazo das 00:30), o eod publica `settle {temporada, pregão}` |
 | 23:30 do 2º pregão | `settle:event` (admin) | nenhuma: registra o desdobramento antes da data ex, pelo mesmo `CorporateEventService` do comando |
 
 Antes de tudo, a carga histórica: os 60 pregões da janela do universo (06/08 a 30/10/2026) entram pelo mesmo `BrapiBackfill` do
@@ -129,13 +129,15 @@ provedor. O `fake/flaky-json` saiu do código, sem uso. Os dois caminhos continu
 - **Brapi atrasada.** No 2º pregão a barra só "sai" às 22:10. O `eod` das 21:30 pede o BOVA11 (a sonda), vê que ele não tem a barra do
   dia, gasta uma requisição só e se reagenda para 22:30 (`publishScheduled`, +60 min); na cópia busca o conjunto obrigatório inteiro.
 - **Papel sem negócio e suspenso.** SECA3 não negocia no 2º pregão e PAUS3 some do 3º em diante, e as ações de enchimento ficam sem
-  negócio de vez em quando. A brapi falsa não devolve a barra deles, e o `eod` os pede de novo em cada nova tentativa até o prazo das
-  00:30 (22:30, 23:30 e 00:30), e só eles. Por isso **os 5 pregões concluem às 00:30** (cada um tem um papel sem barra) e o relatório
-  mostra 5 pregões reagendados, e não 1. A economia (ordens, patrimônio, percentis) não muda com a hora em que o `settle` roda.
+  negócio de vez em quando. A brapi falsa responde sem a barra deles: a falta é definitiva e, com a barra do BOVA11 gravada e a falta
+  dentro do limite do alerta (até 10% do obrigatório), o `eod` conclui na mesma tentativa, sem pedi-los de novo (`docs/DADOS.md`, seção
+  7, item 5). Por isso **só o pregão atrasado se reagenda** (a sonda das 21:30), e os outros 4 concluem na primeira tentativa. A
+  economia (ordens, patrimônio, percentis) não muda com a hora em que o `settle` roda.
 - **O plano das requisições.** A brapi falsa conta as requisições por pregão buscado, e uma verificação do relatório (e o teste do
   ensaio) falha se o número fugir do plano (`plannedBrapiRequests`, em `report.ts`): um pregão custa uma requisição por papel do
-  conjunto obrigatório (40 ações e o BOVA11), mais 3 por papel sem barra (as novas tentativas de 22:30, 23:30 e 00:30); o pregão
-  atrasado custa 1 (a sonda) mais o conjunto, e 2 por papel sem barra. A carga inicial custa a lista e 41 papéis, e cada domingo, a lista.
+  conjunto obrigatório (40 ações e o BOVA11), e o pregão atrasado custa 1 (a sonda) mais o conjunto. Só a falta acima do limite do
+  alerta (o mesmo `missingTooMuch` do `eod`) esperaria o prazo, e aí cada papel sem barra custaria mais 3 (as novas tentativas de 22:30,
+  23:30 e 00:30; 2 no pregão atrasado). A carga inicial custa a lista e 41 papéis, e cada domingo, a lista.
 
 **Notícias e macro** (`src/ensaio/feeds.ts`). Três notícias por fonte e por dia, em quatro feeds RSS 2.0 (links em `noticias.invalid`),
 entram pelo caminho do `news:import` (`RssFetcher.ingest`), com a hora simulada como hora em que o lote foi visto. Uma delas, na Agência
@@ -228,11 +230,12 @@ sem isso o resultado dependeria do dia em que o ensaio roda.
 
 ## 6. Resultado de uma execução
 
-`pnpm --filter @alvesting/api arena:ensaio` (04/11/2026, semente 1, 5 pregões, Mac arm64, Node 26.13, Postgres 17 e Azurite 3.37 do
-compose, com o elenco simulado da seção 3): **exit 0, 17 de 17 verificações passaram.** O relatório (`.data/ensaio/relatorio-s1-p5.txt`,
-22.068 bytes) tem o SHA-256 `081d860b31b6c69997424d92beacc190eefed498835b61e2ebe9b442d8891f12`, o mesmo nas duas execuções seguidas. Os
-relatórios desta semente, em ordem: `b45047f8…` (antes da brapi), `e3138a55…` (a brapi falsa, seção 6.1) e este (o elenco simulado, seção
-6.2). Cabeçalho e o 2º pregão (o da brapi atrasada e do dia sem negócio):
+`pnpm --filter @alvesting/api arena:ensaio` (18/11/2026, semente 1, 5 pregões, Mac arm64, Node 26.13, Postgres 17 e Azurite 3.37 do
+compose, com o elenco simulado e a falta definitiva da seção 3): **exit 0, 17 de 17 verificações passaram.** O relatório
+(`.data/ensaio/relatorio-s1-p5.txt`, 22.065 bytes) tem o SHA-256 `64f6be7115f3e7d9700c40561d45ac52fc6c4e56160941fa66d47107a12fd021`, o
+mesmo nas duas execuções seguidas. Os relatórios desta semente, em ordem: `b45047f8…` (antes da brapi), `e3138a55…` (a brapi falsa,
+seção 6.1), `081d860b…` (o elenco simulado, seção 6.2) e este (a falta definitiva, seção 6.3). Cabeçalho e o 2º pregão (o da brapi
+atrasada e do dia sem negócio):
 
 ```text
 ENSAIO DA TEMPORADA 0
@@ -286,13 +289,13 @@ RANKING FINAL (2026-11-09)
   10 bova11                R$ 98.610,70    -1,39%     18,80%         -0,68%    -1,59%     1,39%          1        -
 
 FILA (barramento em processo, a mesma regra do MessagingService)
-  entregas: briefing 5, decisions 30, market 22, news 60, settlement 5
-  novas tentativas agendadas: 0 | eod reagendado (a brapi ainda sem o BOVA11 ou algum papel do dia): 5 | mensagens na DLQ: 0
+  entregas: briefing 5, decisions 30, market 8, news 60, settlement 5
+  novas tentativas agendadas: 0 | eod reagendado (a brapi ainda sem o BOVA11 ou algum papel do dia): 1 | mensagens na DLQ: 0
   jobs gravados: 107 (não concluídos: 0) | avisos nos logs: 0 | erros nos logs: 0
 
 BRAPI FALSA (o fetch do ensaio, no formato dos docs; nenhuma rede)
-  requisições: 266 | carga inicial 41 (uma por papel e o BOVA11) | listas de ações 3 (a da carga e uma por domingo)
-  por pregão: 2026-11-03 44 · 2026-11-04 46 · 2026-11-05 44 · 2026-11-06 44 · 2026-11-09 44
+  requisições: 250 | carga inicial 41 (uma por papel e o BOVA11) | listas de ações 3 (a da carga e uma por domingo)
+  por pregão: 2026-11-03 41 · 2026-11-04 42 · 2026-11-05 41 · 2026-11-06 41 · 2026-11-09 41
 
 VERIFICAÇÕES
   [ok] DLQ vazia: 0 mensagens
@@ -301,8 +304,8 @@ VERIFICAÇÕES
   [ok] nenhum HOLD forçado (prazo, falha ou resposta inválida): 0 HOLDs
   [ok] patrimônio de cada competidor em cada pregão: 50 snapshots (10 competidores x 5 pregões)
   [ok] todos os jobs concluídos (nenhum FAILED nem RUNNING no fim): 107 jobs, 0 não concluídos
-  [ok] brapi atrasada: o eod vê o BOVA11 sem a barra do dia, se reagenda e completa na tentativa seguinte: 5 pregões reagendados; o atrasado (2026-11-04) teve 4 entregas
-  [ok] requisições à brapi falsa dentro do plano (uma por papel que falta; só quem não veio é pedido de novo): 44/44 · 46/46 · 44/44 · 44/44 · 44/44
+  [ok] brapi atrasada: o eod vê o BOVA11 sem a barra do dia, se reagenda e completa na tentativa seguinte: 1 pregão reagendado; o atrasado (2026-11-04) teve 2 entregas
+  [ok] requisições à brapi falsa dentro do plano (uma por papel que falta; só quem não veio é pedido de novo): 41/41 · 42/42 · 41/41 · 41/41 · 41/41
   [ok] ação sem negócio no dia: a ordem não executa, sem preço e sem execução: 12 ordens
   [ok] ação suspensa: a posição segue marcada pelo último fechamento: 11 posições marcadas
   [ok] desdobramento 1:2 de DOBR4 na data ex (2026-11-05): a quantidade dobra: evento registrado; 4 carteiras com a ação
@@ -321,7 +324,8 @@ estratégias fake com o nome dos modelos e de um mercado inventado: não diz nad
 
 **Medidas desta máquina** (saem na tela, fora do relatório, porque mudam a cada execução). As de 04/11/2026 saíram com a máquina carregada
 (a demo local no ar e o swap quase cheio): o mesmo ensaio, com o elenco antigo, levou 1.125 ms em `decisions` nessa hora, contra os 534 ms da
-medida de 03/11. Servem de ordem de grandeza, não de comparação:
+medida de 03/11. Servem de ordem de grandeza, não de comparação (são de antes da falta definitiva, com 22 entregas na `market`; a medida
+de 18/11 está na seção 6.3):
 
 | Fila | Entregas | Total | Mais lenta |
 | --- | --- | --- | --- |
@@ -413,6 +417,25 @@ e Gemini 4 Argon). Cada estratégia lê só o briefing e a própria carteira, en
 O limite de 10 posições, que antes só aparecia nas execuções longas, agora aparece no último pregão dos 5 (seção 5). O
 `ensaio.integration.spec.ts` confere o que importa de forma independente: o elenco de 6 modelos, nenhuma decisão com reparo, nenhuma nova
 tentativa e nenhum aviso nem erro dos handlers.
+
+### 6.3 O que mudou com a falta definitiva (18/11/2026)
+
+O relatório anterior (`081d860b…`, 22.068 bytes, refeito nesta máquina no commit `291a150`, antes da mudança, com o mesmo SHA-256) e o novo
+(`64f6be71…`, 22.065 bytes) foram comparados linha a linha (`diff`): mudam 6 linhas, todas da fila, da brapi falsa e das verificações.
+**A parte econômica é idêntica**: decisões, ordens, patrimônio, posições, ranking, Monte Carlo, Sorteio e referências não mudam um
+centavo, embora o `settle` de 4 pregões rode agora logo depois das 21:30 (o do atrasado, depois das 22:30), e não às 00:30. O que muda, e
+por quê:
+
+| Linhas | Antes | Agora | Por quê |
+|---|---|---|---|
+| `entregas: ... market` | 22 | 8 | Os 5 `eod`, os 2 `universe` e a cópia do pregão atrasado: o papel sem negócio (SECA3, PAUS3 ou uma ação de enchimento) não segura mais o pregão até as 00:30 (seção 3) |
+| `eod reagendado` | 5 pregões | 1 | Só o atrasado, pela sonda do BOVA11 às 21:30 |
+| `requisições` e `por pregão` | 266; 44, 46, 44, 44 e 44 | 250; 41, 42, 41, 41 e 41 | Uma por papel do obrigatório (41), e no atrasado mais a sonda. As 16 que saem eram as novas tentativas dos papéis sem barra |
+| `[ok] brapi atrasada ...` | 5 pregões reagendados; o atrasado teve 4 entregas | 1 pregão reagendado; o atrasado teve 2 entregas | A sonda e o conjunto, que conclui; o texto concorda no singular |
+| `[ok] requisições à brapi falsa dentro do plano` | 44/44 · 46/46 · 44/44 · 44/44 · 44/44 | 41/41 · 42/42 · 41/41 · 41/41 · 41/41 | O plano (`plannedBrapiRequests`) segue a regra do `eod`, com a mesma conta do limite (`missingTooMuch`) |
+
+Fora do relatório, a fila `market` levou 719 e 635 ms no total nas duas execuções (8 entregas; a mais lenta, 154 e 136 ms). O
+`ensaio.integration.spec.ts` (3 pregões, 12 ações) confere o plano novo (13, 14 e 13 requisições) e as 2 entregas do pregão atrasado.
 
 ## 7. Decisões e limites do desenho
 
