@@ -5,6 +5,7 @@ import type { ArenaWorld } from '../ensaio/world.js';
 import type { PrismaService } from '../infrastructure/database/prisma.service.js';
 import { formatUsd, parseUsdToMicro } from '../modules/arena/domain/cost.js';
 import type { SeasonRow } from '../modules/arena/infrastructure/arena.repository.js';
+import { assertBeforeToday } from '../modules/market-data/application/backfill.js';
 import {
   addDays,
   brasiliaDate,
@@ -43,13 +44,13 @@ export interface RetroOptions {
   calendar: TradingCalendar;
   dated: DatedSeasonFile;
   prompt: LoadedPrompt;
-  // o último pregão que esta execução roda (inclusive)
+  // o último pregão que esta execução roda (inclusive), de antes de hoje em Brasília (assertBeforeToday)
   until: IsoDate;
   // o teto de custo desta execução, em dólares (texto decimal): antes de abrir um pregão, para se o pior caso dele passaria do teto
   capUsd: string;
   // as fontes que o retroativo lê de uma vez, antes dos pregões
   sources: RetroSources;
-  // o relógio da máquina (as buscas e o executed_at); só os testes trocam
+  // o relógio da máquina (o "hoje" da trava do until, as buscas e o executed_at); só os testes trocam
   wallClock?: () => Date;
   signal?: AbortSignal;
   log: (line: string) => void;
@@ -108,6 +109,8 @@ const brt = (date: IsoDate, hhmm: string, seconds = 0): Date =>
 export async function runRetro(options: RetroOptions): Promise<RetroSummary> {
   const { prisma, world, calendar, dated, prompt, log } = options;
   const wall = options.wallClock ?? (() => new Date());
+  // antes de qualquer escrita ou pedido: a carga das fontes e o eod de um pregão de hoje gravariam a barra parcial do dia
+  assertBeforeToday(options.until, brasiliaDate(wall()));
   const sessions = seasonSessions(dated, calendar).filter((date) => date <= options.until);
   if (sessions.length === 0) {
     throw new RetroRefusedError(`Nenhum pregão da temporada até ${options.until}`);

@@ -597,6 +597,8 @@ pnpm --filter @alvesting/api market:backfill                      # a carga inic
 pnpm --filter @alvesting/api market:backfill --papeis PETR4,VALE3 --de 2026-10-26 --ate 2026-10-30   # um papel e uma janela
 ```
 
+   O `--ate` é sempre de antes de hoje, no fuso de São Paulo: hoje e depois são recusados antes de qualquer pedido à brapi ou leitura do banco, nos dois modos, porque a barra do pregão só fica pronta depois do fechamento e a `daily_bar` é só inserção (a barra parcial ficaria no lugar do fechamento: o `eod` da noite não pede o papel que já tem a barra do dia). Sem ele, a carga vai até o pregão anterior a hoje.
+
    O comando usa o `DATABASE_URL` do ambiente, e o `.env.local` da raiz aponta para o banco de dev: para um banco descartável (a prova controlada, por exemplo), passe a variável na linha de comando, com o schema já aplicado (`DATABASE_URL=postgresql://.../<banco>_test pnpm --filter @alvesting/api migrate:deploy`, e depois o mesmo `DATABASE_URL` no `market:backfill`). O `--confirmo-banco` existe para esse erro: o nome que ele mostra é o que você confirma.
 
 2. **Confira o banco mostrado.** Só então busque de verdade, repetindo o comando com o **nome do banco** que ele mostrou:
@@ -703,7 +705,11 @@ pnpm --filter @alvesting/api arena:retroativo --ate 2026-11-05 --teto-usd 30
 - **O que faz:** cria e inicia a temporada de `apps/api/seasons/temporada-1.json` na data do arquivo (13/10/2026), com o SHA-256 do prompt
   fixado, se ela ainda não existe; lê de uma vez as barras que faltam (a brapi, em blocos de até 85 dias), o macro do BCB e os documentos da CVM;
   e roda os pregões em ordem, cada um com o relógio do pregão. Cada ciclo nasce `RETROATIVO`, com a hora real em `executed_at`.
-- **`--ate`:** o último pregão desta execução. Sem ele, o último pregão com barras confirmadas antes de hoje no banco da temporada.
+- **`--ate`:** o último pregão desta execução, sempre de antes de hoje no fuso de São Paulo. Hoje e depois são recusados, no `--dry-run`
+  também, antes de qualquer pedido à brapi ou escrita no banco: a barra do pregão só fica pronta depois do fechamento e a `daily_bar` é só
+  inserção, então a barra parcial ficaria no lugar do fechamento (o `eod` da noite não pede o papel que já tem a barra do dia), e a busca
+  que pedisse o dia de novo a veria diferente (o sinal `barras-divergentes`). Sem ele, o último pregão com barras confirmadas antes de hoje
+  no banco da temporada.
 - **`--teto-usd`** (padrão 30): antes de abrir cada pregão, para se o que esta execução já gastou mais o pior caso do pregão (as duas
   chamadas de cada modelo que falta decidir) passaria do teto. Sai com o código 3 e diz o pregão.
 - **O teto do mês** (`ARENA_MONTHLY_COST_CAP_USD`, o mesmo do agendador de produção) conta o gasto **pelo mês do pregão**, não pelo mês em
@@ -712,7 +718,7 @@ pnpm --filter @alvesting/api arena:retroativo --ate 2026-11-05 --teto-usd 30
 - **Parar:** Ctrl+C termina a entrega em curso (a chamada que está esperando a resposta termina e é gravada) e para. Rodar de novo continua
   de onde parou: o pregão fechado e liquidado é pulado, e o par (ciclo, competidor) que já tem decisão não chama o modelo de novo.
 - **Recusa:** prompt diferente do que a temporada fixou (o SHA-256 está na mensagem; o texto nunca), temporada iniciada por outro caminho ou
-  com outra data de início. Nenhum ciclo abre.
+  com outra data de início, e o `--ate` de hoje ou depois (acima). Nenhum ciclo abre.
 - **Pregão que não fecha:** se o pregão termina sem o ciclo fechado e liquidado (o ciclo pulado por falta de briefing, por exemplo o universo
   da semana sem os 60 pregões confirmados, ou por orçamento; a liquidação que falhou), a execução para nele e sai com o código 3, dizendo o
   pregão. Corrija a causa (o log do dia diz qual) e rode de novo: o pregão pulado é reavaliado. Se o BCB ou a CVM falham na leitura de antes dos
@@ -767,8 +773,8 @@ retroativo cobri-lo (13.5), e **enquanto ele existir nenhum pregão seguinte abr
 
 ### 13.5 Cobrir um dia perdido
 
-1. Espere a noite do pregão perdido: o eod do operador (21:30, até 00:30) confirma as barras do dia. Ou passe `--ate` e deixe o retroativo
-   pedir as barras à brapi.
+1. Espere a noite do pregão perdido: o eod do operador (21:30, até 00:30) confirma as barras do dia. Ou, passada a meia-noite de Brasília,
+   passe `--ate` com o pregão perdido e deixe o retroativo pedir as barras à brapi (o `--ate` de hoje é recusado: 13.2).
 2. Antes das 08:00 do pregão seguinte: `arena:retroativo --dry-run` (confira que o plano é só o dia perdido) e depois `arena:retroativo`. O dia
    entra como `RETROATIVO`, com o briefing pela regra de visibilidade, e a liquidação dele, se já tinha rodado sem ciclo, é refeita.
 3. Confira no log do operador que o ciclo das 08:00 abriu (`ciclo ao vivo aberto`).
