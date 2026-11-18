@@ -14,3 +14,7 @@ packageExtensions:
   '@nestjs/platform-express':
     peerDependencies:
       rxjs: ^7.1.0
+# ponytail: o @azure/monitor-opentelemetry (1.20.1, e a 1.21.0, a mais nova em 18/11/2026) pede o instrumentation-http ^0.221.0, e a 0.221
+# grava a query crua no span de requisição (GHSA-3v2p-hm54-8qcq; corrigido na 0.222.0). Sai quando a distribuição aceitar a 0.222 ou mais.
+overrides:
+  '@opentelemetry/instrumentation-http': 0.222.0
