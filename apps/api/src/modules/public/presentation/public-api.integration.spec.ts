@@ -810,28 +810,6 @@ describe.skipIf(!ready)(title, () => {
       const board = await ok(`/api/v1/seasons/${seasonId}/leaderboard`, leaderboardSchema);
       expect(board.cyclesByMode).toEqual({ RETROATIVO: 1, AO_VIVO: SESSIONS - 1 });
     });
-
-    // A série do patrimônio diz o modo de cada data, para o site marcar o trecho retroativo no gráfico. O pregão liquidado sem ciclo (a
-    // liquidação o conta como HOLD de todos) fica nulo: o teste grava o patrimônio de um pregão a mais, sem ciclo, e o apaga no fim.
-    it('a série do patrimônio diz o modo de cada pregão, e o pregão liquidado sem ciclo fica nulo', async () => {
-      const equity = await ok(`/api/v1/seasons/${seasonId}/equity`, equitySchema);
-      expect(equity.dates).toEqual([FIRST, '2026-11-04', LAST]);
-      expect(equity.modes).toEqual(['RETROATIVO', 'AO_VIVO', 'AO_VIVO']);
-
-      const extra = '2026-11-06';
-      expect(await prisma.cycle.count({ where: { seasonId, date: day(extra) } })).toBe(0);
-      const last = await prisma.equitySnapshot.findMany({ where: { seasonId, date: day(LAST) } });
-      await prisma.equitySnapshot.createMany({
-        data: last.map((s) => ({ ...s, id: newId(), date: day(extra) })),
-      });
-      try {
-        const gap = await ok(`/api/v1/seasons/${seasonId}/equity`, equitySchema);
-        expect(gap.dates).toEqual([FIRST, '2026-11-04', LAST, extra]);
-        expect(gap.modes).toEqual(['RETROATIVO', 'AO_VIVO', 'AO_VIVO', null]);
-      } finally {
-        await prisma.equitySnapshot.deleteMany({ where: { seasonId, date: day(extra) } });
-      }
-    });
   });
 
   describe('GET /cycles/:date (a rota da etapa 6, agora por data)', () => {

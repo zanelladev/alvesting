@@ -329,7 +329,7 @@ export class PublicRepository {
   async equity(ref: string | undefined): Promise<Equity | null> {
     const season = await findPublicSeason(this.prisma, ref);
     if (!season) return null;
-    const [summary, competitors, snapshots, cycles] = await Promise.all([
+    const [summary, competitors, snapshots] = await Promise.all([
       this.summary(season),
       this.prisma.competitor.findMany({
         where: { seasonId: season.id },
@@ -341,14 +341,8 @@ export class PublicRepository {
         orderBy: { date: 'asc' },
         select: { competitorId: true, date: true, equityCents: true },
       }),
-      this.prisma.cycle.findMany({
-        where: { seasonId: season.id },
-        select: { date: true, mode: true },
-      }),
     ]);
     const dates = [...new Set(snapshots.map((s) => day(s.date)))];
-    // o modo do ciclo de cada data, para o site marcar o trecho retroativo (ADR 0038); o pregão liquidado sem ciclo fica nulo
-    const modeOf = new Map(cycles.map((c) => [day(c.date), c.mode]));
     const byCompetitor = new Map<string, Map<IsoDate, number>>();
     for (const s of snapshots) {
       const values = byCompetitor.get(s.competitorId) ?? new Map<IsoDate, number>();
@@ -358,7 +352,6 @@ export class PublicRepository {
     return {
       season: summary,
       dates,
-      modes: dates.map((date) => modeOf.get(date) ?? null),
       // um valor por data para cada competidor; quem não tem snapshot nenhum fica de fora
       series: competitors
         .filter((c) => byCompetitor.has(c.id))

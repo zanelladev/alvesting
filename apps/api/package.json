@@ -30,7 +30,7 @@
     "temporada:preparar": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/temporada-cli.js preparar",
     "arena:retroativo": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/temporada-cli.js retroativo",
     "arena:operar": "nest build && node --enable-source-maps --env-file-if-exists=../../.env.example --env-file-if-exists=../../.env.local dist/temporada-cli.js operar",
-    "e2e:seed": "nest build && ENSAIO_DATABASE_URL=\"${E2E_DATABASE_URL:-postgresql://alvesting:alvesting@localhost:25432/alvesting_e2e_test}\" node --enable-source-maps --env-file-if-exists=../../.env.example dist/ensaio-cli.js --logos-sinteticos --retroativos 2",
+    "e2e:seed": "nest build && ENSAIO_DATABASE_URL=\"${E2E_DATABASE_URL:-postgresql://alvesting:alvesting@localhost:25432/alvesting_e2e_test}\" node --enable-source-maps --env-file-if-exists=../../.env.example dist/ensaio-cli.js --logos-sinteticos",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
