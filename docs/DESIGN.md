@@ -470,9 +470,7 @@ adaptada do Theme Toggle da beUI); o teclado e o movimento reduzido trocam na ho
 - **Gráficos:** a família da beUI (linha, rosca, sparkline, o desenho das velas e o ranking no tempo), um estilo só em todas as telas, com a
   série de cada laboratório; no fim de cada linha, o logo com o anel da cor da série e o valor em texto na tinta. A linha, a rosca e o
   ranking no tempo se leem pelo teclado; a sparkline e as velas são imagens com o resumo em texto (as velas não entregam a série, ADR 0033).
-  Na landing, o gráfico pequeno de servidor (`GraficoMini`), decorativo, com o mesmo dado em texto ao lado. O trecho retroativo do
-  patrimônio (ADR 0038) é o fundo hachurado no fio forte, atrás das linhas, com a amostra na legenda: a hachura não é o tom liso da faixa do
-  Monte Carlo, e nenhuma cor nova entra.
+  Na landing, o gráfico pequeno de servidor (`GraficoMini`), decorativo, com o mesmo dado em texto ao lado.
 - **O logo do laboratório:** o desenho da marca num quadrado branco de cantos arredondados (28% do lado), com o contorno de 1 px, nos dois
   temas; o logo das ações fica no círculo (ADR 0036).
 - **Contador:** o Animated counter da Arc, em pt-BR, que só gira quando o número muda.
@@ -516,9 +514,7 @@ fica no quadro de partida. A série que a legenda mostra de novo se desenha da e
 - **Do** escreva toda cor por token (`bg-canvas`, `text-ink`, `var(--color-primary)`) e deixe as peças das bibliotecas lerem os nomes delas
   (`--background`, `--primary`, `--surface`, `--accent`), que apontam para os tokens.
 - **Do** use a sans do sistema em tudo, com algarismos tabulares; a mono só no hash e no código (`.hash`); o título em dois tons.
-- **Do** deixe a etiqueta "simulado" visível, discreta e uma vez por contexto (a honestidade é obrigatória; o peso, não). A "retroativo"
-  (ADR 0038) segue a mesma regra, na mesma pílula: no pregão retroativo, junto da data, e a nota uma vez na página que mostra o resultado
-  da temporada; nunca num nome.
+- **Do** deixe a etiqueta "simulado" visível, discreta e uma vez por contexto (a honestidade é obrigatória; o peso, não).
 - **Do** dê a todo controle a caixa de 44 px, o anel único no foco do teclado e os estados completos (repouso, hover, foco, ativo,
   desabilitado, carregando, erro).
 - **Do** anime só o que explica uma mudança ou o método, entre 150 e 250 ms nas peças, com saída forte, e escreva o ramo de movimento

@@ -1,8 +1,8 @@
-import type { CycleMode, DropReason, HoldReason, PublicCompetitor } from '@alvesting/contracts';
+import type { DropReason, HoldReason, PublicCompetitor } from '@alvesting/contracts';
 import { formatBps, formatConfidence, formatDate, formatPercentValue } from '../lib/format';
 import { Logo } from './competidor';
 import { LogoDoPapel } from './logo-do-papel';
-import { LINK, NavLink, RetroativoTag, SimulatedTag, direction } from './ui';
+import { LINK, NavLink, SimulatedTag, direction } from './ui';
 
 // A decisão de um modelo num pregão, como o feed da arena, a página do modelo, a do ciclo e a landing a mostram. O texto do modelo (resumo e
 // justificativa) é dado de terceiro: já passou pela limpeza e pelo filtro de vazamento na api (docs/METODOLOGIA.md) e aqui entra como
@@ -19,8 +19,6 @@ export interface DecisionCardData {
     provider?: PublicCompetitor['provider'];
     modelId?: PublicCompetitor['modelId'];
   };
-  // o modo do ciclo (o feed o traz; o do ciclo não, porque a página do ciclo já o diz uma vez): o pregão retroativo leva a etiqueta (ADR 0038)
-  mode?: CycleMode;
   status: 'DECIDED' | 'FORCED_HOLD';
   holdReason: HoldReason | null;
   marketView: 'otimista' | 'pessimista' | 'neutro' | null;
@@ -82,9 +80,7 @@ const HEAD_LINK = `${LINK} no-underline hover:underline`;
 // vez, separado do de cima por um fio (o primeiro da lista, sem). `date`: a data do pregão, como link para o ciclo (não vai na página do
 // ciclo, que já é ele). `by`: o que dá o título do item, o modelo (no feed e no ciclo) ou a data (na página do próprio modelo, que já
 // mostra o nome e o logo). `simulated`: a decisão veio do provedor fake, e o item leva a etiqueta "simulado" logo depois do título (ui.tsx,
-// SimulatedTag), uma vez por item; `avisoNaPagina` a tira, quando a página já tem o aviso que cobre a lista (o feed da arena, o ciclo). O
-// pregão retroativo (`mode`, do feed) leva a etiqueta "retroativo" logo depois da data (ui.tsx, RetroativoTag): o modo é do pregão, não do
-// modelo, e o feed mistura os dois.
+// SimulatedTag), uma vez por item; `avisoNaPagina` a tira, quando a página já tem o aviso que cobre a lista (o feed da arena, o ciclo).
 // `logos`: a versão do logo de cada ticker (lib/logos.ts, versoesDosLogos), para o logo à esquerda do ticker de cada ordem; sem ela, o
 // monograma.
 // O contrato de DOM que os testes leem fica: o `article`, o `h3` com o link do modelo ou da data, um `p` só no cabeçalho (a data e a visão de
@@ -107,7 +103,6 @@ export function DecisionCard({
   logos?: ReadonlyMap<string, string>;
 }) {
   const { competitor } = decision;
-  const retroativo = decision.mode === 'RETROATIVO';
   const modelLink = (
     <NavLink href={`/modelos/${competitor.slug}`} className={HEAD_LINK}>
       {competitor.name}
@@ -144,7 +139,6 @@ export function DecisionCard({
           <h3 className="text-15 font-semibold text-ink">
             {by === 'model' ? modelLink : dateLink(false)}
           </h3>
-          {by === 'date' && date && retroativo ? <RetroativoTag /> : null}
           {by === 'model' && simulated && !avisoNaPagina ? <SimulatedTag /> : null}
           {returnBps === undefined || returnBps === null ? null : (
             <span
@@ -156,7 +150,6 @@ export function DecisionCard({
           )}
           <p className="flex flex-wrap items-center gap-x-3 text-xs text-muted">
             {by === 'model' ? dateLink(true) : null}
-            {by === 'model' && date && retroativo ? <RetroativoTag /> : null}
             {decision.marketView ? <span>{MARKET_VIEW[decision.marketView]}</span> : null}
           </p>
         </div>

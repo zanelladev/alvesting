@@ -164,7 +164,7 @@ describe('a arena', () => {
       asOf: '2026-11-04',
       rows: [row(model, 1), row(cdi, 2), row(draw, 3)],
     });
-    api.equity.mockResolvedValue({ season: SEASON, dates: [], modes: [], series: [] });
+    api.equity.mockResolvedValue({ season: SEASON, dates: [], series: [] });
     api.randomBaseline.mockResolvedValue({ season: SEASON, rows: [] });
     api.competitor.mockResolvedValue({
       season: SEASON,
@@ -211,7 +211,7 @@ describe('a arena', () => {
       asOf: '2026-11-04',
       rows: [row(gpt, 1), row(claude, 2)],
     });
-    api.equity.mockResolvedValue({ season: SEASON, dates: [], modes: [], series: [] });
+    api.equity.mockResolvedValue({ season: SEASON, dates: [], series: [] });
     api.randomBaseline.mockResolvedValue({ season: SEASON, rows: [] });
     api.competitor.mockImplementation((slug: string) => {
       if (slug === 'gpt-6-1-sol') return Promise.reject(new ApiError(503, 'UNAVAILABLE'));
@@ -235,46 +235,5 @@ describe('a arena', () => {
     expect(out).toContain('data-carteira="claude-opus-5-5"');
     expect(out).toMatch(/data-carteira="gpt-6-1-sol".*Carteira indisponível agora\./s);
     expect(log).toHaveBeenCalledWith('[web] carteira sem gpt-6-1-sol:', expect.any(ApiError));
-  });
-
-  // O trecho retroativo (ADR 0038): a nota uma vez e o fundo hachurado do gráfico saem do `modes` da série. Sem ele (a api de antes do campo,
-  // que o contrato aceita: o deploy vira a api antes do site, e o campo entrou no site antes de a api mandá-lo), a arena fica igual, sem marca.
-  it('o trecho retroativo vem do modo da série: com ele, a nota e o fundo do gráfico; sem ele, a página fica, sem marca', async () => {
-    api.arenaCurrent.mockResolvedValue({
-      ...CURRENT,
-      season: SEASON,
-      lastCycle: { date: '2026-11-04', status: 'CLOSED', counts: { BUY: 1, SELL: 0, HOLD: 1 } },
-    });
-    const model = competitor({});
-    api.leaderboard.mockResolvedValue({
-      season: SEASON,
-      asOf: '2026-11-04',
-      rows: [row(model, 1)],
-    });
-    api.randomBaseline.mockResolvedValue({ season: SEASON, rows: [] });
-    api.competitor.mockResolvedValue({
-      season: SEASON,
-      competitor: model,
-      stat: null,
-      portfolio: null,
-      series: { dates: [], equityCents: [] },
-      decisions: [],
-    });
-    const serie = {
-      season: SEASON,
-      dates: ['2026-11-03', '2026-11-04'],
-      series: [{ competitor: model, equityCents: [10_000_000, 10_050_000] }],
-    };
-    api.equity.mockResolvedValue({ ...serie, modes: ['RETROATIVO', 'AO_VIVO'] });
-    const com = await render();
-    expect(com).toContain('1 dos 2 pregões, em 03/11, foi rodado depois, e não ao vivo.');
-    expect(com).toContain('data-retroativo');
-    expect(com).toContain('<th scope="row">03/11/2026, retroativo</th>');
-
-    api.equity.mockResolvedValue(serie);
-    const sem = await render();
-    expect(sem).not.toContain(FAILED);
-    expect(sem).toContain('<th scope="row">03/11/2026</th>');
-    expect(sem).not.toContain('retroativo');
   });
 });

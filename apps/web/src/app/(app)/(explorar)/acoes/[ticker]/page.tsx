@@ -6,15 +6,7 @@ import { Competidor } from '../../../../../components/competidor';
 import { ActionBadge } from '../../../../../components/decisions';
 import { LogoDoPapel } from '../../../../../components/logo-do-papel';
 import { NewsList } from '../../../../../components/news-list';
-import {
-  BUTTON,
-  Empty,
-  LINK,
-  NavLink,
-  RetroativoTag,
-  SearchForm,
-  direction,
-} from '../../../../../components/ui';
+import { BUTTON, Empty, LINK, NavLink, SearchForm, direction } from '../../../../../components/ui';
 import { UltimoFechamento, Velas } from '../../../../../components/velas';
 import { api } from '../../../../../lib/api';
 import {
@@ -183,8 +175,7 @@ export default withApiDown(async function StockPage({ params }: Props) {
 
             {/* Cada decisão sobre a ação num item de feed: o pregão (o link para o ciclo), o modelo com o logo, a ordem (BUY, SELL ou HOLD),
                 o percentual e a confiança (explicada uma vez, no texto antes da lista), e a justificativa do modelo, que é texto de terceiro e pode
-                ter uma palavra sem espaço (min-w-0, para quebrar). A data vem antes do modelo no DOM e na tela, com a etiqueta do pregão
-                retroativo (ADR 0038) logo depois dela. */}
+                ter uma palavra sem espaço (min-w-0, para quebrar). A data vem antes do modelo no DOM e na tela. */}
             <section id="decisoes" aria-labelledby="decisoes-titulo">
               <h2 id="decisoes-titulo" className="painel-titulo">
                 Decisões dos modelos
@@ -204,7 +195,6 @@ export default withApiDown(async function StockPage({ params }: Props) {
                         >
                           {formatDate(decision.date)}
                         </NavLink>
-                        {decision.mode === 'RETROATIVO' ? <RetroativoTag /> : null}
                       </p>
                       <p className="relative text-13 font-medium text-ink">
                         <Competidor competitor={decision.competitor} etiqueta={false} curto />

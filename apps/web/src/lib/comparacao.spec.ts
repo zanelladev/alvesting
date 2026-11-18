@@ -14,8 +14,6 @@ const competitor = (slug: string, type: PublicCompetitor['type'] = 'MODEL'): Pub
 });
 
 const DATES = ['2026-11-03', '2026-11-04', '2026-11-05'];
-// todos ao vivo; o trecho retroativo tem o teste dele
-const AO_VIVO = ['AO_VIVO', 'AO_VIVO', 'AO_VIVO'] as const;
 const CAPITAL = 10_000_000;
 const SERIES = [
   { competitor: competitor('sobe'), equityCents: [10_100_000, 10_200_000, 10_500_000] },
@@ -33,7 +31,6 @@ describe('compararCarteira', () => {
     const out = compararCarteira({
       lots: [lot('MOVE3', 100_000, '2026-11-03'), lot('SINA3', 100_000, '2026-11-05')],
       dates: DATES,
-      modes: AO_VIVO,
       capitalCents: CAPITAL,
       series: SERIES,
       closes: new Map([
@@ -65,35 +62,7 @@ describe('compararCarteira', () => {
           rendimentoBps: 8,
         },
       ],
-      retroativos: null,
     });
-  });
-
-  // O trecho retroativo da arena (ADR 0038) que o período cobre: do pregão da compra mais antiga (o primeiro em que o dinheiro rende) ao último
-  // liquidado. A compra de depois do trecho não o cobre.
-  it('os pregões retroativos que o período cobre, do pregão da compra mais antiga ao último liquidado', () => {
-    const comparar = (...boughtOn: string[]) =>
-      compararCarteira({
-        lots: boughtOn.map((day) => lot('MOVE3', 100_000, day)),
-        dates: DATES,
-        modes: ['RETROATIVO', 'RETROATIVO', 'AO_VIVO'],
-        capitalCents: CAPITAL,
-        series: SERIES,
-        closes: new Map([['MOVE3', 1_000]]),
-      }).retroativos;
-    expect(comparar('2026-11-03')).toEqual({ pregoes: 2, periodo: 'de 03/11 a 04/11' });
-    expect(comparar('2026-11-05', '2026-11-04')).toEqual({ pregoes: 1, periodo: 'em 04/11' });
-    expect(comparar('2026-11-05')).toBeNull();
-    // sem o modo (a api de antes do campo, opcional no contrato), a comparação sai igual, sem o trecho
-    const semModo = compararCarteira({
-      lots: [lot('MOVE3', 100_000, '2026-11-03')],
-      dates: DATES,
-      capitalCents: CAPITAL,
-      series: SERIES,
-      closes: new Map([['MOVE3', 1_000]]),
-    });
-    expect(semModo.retroativos).toBeNull();
-    expect(semModo.competidores).toHaveLength(SERIES.length);
   });
 
   it('a compra num dia sem pregão entra pelo fechamento do pregão anterior a ele', () => {
@@ -101,7 +70,6 @@ describe('compararCarteira', () => {
       // domingo, entre a sexta (06/11) e a segunda (09/11)
       lots: [lot('MOVE3', 100_000, '2026-11-08')],
       dates: ['2026-11-06', '2026-11-09'],
-      modes: ['AO_VIVO', 'AO_VIVO'],
       capitalCents: CAPITAL,
       series: [{ competitor: competitor('sobe'), equityCents: [10_000_000, 11_000_000] }],
       closes: new Map([['MOVE3', 1_000]]),
@@ -113,7 +81,6 @@ describe('compararCarteira', () => {
     const out = compararCarteira({
       lots: [lot('MOVE3', 1, '2026-11-03', 1)],
       dates: ['2026-11-03', '2026-11-04'],
-      modes: ['AO_VIVO', 'AO_VIVO'],
       capitalCents: 2,
       series: [
         { competitor: competitor('meio'), equityCents: [2, 3] },
@@ -139,7 +106,6 @@ describe('compararCarteira', () => {
         lot('MOVE3', 100_000, '2026-11-04'),
       ],
       dates: DATES,
-      modes: AO_VIVO,
       capitalCents: CAPITAL,
       series: SERIES,
       closes: new Map([['MOVE3', 1_000]]),
@@ -153,18 +119,11 @@ describe('compararCarteira', () => {
     const out = compararCarteira({
       lots: [lot('MOVE3', 100_000, null)],
       dates: DATES,
-      modes: AO_VIVO,
       capitalCents: CAPITAL,
       series: SERIES,
       closes: new Map(),
     });
-    expect(out).toMatchObject({
-      compras: 0,
-      investidoCents: 0,
-      voce: null,
-      competidores: [],
-      retroativos: null,
-    });
+    expect(out).toMatchObject({ compras: 0, investidoCents: 0, voce: null, competidores: [] });
   });
 });
 

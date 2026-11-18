@@ -4,7 +4,7 @@ import { formatBRL, formatBRLSigned, formatBps, formatDate, formatQuantity } fro
 import { Competidor } from './competidor';
 import { LogoDoPapel } from './logo-do-papel';
 import { STICKY_COMPETIDOR, Th, direction } from './tables';
-import { LINK, NavLink, NotaRetroativa, NotaSimulada, ROW, TABLE, TD, TH, TableScroll } from './ui';
+import { LINK, NavLink, NotaSimulada, ROW, TABLE, TD, TH, TableScroll } from './ui';
 import { AlocacaoDaCarteira, Dinheiro, Termo } from './wallet-charts';
 import { BotaoLancar } from './wallet-lots';
 
@@ -236,8 +236,7 @@ export function WalletComparison({ comparacao }: { comparacao: LeituraDaComparac
       </p>
     );
   }
-  const { inicio, ate, compras, investidoCents, fora, voce, competidores, retroativos } =
-    comparacao;
+  const { inicio, ate, compras, investidoCents, fora, voce, competidores } = comparacao;
   const motivos = [
     fora.semData ? `${fora.semData} sem data` : null,
     fora.antes ? `${fora.antes} antes de ${formatDate(inicio)}, o começo da temporada` : null,
@@ -267,12 +266,6 @@ export function WalletComparison({ comparacao }: { comparacao: LeituraDaComparac
         {`${compras === 1 ? 'Entra 1 compra' : `Entram ${compras} compras`}, ${formatBRL(investidoCents)} no total.${deFora}`}
       </p>
       <NotaSimulada competitors={competidores.map((c) => c.competitor)} className="pt-4" />
-      {/* o trecho retroativo da arena que o período cobre (ADR 0038): os pregões dele foram rodados depois, e não ao vivo */}
-      {retroativos ? (
-        <NotaRetroativa className="pt-4">
-          {`No período, ${retroativos.pregoes === 1 ? '1 pregão da arena foi rodado' : `${retroativos.pregoes} pregões da arena foram rodados`} depois, e não ao vivo: ${retroativos.periodo}.`}
-        </NotaRetroativa>
-      ) : null}
       <div className="mt-4">
         <TableScroll label={label}>
           <table className={TABLE}>

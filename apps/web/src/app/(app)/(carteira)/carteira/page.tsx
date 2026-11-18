@@ -76,7 +76,6 @@ async function lerComparacao(lots: Portfolio['lots']): Promise<LeituraDaComparac
     return compararCarteira({
       lots,
       dates: equity.dates,
-      modes: equity.modes,
       capitalCents: equity.season.params.capitalCents,
       series: equity.series,
       closes,

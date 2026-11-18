@@ -289,16 +289,13 @@ describe('a página /carteira', () => {
         lot('01JABCDEFGHJKMNPQRSTVWXYZ2', 'PAUS3', { boughtOn: '2026-10-15' }),
       ],
     };
-    // `modes`: o modo de cada pregão da série (os dois primeiros retroativos, como o trecho da Temporada 1; ADR 0038); `null`, a api de antes
-    // do campo, que não o manda
-    const temporada = (modes: string[] | null = ['RETROATIVO', 'RETROATIVO', 'AO_VIVO']) => {
+    const temporada = () => {
       arenaCurrent.mockResolvedValue({
         season: { slug: 'temporada-1', settledThrough: '2026-11-05' },
       });
       equity.mockResolvedValue({
         season: { params: { capitalCents: 10_000_000 } },
         dates: ['2026-11-03', '2026-11-04', '2026-11-05'],
-        ...(modes ? { modes } : {}),
         series: [
           {
             competitor: competitor('modelo-a', 'Modelo A', 'MODEL'),
@@ -334,10 +331,6 @@ describe('a página /carteira', () => {
       expect(text).toContain(
         'Entra 1 compra, R$ 3.550,00 no total. Ficam de fora: 1 sem data; 1 antes de 03/11/2026, o começo da temporada.',
       );
-      // a compra de 03/11 cobre os dois pregões retroativos: a nota diz quantos e quando
-      expect(text).toContain(
-        'retroativo No período, 2 pregões da arena foram rodados depois, e não ao vivo: de 03/11 a 04/11.',
-      );
       // a pessoa: 100 × R$ 40,00 (o fechamento de 05/11, e não o de 06/11); o Modelo A: R$ 3.550,00 × 10.500.000 ÷ 10.000.000 (a compra do
       // primeiro pregão entra pelo capital inicial); o CDI: × 10.012.000 ÷ 10.000.000
       const table =
@@ -350,15 +343,6 @@ describe('a página /carteira', () => {
           'Modelo A +R$ 177,50 +5,00% · ganho R$ 3.727,50 ' +
           'CDI +R$ 4,26 +0,12% · ganho R$ 3.554,26',
       );
-    });
-
-    it('sem o modo da série (a api de antes do campo, que o contrato aceita), a comparação sai igual, sem a nota do trecho retroativo', async () => {
-      readPortfolio.mockResolvedValue(COMPARAVEL);
-      temporada(null);
-      const text = plain(semEscondido(await render()));
-      expect(text).toContain('Entra 1 compra, R$ 3.550,00 no total.');
-      expect(text).toContain('Modelo A +R$ 177,50 +5,00% · ganho R$ 3.727,50');
-      expect(text).not.toContain('retroativo');
     });
 
     it('sem pregão liquidado, a comparação diz que espera o primeiro', async () => {
