@@ -199,7 +199,8 @@ resource metricRules 'Microsoft.Insights/metricAlerts@2018-03-01' = [
 // A consulta lê só as linhas JSON do Pino; `msg` é o texto, e os campos do contexto (queue, attempt) vêm junto na mesma linha.
 //   job-falhou          JobRunStore.fail: job_run FAILED. A espera do eod pelo arquivo do pregão (WAITING) não escreve esta linha. Na fila
 //                       news só a partir da 3ª tentativa seguida (a falha costuma ser rede, e o slot seguinte rebusca o feed)
-//   api-5xx             o log de requisição da api (pino-http, `res.statusCode`): mais de 1% das requisições dos últimos 10 minutos com 5xx.
+//   api-5xx             o log de requisição da api (pino-http, `res.statusCode`): mais de 1% das requisições dos últimos 10 minutos com 5xx
+//                       (a linha com `res.statusCode` que nenhum sinal acima reclamou; nenhuma linha de sinal tem esse campo).
 //                       A métrica de 5xx do Front Door não vê o SSR do site, que chama a api direto pelo ingress (a api fora do ar vira tela de
 //                       erro com status 200); este vê, e vale também no perfil econômico, que não tem Front Door
 //   news-seguranca      a mesma linha, na fila news, quando o motivo é de segurança (DTD no feed, host fora da lista fixa, redirecionamento
@@ -224,11 +225,15 @@ resource metricRules 'Microsoft.Insights/metricAlerts@2018-03-01' = [
 // Quem o vê é o da DLQ (depois de 10 entregas, uns 45 minutos) e a conferência do dia seguinte. Um alerta de ausência ("sem linha de
 // eod concluído às 00:35 de um pregão") pede o agendador escrever a linha de publicação; fica para quando o primeiro pregão real
 // mostrar se a lacuna importa.
+// A regra de alerta não aceita tudo o que o Log Analytics aceita: nada de `union` nem `search` (salvo consulta entre recursos), e
+// `ago()` só com literal de tempo (Learn: "Optimize log search alert queries" e "Create log search alert rules", lidos em 18/11/2026).
+// Até 18/11/2026 o api-5xx vinha num `union` com `ago(apiWindow)`: a consulta achava as linhas à mão e a regra nunca disparou (causa
+// provável; docs/INFRA.md, 5.3). Agora a linha de requisição que nenhum sinal reclamou vira o api-5xx no mesmo `summarize`, e o
+// check.mjs reprova o que a regra não aceita, porque o skipQueryValidation (abaixo) pula a validação que o recusaria no deploy.
 var appSignalsQuery = '''
 let holdMax = 2;
 let newsTolerated = 2;
 let apiErrorPercent = 1;
-let apiWindow = 10m;
 ContainerAppConsoleLogs_CL
 | where Log_s startswith "{"
 | extend j = parse_json(Log_s)
@@ -246,22 +251,17 @@ ContainerAppConsoleLogs_CL
     msg == "abertura anômala: a abertura da barra nova se afastou demais do fechamento anterior e não há evento corporativo na data", "abertura-anomala",
     msg == "sched-cycle: ciclo pulado, nenhum modelo será chamado", "ciclo-pulado",
     "")
+| extend sinal = iff(sinal == "" and TimeGenerated > ago(10m) and isnotnull(j.res.statusCode), "api-5xx", sinal)
 | where sinal != ""
-| summarize n = count() by sinal
+| summarize n = count(), erros = countif(toint(j.res.statusCode) >= 500) by sinal
 | where sinal != "hold-por-falha-ou-resposta-invalida" or n > holdMax
-| union (
-    ContainerAppConsoleLogs_CL
-    | where TimeGenerated > ago(apiWindow) and Log_s startswith "{"
-    | extend j = parse_json(Log_s)
-    | where isnotnull(j.res.statusCode)
-    | summarize total = count(), erros = countif(toint(j.res.statusCode) >= 500)
-    | where erros * 100 > total * apiErrorPercent
-    | project sinal = "api-5xx", n = erros
-  )
+| where sinal != "api-5xx" or erros * 100 > n * apiErrorPercent
+| project sinal, n = iff(sinal == "api-5xx", erros, n)
 '''
 
 // skipQueryValidation: a tabela ContainerAppConsoleLogs_CL só nasce quando o primeiro contêiner escreve no stdout, e a regra é criada
-// junto com os apps (e na fase 1, antes de eles existirem). Sem isto o Azure recusa a regra por "tabela inexistente".
+// junto com os apps (e na fase 1, antes de eles existirem). Sem isto o Azure recusa a regra por "tabela inexistente". O preço: a mesma
+// validação recusaria a consulta que a regra não aceita (o union de até 18/11/2026), e quem a faz é o check.mjs, que não roda o Kusto.
 // Sem identidade própria: a regra consulta com a permissão de quem fez o deploy (Owner do resource group, ou a identidade do CI).
 // Uma identidade da regra viraria mais um leitor do workspace, que guarda o log do WAF com IP e URL (docs/INFRA.md, 2.5).
 resource appSignals 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {

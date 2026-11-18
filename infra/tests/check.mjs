@@ -187,7 +187,6 @@ const APP_SIGNALS_QUERY = `
 let holdMax = ${HOLD_FORCED_MAX_PER_SESSION};
 let newsTolerated = ${NEWS_FAILED_ATTEMPTS_TOLERATED};
 let apiErrorPercent = ${API_5XX_MAX_PERCENT};
-let apiWindow = 10m;
 ContainerAppConsoleLogs_CL
 | where Log_s startswith "{"
 | extend j = parse_json(Log_s)
@@ -205,20 +204,30 @@ ContainerAppConsoleLogs_CL
     msg == "${ALERT_LOG.openingAnomaly}", "${ALERT_SIGNAL.openingAnomaly}",
     msg == "${ALERT_LOG.cycleSkipped}", "${ALERT_SIGNAL.cycleSkipped}",
     "")
+| extend sinal = iff(sinal == "" and TimeGenerated > ago(10m) and isnotnull(j.res.statusCode), "${ALERT_SIGNAL.api5xx}", sinal)
 | where sinal != ""
-| summarize n = count() by sinal
+| summarize n = count(), erros = countif(toint(j.res.statusCode) >= 500) by sinal
 | where sinal != "${ALERT_SIGNAL.holdForced}" or n > holdMax
-| union (
-    ContainerAppConsoleLogs_CL
-    | where TimeGenerated > ago(apiWindow) and Log_s startswith "{"
-    | extend j = parse_json(Log_s)
-    | where isnotnull(j.res.statusCode)
-    | summarize total = count(), erros = countif(toint(j.res.statusCode) >= 500)
-    | where erros * 100 > total * apiErrorPercent
-    | project sinal = "${ALERT_SIGNAL.api5xx}", n = erros
-  )
+| where sinal != "${ALERT_SIGNAL.api5xx}" or erros * 100 > n * apiErrorPercent
+| project sinal, n = iff(sinal == "${ALERT_SIGNAL.api5xx}", erros, n)
 `;
 const squash = (text) => text.replace(/\s+/g, ' ').trim();
+// O que a regra de alerta de log NÃO aceita, embora o Log Analytics aceite: `union` e `search` (salvo consulta entre recursos), `bag_unpack`,
+// `pivot`, `narrow`, a palavra reservada `AggregatedValue` e `ago()` sem literal de tempo (Learn, "Optimize log search alert queries" e "Create
+// log search alert rules", lidos em 18/11/2026). A consulta roda à mão e a regra não dispara: foi o que aconteceu de 09 a 18/11/2026, com o
+// `union` e o `ago(apiWindow)` do api-5xx (causa provável, INFRA.md, 5.3). O skipQueryValidation pula a validação do deploy que recusaria
+// isso, então quem recusa é este arquivo. Os textos entre aspas (as linhas do ALERT_LOG) não contam.
+const unsupportedInLogAlert = (query) => {
+  const code = query.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+  return [
+    ...[...code.matchAll(/\b(?:union|search|bag_unpack|pivot|narrow|AggregatedValue)\b/g)].map(
+      ([word]) => word,
+    ),
+    ...[...code.matchAll(/\bago\s*\(([^)]*)\)/g)]
+      .filter(([, arg]) => !/^\s*\d+(?:\.\d+)?(?:d|h|m|s|ms)\s*$/.test(arg))
+      .map(([call]) => call),
+  ];
+};
 // Papéis internos da Azure: GUID -> nome oficial. Cópia INDEPENDENTE da tabela da Microsoft (páginas security,
 // containers, storage, integration e ai-machine-learning de
 // https://learn.microsoft.com/azure/role-based-access-control/built-in-roles, conferidas em 01/11/2026). Não
@@ -1832,8 +1841,14 @@ for (const profile of PROFILES) {
         squash(APP_SIGNALS_QUERY),
         'a consulta da regra de log mudou: confira a lógica e atualize APP_SIGNALS_QUERY e a tabela APP_SIGNAL_CASES junto',
       );
+      // e não usa o que a regra de alerta não aceita (o golden passa com a mudança dos dois lados; isto, não)
+      assert.deepEqual(
+        unsupportedInLogAlert(condition.query),
+        [],
+        'a regra de alerta de log não aceita isto na consulta: o Log Analytics roda, a regra nunca dispara',
+      );
       // a janela do 5xx cobre ao menos duas avaliações (a latência do log) e cabe na janela da regra
-      const apiWindow = Number(/^let apiWindow = (\d+)m;$/m.exec(condition.query)?.[1]);
+      const apiWindow = Number(/\bTimeGenerated > ago\((\d+)m\)/.exec(condition.query)?.[1]);
       assert.ok(
         apiWindow >= 2 * logFrequency && apiWindow <= logWindow,
         `a janela do api-5xx (${apiWindow} min) tem de ser de 2 avaliações (${2 * logFrequency}) até a janela da regra (${logWindow})`,
@@ -1916,7 +1931,8 @@ function signalOf(line) {
 }
 
 // Os sinais que a regra alerta sobre as linhas da janela (todas contadas como se estivessem nela): um por sinal, o HOLD só acima do limite,
-// e o api-5xx pela razão de respostas 5xx entre as linhas de requisição (as que têm `res.statusCode`).
+// e o api-5xx pela razão de respostas 5xx entre as linhas de requisição (as que têm `res.statusCode`) que nenhum sinal reclamou (o `iff`
+// depois do `case()`; a janela de 10 minutos, `ago(10m)`, não entra no espelho).
 function alertsOf(lines) {
   const counts = new Map();
   for (const line of lines) {
@@ -1931,6 +1947,7 @@ function alertsOf(lines) {
       .map(([signal]) => signal),
   );
   const statuses = lines.flatMap((line) => {
+    if (signalOf(line)) return [];
     try {
       const code = line.startsWith('{') ? JSON.parse(line).res?.statusCode : undefined;
       return code === undefined || code === null ? [] : [Number(code)];
@@ -2147,6 +2164,11 @@ const APP_SIGNAL_CASES = [
     [jobFailed('market', 1, 'x'), ...requests(1, 200)],
     ['job-falhou'],
   ],
+  [
+    'api-5xx: a linha de sinal com res.statusCode conta só como o sinal (o api-5xx é a linha que nenhum sinal reclamou)',
+    [pino(ALERT_LOG.jobFailed, { queue: 'market', attempt: 1, res: { statusCode: 500 } })],
+    ['job-falhou'],
+  ],
 ];
 
 test('sinais da aplicação: o que a consulta pretende, linha a linha (espelho em JS do case() e da razão de 5xx)', () => {
@@ -2156,6 +2178,21 @@ test('sinais da aplicação: o que a consulta pretende, linha a linha (espelho e
   const covered = new Set(APP_SIGNAL_CASES.flatMap(([, , expected]) => expected));
   for (const name of Object.values(ALERT_SIGNAL))
     assert.ok(covered.has(name), `nenhum caso de APP_SIGNAL_CASES faz o sinal ${name} alertar`);
+});
+
+test('sinais da aplicação: o conferidor do que a regra de alerta não aceita reprova a consulta de até 18/11/2026', () => {
+  // o fim da consulta antiga, como estava no Bicep: o api-5xx num union, com ago() de variável
+  const before = `let apiWindow = 10m;
+    T | summarize n = count() by sinal
+    | union (T | where TimeGenerated > ago(apiWindow) and Log_s startswith "{" | project sinal = "api-5xx", n = erros)`;
+  assert.deepEqual(unsupportedInLogAlert(before), ['union', 'ago(apiWindow)']);
+  // o literal passa, e as palavras dentro de um texto citado não contam
+  assert.deepEqual(
+    unsupportedInLogAlert(
+      'T | where TimeGenerated > ago(10m) and msg == "union, search e pivot no texto"',
+    ),
+    [],
+  );
 });
 
 // =================================================================================================
