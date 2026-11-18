@@ -561,8 +561,11 @@ test.describe('casca do app', () => {
     const box = (await sheet.boundingBox())!;
     expect(box).toMatchObject({ x: 0, y: 0, width: 390 });
     expect(Math.round(box.y + box.height)).toBe(844 - 56);
+    // a folha é opaca, no canvas da coluna (o fundo da página é a folha regrada, ADR 0041)
     expect(await sheet.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
-      await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+      await page.evaluate(
+        () => getComputedStyle(document.querySelector('.coluna-app')!).backgroundColor,
+      ),
     );
     await expect(sheet.getByText('Mais', { exact: true })).toBeVisible();
     // a página coberta não está à vista

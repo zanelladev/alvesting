@@ -1826,7 +1826,8 @@ test('o título da página do modelo cabe numa linha no desktop, e o logo fica a
     const title = page.getByRole('heading', { level: 1 });
     await expect(title).toContainText('DeepSeek V4 Pro (0813)');
     const shape = await title.evaluate((h1) => {
-      const logo = h1.parentElement!.querySelector('[data-lab]');
+      // o logo mora no cabeçalho, ao lado do título (o título e o subtítulo vêm juntos num bloco, ui.tsx, PageHead)
+      const logo = h1.closest('header')!.querySelector('[data-lab]');
       const style = getComputedStyle(h1);
       return {
         lines: Math.round(h1.getBoundingClientRect().height / parseFloat(style.lineHeight)),

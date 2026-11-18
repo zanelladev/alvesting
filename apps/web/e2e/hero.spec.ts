@@ -119,6 +119,8 @@ test('em 390 px a arte não pede o arquivo inteiro: nem o JSON dos quadros nem o
 test('em 1440 px a arte anda (o quadro muda), e a fita rola', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
+  // a escadaria mora na faixa dela, abaixo da dobra (ADR 0041), e o laço só anda com ela à vista (components/arte-viva.tsx)
+  await frame(page).scrollIntoViewIfNeeded();
   const first = await frame(page).textContent();
   await expect
     .poll(async () => (await frame(page).textContent()) !== first, { timeout: 10_000 })

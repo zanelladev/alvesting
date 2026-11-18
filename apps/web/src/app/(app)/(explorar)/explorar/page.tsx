@@ -113,11 +113,12 @@ export default withApiDown(async function ExplorarPage() {
             {/* o "simulado" uma vez por contexto: a nota no cabeçalho da grade (o Sorteio e as referências não decidem) */}
             <NotaSimulada competitors={grupo.rows.map((row) => row.competitor)} />
             {/* a grade da página regrada (ADR 0041): uma célula por competidor, de uma borda à outra da coluna. Cada célula desenha o
-                próprio fio (`.celula-regrada`), e não o fundo da grade: a última linha incompleta (seis modelos em quatro colunas) fica com
-                as casas vazias no canvas, e não no cinza da folha */}
+                próprio fio (`.celula-regrada`), e não o fundo da grade: a última linha incompleta (as quatro referências em três colunas)
+                fica com as casas vazias no canvas, e não no cinza da folha. Três colunas a partir de 1024 px: com a barra ao lado, a coluna
+                do conteúdo tem uns 670 a 740 px, e em quatro o nome do modelo quebraria */}
             <ul
               aria-label={grupo.title}
-              className="-mx-5 grid gap-px border-y border-folha sm:grid-cols-2 lg:-mx-6 lg:grid-cols-4"
+              className="-mx-5 grid gap-px border-y border-folha sm:grid-cols-2 lg:-mx-6 lg:grid-cols-3"
             >
               {grupo.rows.map((row) => (
                 <CartaoCompetidor
