@@ -202,9 +202,11 @@ export function UniversoDaSemana({
         de {formatDate(tape.date)} e a variação sobre o anterior. Cotações: brapi.dev.
       </p>
       <p className="muted max-w-prose text-pretty">{REGRAS_DO_UNIVERSO}</p>
+      {/* as colunas pela largura da lista, e não pela da tela: cada uma com a linha inteira (o logo, o ticker, o fechamento e a variação,
+          uns 19rem); com três colunas pela tela larga, o ticker ia por baixo do fechamento */}
       <ul
         aria-label="Universo da semana"
-        className="grid gap-x-8 border-t border-hairline sm:grid-cols-2 2xl:grid-cols-3"
+        className="grid grid-cols-[repeat(auto-fill,minmax(min(19rem,100%),1fr))] gap-x-8 border-t border-hairline"
       >
         {tape.rows.map((row) => {
           const change =

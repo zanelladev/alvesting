@@ -181,6 +181,33 @@ test('o logo de cada ação à esquerda do ticker, em toda linha com ticker das 
   ).toContain(TICKER);
 });
 
+// No universo da semana, o ticker não passa por baixo do fechamento: a lista conta as colunas pela largura dela, e não pela da tela (com
+// três colunas pela tela larga, cada uma ficava com uns 240 px, e o "PETR4" ia por cima do "R$ 43,98")
+test('no universo da semana o ticker cabe inteiro antes do fechamento, em qualquer largura', async ({
+  page,
+}, testInfo) => {
+  const larguras = desktop(testInfo.project.name) ? [1280, 1536, 1920] : [null];
+  for (const largura of larguras) {
+    if (largura !== null) await page.setViewportSize({ width: largura, height: 900 });
+    await page.goto('/explorar');
+    const linhas = region(page, 'Universo da semana').getByRole('listitem');
+    await expect(linhas.first()).toBeVisible();
+    const sobrepostas = await linhas.evaluateAll((items) =>
+      items
+        .filter((item) => {
+          const link = item.children[0] as HTMLElement;
+          const fechamento = item.children[1] as HTMLElement;
+          return (
+            link.scrollWidth > link.clientWidth ||
+            link.getBoundingClientRect().right > fechamento.getBoundingClientRect().left
+          );
+        })
+        .map((item) => item.textContent),
+    );
+    expect(sobrepostas, `${largura ?? testInfo.project.name}`).toEqual([]);
+  }
+});
+
 test('as quatro telas são todas na sans: nenhuma mono', async ({ page }) => {
   for (const route of ['/explorar', '/acoes?q=MO', `/acoes/${TICKER}`, '/noticias']) {
     await page.goto(route);
