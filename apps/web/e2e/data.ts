@@ -15,6 +15,8 @@ import { API_URL, QUOTES_SECRET } from './api-server';
 
 // A temporada sintética do ensaio (slug) e o que há nela: 5 pregões (03/11 a 09/11/2026), os 6 modelos do elenco da Temporada 1 com
 // decisões simuladas (provedor fake), o Sorteio e 3 referências. MODEL é o GPT-6.1 Sol, que segue a estratégia do contrário (fake/contrarian).
+// Os dois primeiros pregões (03/11 e 04/11) são retroativos, como o trecho retroativo da Temporada 1 (o `--retroativos 2` do seed; ADR 0038):
+// CYCLE_DAY é um deles, e LAST_DAY é ao vivo.
 export const SEASON = 'ensaio';
 export const LAST_DAY = '2026-11-09';
 export const CYCLE_DAY = '2026-11-04';
@@ -76,6 +78,31 @@ export const isSimulated = (c: { type: string; provider: string | null }) =>
   c.type === 'MODEL' && c.provider === 'fake';
 export const shownName = (c: { name: string; type: string; provider: string | null }) =>
   isSimulated(c) ? `${c.name} ${SIMULATED}` : c.name;
+
+// O pregão retroativo (ADR 0038): a etiqueta junto da data do pregão, e a palavra junto da data na tabela e no controle do gráfico do
+// patrimônio. A nota da página (a arena, o ranking, o modelo) diz quantos dos pregões e quando: o seed tem um trecho só, no começo.
+export const RETROATIVO = 'retroativo';
+// O modo de cada data da série do patrimônio (`modes`): opcional no contrato pela ordem do deploy, e a api do e2e o manda sempre.
+export function modesOf(equity: {
+  dates: readonly string[];
+  modes?: readonly (string | null)[] | undefined;
+}): readonly (string | null)[] {
+  expect(equity.modes, 'a api manda o modo de cada data da série').toHaveLength(
+    equity.dates.length,
+  );
+  return equity.modes!;
+}
+export const chartDay = (date: string, mode: string | null | undefined) =>
+  `${dmy(date)}${mode === 'RETROATIVO' ? `, ${RETROATIVO}` : ''}`;
+export function retroNote(dates: readonly string[], modes: readonly (string | null)[]): string {
+  const retro = dates.filter((_, i) => modes[i] === 'RETROATIVO');
+  // o seed: os primeiros pregões, mais de um, seguidos (a frase do plural, com "de ... a ...")
+  expect(retro.length).toBeGreaterThan(1);
+  expect(modes.slice(0, retro.length).every((mode) => mode === 'RETROATIVO')).toBe(true);
+  const total = modes.filter((mode) => mode !== null).length;
+  const day = (iso: string) => dmy(iso).slice(0, 5);
+  return `${retro.length} dos ${total} pregões, de ${day(retro[0]!)} a ${day(retro.at(-1)!)}, foram rodados depois, e não ao vivo.`;
+}
 
 // O texto que o leitor vê, com o espaço sem quebra do site (entre "R$" e o número) como espaço comum: o toHaveText do Playwright já faz
 // isso, e quem lê o texto cru (allInnerTexts) precisa fazer também.
@@ -142,13 +169,21 @@ const itemParts = (item: DecisionItem): string[] => [
 // o item do cartão: a ação, o ticker, o percentual, a confiança e a justificativa
 export const itemText = (item: DecisionItem & { ticker: string }): string =>
   [item.action, item.ticker, ...itemParts(item).slice(1)].join(' ');
-// a linha da lista da página da ação: a data, o modelo, a ação, o percentual, a confiança e a justificativa
+// a linha da lista da página da ação: a data (com a etiqueta do pregão retroativo), o modelo, a ação, o percentual, a confiança e a
+// justificativa
 export const stockDecisionText = (
   decision: DecisionItem & {
     date: string;
+    mode: string;
     competitor: { name: string; type: string; provider: string | null };
   },
-): string => [dmy(decision.date), shownName(decision.competitor), ...itemParts(decision)].join(' ');
+): string =>
+  [
+    dmy(decision.date),
+    ...(decision.mode === 'RETROATIVO' ? [RETROATIVO] : []),
+    shownName(decision.competitor),
+    ...itemParts(decision),
+  ].join(' ');
 
 // As telas que o e2e de layout e de acessibilidade percorre (layout.spec.ts).
 export const ROUTES = [

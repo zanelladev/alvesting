@@ -18,13 +18,16 @@ import {
   CAST,
   CYCLE_DAY,
   FEED_PAGE,
+  LAST_DAY,
   MODEL,
+  RETROATIVO,
   SEASON,
   SIMULATED,
   TICKER,
   brl,
   brlSigned,
   brt,
+  chartDay,
   clean,
   dmy,
   fetchApi,
@@ -33,7 +36,9 @@ import {
   itemText,
   pct,
   pctl,
+  modesOf,
   ratioBps,
+  retroNote,
   shownName,
   stockDecisionText,
   usd,
@@ -86,9 +91,12 @@ const fullCells = (r: LeaderboardRow) => [
 // página tem o aviso, e o cartão fica sem a etiqueta (o teste "arena simulada" confere). Cada ordem leva o logo da ação à esquerda do ticker,
 // dentro do link (o <img> da rota do site para os dois papéis com logo do seed, o monograma para os outros; ADR 0036). O banco sintético só
 // tem decisões DECIDED, e um item descartado só no último pregão (o limite de 10 posições do Qwen3.8 Max, docs/ENSAIO.md): o HOLD forçado e
-// os descartados, com o motivo, são de e2e/fixture.spec.ts.
+// os descartados, com o motivo, são de e2e/fixture.spec.ts. O pregão retroativo (ADR 0038; o seed tem os dois primeiros) leva a etiqueta
+// "retroativo" uma vez no cartão, junto da data: no feed, na linha de baixo do cabeçalho; na página do modelo, logo depois do título. A decisão
+// do ciclo não traz o modo (a página do ciclo o diz uma vez), e o cartão dela fica sem.
 type CardDecision = Pick<FeedDecision, 'summary' | 'marketView' | 'items'> & {
   competitor: { slug: string; name: string };
+  mode?: FeedDecision['mode'];
 };
 // os papéis com logo no seed do e2e (e2e/logos.spec.ts; apps/api/src/ensaio/synthetic-logos.ts)
 const WITH_LOGO = ['MOVE3', 'SINA3'];
@@ -119,11 +127,16 @@ async function expectCard(
   }
   // "neutro" é o valor do contrato; a frase concorda com "visão" (otimista e pessimista servem aos dois gêneros)
   const view = decision.marketView === 'neutro' ? 'neutra' : decision.marketView;
+  const retro = decision.mode === 'RETROATIVO' && day !== undefined;
   const sub = [
     ...(by === 'model' && day ? [day.text] : []),
+    ...(by === 'model' && retro ? [RETROATIVO] : []),
     ...(view ? [`visão ${view}`] : []),
   ].join(' ');
   await expect(card.locator('header p')).toHaveText(sub, { useInnerText: true });
+  await expect(card.locator('header').getByText(RETROATIVO, { exact: true })).toHaveCount(
+    retro ? 1 : 0,
+  );
 
   // o resumo é o único parágrafo direto do cartão
   await expect(card.locator(':scope > p')).toHaveText(decision.summary ? [decision.summary] : []);
@@ -257,6 +270,7 @@ test.describe('arena', () => {
     request,
   }) => {
     const equity = await fetchApi(request, `/seasons/${SEASON}/equity`, equitySchema);
+    const modes = modesOf(equity);
     const baseline = await fetchApi(
       request,
       `/seasons/${SEASON}/random-baseline`,
@@ -296,7 +310,7 @@ test.describe('arena', () => {
         .locator('th, td')
         .allInnerTexts();
       expect(cells.map(clean)).toEqual([
-        dmy(date),
+        chartDay(date, modes[i]),
         ...equity.series.map((s) => brl(s.equityCents[i]!)),
         brl(baseline.rows[i]!.equityCents.p5),
         brl(baseline.rows[i]!.equityCents.p95),
@@ -340,6 +354,7 @@ test.describe('arena', () => {
     request,
   }) => {
     const equity = await fetchApi(request, `/seasons/${SEASON}/equity`, equitySchema);
+    const modes = modesOf(equity);
     const baseline = await fetchApi(
       request,
       `/seasons/${SEASON}/random-baseline`,
@@ -381,7 +396,7 @@ test.describe('arena', () => {
         .locator('th, td')
         .allInnerTexts();
       expect(cells.map(clean)).toEqual([
-        dmy(date),
+        chartDay(date, modes[i]),
         ...equity.series.map((s) => rendimento(s.equityCents[i]!)),
         rendimento(baseline.rows[i]!.equityCents.p5),
         rendimento(baseline.rows[i]!.equityCents.p95),
@@ -395,7 +410,7 @@ test.describe('arena', () => {
     ).toHaveAttribute(
       'aria-valuetext',
       [
-        dmy(equity.dates[last]!),
+        chartDay(equity.dates[last]!, modes[last]),
         ...ranked.map((s) => `${s.competitor.name} ${rendimento(s.equityCents[last]!)}`),
       ].join('. '),
     );
@@ -427,6 +442,7 @@ test.describe('arena', () => {
       'o teclado é do desktop; o toque tem o teste dele',
     );
     const equity = await fetchApi(request, `/seasons/${SEASON}/equity`, equitySchema);
+    const modes = modesOf(equity);
     const shown = equity.series.filter(
       (s) => s.competitor.type === 'MODEL' || s.competitor.type === 'RANDOM',
     );
@@ -434,7 +450,7 @@ test.describe('arena', () => {
     const reading = (i: number) =>
       nb(
         [
-          dmy(equity.dates[i]!),
+          chartDay(equity.dates[i]!, modes[i]),
           ...[...shown]
             .sort((a, b) => b.equityCents[i]! - a.equityCents[i]!)
             .map((s) => `${s.competitor.name} ${brl(s.equityCents[i]!)}`),
@@ -452,7 +468,9 @@ test.describe('arena', () => {
     await expect(slider).toHaveAttribute('aria-describedby', (await panel.getAttribute('id'))!);
     await page.keyboard.press('Home');
     await expect(slider).toHaveAttribute('aria-valuetext', reading(0));
-    await expect(panel).toContainText(dmy(equity.dates[0]!));
+    // o primeiro pregão do seed é retroativo: o painel o diz junto da data
+    expect(modes[0]).toBe('RETROATIVO');
+    await expect(panel).toContainText(`${dmy(equity.dates[0]!)} · ${RETROATIVO}`);
     for (const s of shown) await expect(panel).toContainText(brl(s.equityCents[0]!));
     await page.keyboard.press('ArrowRight');
     await expect(slider).toHaveAttribute('aria-valuetext', reading(1));
@@ -1485,6 +1503,115 @@ test.describe('arena simulada', () => {
   });
 });
 
+// O trecho retroativo da temporada (ADR 0038; o seed abre os dois primeiros pregões como RETROATIVO): a marca do jeito do "simulado"
+// (docs/DESIGN.md: visível, discreta e uma vez por contexto). A nota uma vez na página que mostra o resultado da temporada (a arena, o ranking
+// e o modelo), com a conta e o período lidos da série da api e escritos de novo aqui; a etiqueta junto da data do pregão retroativo (o feed,
+// o ciclo, a ação); e o fundo hachurado no gráfico, com a amostra na legenda e o período na descrição. Nunca num nome.
+test.describe('o trecho retroativo', () => {
+  test('a arena anota uma vez quantos dos pregões foram retroativos e quando, numa linha discreta, nas duas vistas', async ({
+    page,
+    request,
+  }) => {
+    const equity = await fetchApi(request, `/seasons/${SEASON}/equity`, equitySchema);
+    const note = retroNote(equity.dates, modesOf(equity));
+    for (const path of ['/arena', '/arena?vista=carteiras']) {
+      await page.goto(path);
+      const line = page.getByText(note);
+      await expect(line, path).toHaveCount(1);
+      await expect(line).toBeVisible();
+      await expect(line).toHaveText(`${RETROATIVO} ${note}`, { useInnerText: true });
+      // a linha discreta da nota "simulado": sem fundo nem borda, e a etiqueta cinza sem borda
+      const style = await line.evaluate((p) => {
+        const own = getComputedStyle(p);
+        const tag = getComputedStyle(p.querySelector('span')!);
+        return {
+          background: own.backgroundColor,
+          border: own.borderTopWidth,
+          tagBorder: tag.borderTopWidth,
+        };
+      });
+      expect(style).toEqual({ background: 'rgba(0, 0, 0, 0)', border: '0px', tagBorder: '0px' });
+      // a primeira página do feed e o último ciclo são ao vivo: a etiqueta é só a da nota, e nenhum nome a leva
+      await expect(page.getByText(RETROATIVO, { exact: true })).toHaveCount(1);
+      await expect(page.getByRole('link').filter({ hasText: RETROATIVO })).toHaveCount(0);
+    }
+  });
+
+  test('o feed marca o pregão retroativo junto da data, e só ele', async ({ page, request }) => {
+    const feed = await fetchApi(
+      request,
+      `/decisions?competitor=${MODEL}&limit=${FEED_PAGE}`,
+      decisionsPageSchema,
+    );
+    expect(feed.rows.some((row) => row.mode === 'RETROATIVO')).toBe(true);
+    expect(feed.rows.some((row) => row.mode === 'AO_VIVO')).toBe(true);
+    await page.goto(`/arena?modelo=${MODEL}`);
+    const cards = region(page, 'Decisões').getByRole('article');
+    await expect(cards).toHaveCount(feed.rows.length);
+    for (const [i, row] of feed.rows.entries()) {
+      await expectCard(cards.nth(i), row, { by: 'model', date: row.date });
+    }
+  });
+
+  test('o ranking e a página do modelo anotam uma vez, no cabeçalho', async ({ page, request }) => {
+    const equity = await fetchApi(request, `/seasons/${SEASON}/equity`, equitySchema);
+    const note = retroNote(equity.dates, modesOf(equity));
+    await page.goto('/ranking');
+    const head = page.locator('header', {
+      has: page.getByRole('heading', { level: 1, name: 'Ranking' }),
+    });
+    await expect(head.getByText(note)).toBeVisible();
+    await expect(page.getByText(note)).toHaveCount(1);
+    await expect(page.getByText(RETROATIVO, { exact: true })).toHaveCount(1);
+
+    const detail = await fetchApi(request, `/competitors/${MODEL}`, competitorDetailSchema);
+    await page.goto(`/modelos/${MODEL}`);
+    await expect(
+      page.locator('header', { has: page.getByRole('heading', { level: 1 }) }).getByText(note),
+    ).toBeVisible();
+    await expect(page.getByText(note)).toHaveCount(1);
+    // a nota e uma etiqueta por decisão de pregão retroativo (o expectCard do teste do modelo confere onde ela fica)
+    const retroDecisions = detail.decisions.filter((d) => d.mode === 'RETROATIVO').length;
+    expect(retroDecisions).toBeGreaterThan(0);
+    await expect(page.getByRole('main').getByText(RETROATIVO, { exact: true })).toHaveCount(
+      1 + retroDecisions,
+    );
+  });
+
+  test('o gráfico do patrimônio: o fundo hachurado no trecho, a amostra na legenda e o período na descrição', async ({
+    page,
+    request,
+  }) => {
+    const equity = await fetchApi(request, `/seasons/${SEASON}/equity`, equitySchema);
+    const modes = modesOf(equity);
+    const retro = equity.dates.filter((_, i) => modes[i] === 'RETROATIVO');
+    await page.goto('/arena');
+    const chart = region(page, 'Patrimônio');
+    const svg = chart.getByRole('img', { name: /Patrimônio/ });
+    await expect(svg.locator('desc')).toContainText(
+      `Pregões retroativos, rodados depois e não ao vivo: de ${dmy(retro[0]!).slice(0, 5)} a ${dmy(retro.at(-1)!).slice(0, 5)}.`,
+    );
+    // um trecho só (os primeiros pregões): da borda esquerda do desenho a meio passo depois do último retroativo, atrás das linhas, hachurado
+    const hatch = chart.locator('[data-retroativo]');
+    await expect(hatch).toHaveCount(1);
+    await svg.scrollIntoViewIfNeeded();
+    const plot = (await svg.boundingBox())!;
+    const box = (await hatch.boundingBox())!;
+    const step = plot.width / (equity.dates.length - 1);
+    expect(Math.abs(box.x - plot.x)).toBeLessThan(1);
+    expect(Math.abs(box.width - (retro.length - 0.5) * step)).toBeLessThan(1);
+    expect(Math.abs(box.height - plot.height)).toBeLessThan(1);
+    expect(await hatch.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain(
+      'repeating-linear-gradient',
+    );
+    const legend = chart.getByRole('list', { name: 'Séries do gráfico' });
+    const sample = legend.getByRole('listitem').filter({ hasText: 'Pregões retroativos' });
+    await expect(sample).toHaveCount(1);
+    await expect(sample).toHaveText('Pregões retroativos');
+    await expect(sample.locator('.trecho-retroativo')).toHaveCount(1);
+  });
+});
+
 // O movimento reduzido (docs/DESIGN.md, 5): com `prefers-reduced-motion: reduce`, nada anda. O gráfico troca de pregão na hora (o painel e o
 // contador da Arc, que rola só quando o ponteiro muda de pregão, saltam para o valor), e a legenda esconde e mostra a linha na hora, sem o
 // desenho da linha e sem a mola da escala. O teste lê o quadro seguinte à troca: com o movimento, ele ainda estaria no meio do caminho.
@@ -1702,6 +1829,10 @@ test.describe('modelo', () => {
       `/seasons/${SEASON}/random-baseline`,
       randomBaselineSchema,
     );
+    // o modo de cada pregão vem da série da temporada (a página o lê pela data)
+    const equity = await fetchApi(request, `/seasons/${SEASON}/equity`, equitySchema);
+    const modes = modesOf(equity);
+    const modeOf = new Map(equity.dates.map((date, i) => [date, modes[i]]));
     const stat = detail.stat!;
     const portfolio = detail.portfolio!;
     await page.goto(`/modelos/${MODEL}`);
@@ -1769,16 +1900,17 @@ test.describe('modelo', () => {
         .locator('th, td')
         .allInnerTexts();
       expect(cells.map(clean), date).toEqual([
-        dmy(date),
+        chartDay(date, modeOf.get(date)),
         brl(detail.series.equityCents[i]!),
         brl(band.equityCents.p5),
         brl(band.equityCents.p95),
       ]);
     }
 
-    // as decisões, uma a uma: o título é a data do ciclo, que leva ao ciclo
+    // as decisões, uma a uma: o título é a data do ciclo, que leva ao ciclo (a do pregão retroativo, com a etiqueta logo depois dele)
     const cards = region(page, 'Decisões').getByRole('article');
     await expect(cards).toHaveCount(detail.decisions.length);
+    expect(detail.decisions.some((d) => d.mode === 'RETROATIVO')).toBe(true);
     for (const [i, d] of detail.decisions.entries()) {
       await expectCard(cards.nth(i), d, { by: 'date', date: d.date });
     }
@@ -1895,6 +2027,36 @@ test.describe('ciclo', () => {
     });
     expect(style.border).toBe('0px');
     expect(style.color).toBe(style.ink);
+  });
+
+  // O pregão retroativo (ADR 0038): a etiqueta uma vez, junto da situação; em "Horários", a hora em que o ciclo rodou de verdade (a api a dá em
+  // `executedAt`) e a frase que diz que a decisão, o prazo e o fechamento são do relógio do pregão. O ao vivo não tem nada disso.
+  test('o ciclo retroativo leva a etiqueta uma vez e a hora em que rodou de verdade; o ao vivo, não', async ({
+    page,
+    request,
+  }) => {
+    const retro = await fetchApi(request, `/cycles/${CYCLE_DAY}`, cycleViewSchema);
+    expect(retro.mode).toBe('RETROATIVO');
+    await page.goto(`/ciclos/${CYCLE_DAY}`);
+    const tag = page.getByText(RETROATIVO, { exact: true });
+    await expect(tag).toHaveCount(1);
+    await expect(tag).toBeVisible();
+    // na linha da situação, ao lado do "[ok] fechado"
+    await expect(page.locator('p', { has: page.getByText('[ok] fechado') })).toContainText(
+      RETROATIVO,
+    );
+    const times = region(page, 'Horários');
+    await expect(fact(times, 'Rodado de verdade')).toHaveText(brt(retro.executedAt));
+    await expect(times).toContainText(
+      'O pregão é retroativo: a decisão, o prazo e o fechamento seguem o relógio do pregão, e o ciclo rodou de verdade depois',
+    );
+
+    const live = await fetchApi(request, `/cycles/${LAST_DAY}`, cycleViewSchema);
+    expect(live.mode).toBe('AO_VIVO');
+    await page.goto(`/ciclos/${LAST_DAY}`);
+    await expect(page.getByText(RETROATIVO, { exact: true })).toHaveCount(0);
+    await expect(page.locator('dt:text-is("Rodado de verdade")')).toHaveCount(0);
+    await expect(region(page, 'Horários')).not.toContainText('retroativo');
   });
 
   test('ciclo que não existe é 404', async ({ page }) => {

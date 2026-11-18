@@ -95,7 +95,8 @@ export default defineConfig({
   // Bicep os injeta em produção (docs/INFRA.md, 2.7).
   // O terceiro é a api (apps/api/dist). Antes de subir, o driver do ensaio (docs/ENSAIO.md) recria e semeia o banco do e2e com
   // uma temporada inteira e sintética, sem rede (NODE_ENV=development só para o ensaio, que recusa production; o `--logos-sinteticos` grava,
-  // depois do relatório, os dois logos sintéticos de e2e/logos.spec.ts: apps/api/src/ensaio/synthetic-logos.ts), e o db-roles-cli cria o
+  // depois do relatório, os dois logos sintéticos de e2e/logos.spec.ts: apps/api/src/ensaio/synthetic-logos.ts; o `--retroativos 2` abre os
+  // dois primeiros pregões como RETROATIVO, como o trecho retroativo da Temporada 1, para as telas conferirem a marca: ADR 0038), e o db-roles-cli cria o
   // login de menor privilégio da api (NODE_ENV=development também: a senha de dev que ele cria a produção recusa): é o dado que as
   // telas e e2e/public-api.spec.ts leem. Precisa do Postgres e do Azurite do docker compose (no CI, do job). O ensaio recusa banco
   // que não termine em _test ou _ensaio.
@@ -136,7 +137,7 @@ export default defineConfig({
         },
         {
           command:
-            'NODE_ENV=development node --enable-source-maps dist/ensaio-cli.js --logos-sinteticos && NODE_ENV=development node --enable-source-maps dist/db-roles-cli.js && node --enable-source-maps dist/main.js',
+            'NODE_ENV=development node --enable-source-maps dist/ensaio-cli.js --logos-sinteticos --retroativos 2 && NODE_ENV=development node --enable-source-maps dist/db-roles-cli.js && node --enable-source-maps dist/main.js',
           cwd: '../api',
           env: {
             NODE_ENV: 'production',

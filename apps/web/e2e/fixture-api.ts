@@ -384,7 +384,7 @@ function route(
     } satisfies Leaderboard);
   }
   if (rest === '/seasons/fixture/equity')
-    return ok({ season, dates: [], series: [] } satisfies Equity);
+    return ok({ season, dates: [], modes: [], series: [] } satisfies Equity);
   if (rest === '/seasons/fixture/random-baseline')
     return ok({ season, rows: [] } satisfies RandomBaseline);
   if (rest === `/competitors/${fixtureModel.slug}`) {

@@ -17,7 +17,18 @@ import {
 import { FRONT_DOOR_URL } from './api-server';
 import { ORIGIN, addLot, wallet } from './carteira-support';
 import { abrirMenu } from './menu';
-import { SEASON, brl, brlSigned, clean, dmy, fetchApi, fetchBars, pct, ratioBps } from './data';
+import {
+  SEASON,
+  brl,
+  brlSigned,
+  clean,
+  dmy,
+  fetchApi,
+  fetchBars,
+  modesOf,
+  pct,
+  ratioBps,
+} from './data';
 
 // A tela da carteira (etapa 12, parte 2; docs/TELAS.md, seção 9), em pixel-7, iphone-15 (WebKit) e desktop, como todo e2e. O navegador fala com
 // UMA origem só, o Front Door imitado (e2e/front-door.ts): `/api/*` vai para a api da conta, que roda no login de menor privilégio do Postgres
@@ -2088,6 +2099,15 @@ test.describe('a comparação com a arena', () => {
     const comparacao = region(page, 'Comparação com a arena');
     await expect(comparacao.locator('p', { hasText: /^Entram/ })).toHaveText(
       `Entram 2 compras, ${brl(investido)} no total. Ficam de fora: 1 sem data; 1 antes de ${dmy(dates[0]!)}, o começo da temporada; 1 depois de ${dmy(ate)}, o último pregão liquidado.`,
+    );
+    // a compra do primeiro pregão cobre o trecho retroativo do seed (os dois primeiros pregões; ADR 0038): a nota diz quantos e quando
+    const modes = modesOf(equity);
+    const retro = dates.filter((_, i) => modes[i] === 'RETROATIVO');
+    expect(retro).toEqual(dates.slice(0, 2));
+    const day = (iso: string) => dmy(iso).slice(0, 5);
+    await expect(comparacao.getByText(/No período, \d+ pregões da arena foram rodados/)).toHaveText(
+      `retroativo No período, 2 pregões da arena foram rodados depois, e não ao vivo: de ${day(retro[0]!)} a ${day(retro[1]!)}.`,
+      { useInnerText: true },
     );
     const table = comparacao.getByRole('table', {
       name: `Comparação com a arena, no fechamento de ${dmy(ate)}`,
