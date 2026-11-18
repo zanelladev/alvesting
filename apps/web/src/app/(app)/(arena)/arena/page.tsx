@@ -24,8 +24,6 @@ import {
   NavLink,
   PageHead,
   Segmentado,
-  Strip,
-  StripItem,
   direction,
   isSimulated,
 } from '../../../../components/ui';
@@ -47,8 +45,8 @@ import { actionOf, cursorOf, first, orNotFound, type SearchParams } from '../../
 import { REFERENCE_TICKER, readBars } from '../../../../lib/quotes';
 import { withApiDown } from '../../../../lib/with-api-down';
 
-// A arena (ADR 0035; o conteúdo é o da home de antes, que virou a landing): no desenho da Arena do Rallies,
-// a barra "Carteiras" à esquerda (components/arena/carteiras.tsx), e no principal a faixa dos modelos, o gráfico do patrimônio (o Line Chart
+// A arena (ADR 0041; o conteúdo é o da home de antes, que virou a landing): o placar dos modelos no topo da coluna, a barra "Carteiras"
+// (components/arena/carteiras.tsx) à direita do feed a partir de 1280 px (pagina.tsx, `junto`) e, na coluna, o gráfico do patrimônio (o Line Chart
 // da beUI, com o rótulo no fim de cada linha), as cotações e o macro com a data de cada valor, os ciclos, o feed de decisões com o filtro por
 // BUY, SELL e HOLD e por modelo, e a temporada. O e2e acha as regiões pelo nome ("Ranking", "Patrimônio", "Cotações e macro", "Ciclos",
 // "Decisões", "Temporada" e "Carteiras"), não pela ordem. O "simulado" vai uma vez (docs/DESIGN.md): o aviso discreto no topo cobre a página
@@ -105,8 +103,8 @@ const modeloOf = (value: string | undefined) => {
   return parsed?.success ? parsed.data : undefined;
 };
 
-// Uma seção da arena com o rótulo pequeno do Rallies (o "FEED" deles; na sans 500, a Regra da Sans Única; em caixa normal, porque é o nome
-// da região que o e2e lê) e, à direita, o que a seção tiver de controle (o filtro do feed).
+// Uma seção da arena, numa faixa da coluna: o fio de 1 px em cima, de uma borda à outra dela (come o respiro da coluna), o título de 18 px
+// na tinta (em caixa normal, porque é o nome da região que o e2e lê) e, à direita, o que a seção tiver de controle (o filtro do feed).
 function Bloco({
   id,
   title,
@@ -119,10 +117,10 @@ function Bloco({
   children: ReactNode;
 }) {
   return (
-    <section id={id} aria-labelledby={`${id}-titulo`} className="mt-10">
+    <section id={id} aria-labelledby={`${id}-titulo`} className="secao">
       {/* `relative`: a lista do filtro por modelo se posiciona nesta linha inteira (no celular, da largura dela) */}
       <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pb-4">
-        <h2 id={`${id}-titulo`} className="text-13 font-medium text-muted">
+        <h2 id={`${id}-titulo`} className="secao-titulo pb-0">
           {title}
         </h2>
         {extra}
@@ -151,11 +149,11 @@ const bova11Of = (bars: readonly InternalBar[]): Bova11 | null => {
   };
 };
 
-// A faixa de cotações e macro: os pares em células separadas por fio (o vão de 1 px sobre o fundo do fio), em duas colunas no celular e três
-// a partir de 640 px. A `Strip` de ui.tsx põe seis colunas a partir de 1280 px de TELA, e ao lado das carteiras a coluna do conteúdo tem uns
-// 720 px: seis não cabem.
+// A grade das cotações e do macro: os pares em células separadas pelos fios de 1 px (a folha nos vãos), em duas colunas no celular e três a
+// partir de 640 px, de uma borda à outra da coluna. A linha dos ciclos, embaixo, usa as mesmas três colunas (o fio da esquerda da contagem é o
+// mesmo da Selic e do Dólar).
 const Celula = ({ term, children }: { term: string; children: ReactNode }) => (
-  <div className="flex min-w-0 flex-col gap-1.5 bg-canvas p-4">
+  <div className="flex min-w-0 flex-col gap-1.5 bg-canvas px-5 py-4 lg:px-6">
     <dt className="text-13 text-muted">{term}</dt>
     <dd className="font-display text-base text-ink tabular-nums">{children}</dd>
   </div>
@@ -176,8 +174,11 @@ function Quotes({ macro, bova11 }: { macro: ArenaCurrent['macro']; bova11: Bova1
     ) : (
       NO_DATA
     );
+  // A grade da página regrada (ADR 0041): as células separadas pelos fios de 1 px (a folha nos vãos), de uma borda à outra da coluna (come o
+  // respiro dela), três por linha a partir de 640 px; a última linha encosta no fio da seção de baixo (o `-mb-8` desfaz o `mt-8` do Bloco
+  // seguinte), e não fica uma linha solta a 32 px dele.
   return (
-    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-hairline bg-hairline sm:grid-cols-3">
+    <dl className="-mx-5 -mb-8 grid grid-cols-2 gap-px border-t border-folha bg-folha sm:grid-cols-3 lg:-mx-6">
       <Celula term="BOVA11">
         {bova11 ? (
           <Dated date={`brapi.dev, fechamento de ${formatDate(bova11.date)}`}>
@@ -208,7 +209,7 @@ function Quotes({ macro, bova11 }: { macro: ArenaCurrent['macro']; bova11: Bova1
   );
 }
 
-// O filtro do feed por modelo (o "Funds ▾" do Rallies): um `details` do navegador com um link por modelo, sem JavaScript. A chave é o modelo
+// O filtro do feed por modelo: um `details` do navegador com um link por modelo, sem JavaScript. A chave é o modelo
 // escolhido: a lista fecha depois da escolha (a navegação suave reaproveitaria o elemento aberto).
 function FiltroModelo({
   modelos,
@@ -307,6 +308,58 @@ export default withApiDown(async function ArenaPage({
     .map((row) => row.competitor);
   // o retorno de cada modelo na temporada, no cabeçalho do item do feed
   const returnOf = new Map(ranking?.rows.map((row) => [row.competitor.slug, row.returnBps]));
+  // o feed das decisões, com as carteiras ao lado a partir de 1280 px (pagina.tsx, ComBarra: `junto`)
+  const decisoes = (
+    <Bloco
+      id="feed"
+      title="Decisões"
+      extra={
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+          <Segmentado
+            preto
+            label="Filtrar decisões"
+            items={FILTERS.map(([label, value]) => ({
+              label,
+              href: feedHref({ action: value, modelo }),
+              atual: action === value ? 'true' : undefined,
+            }))}
+          />
+          {modelos.length > 0 ? (
+            <FiltroModelo modelos={modelos} atual={modelo} action={action} />
+          ) : null}
+        </div>
+      }
+    >
+      {feed.rows.length > 0 ? (
+        <div className="max-w-2xl">
+          {feed.rows.map((row) => (
+            <DecisionCard
+              key={`${row.date}/${row.competitor.slug}`}
+              decision={row}
+              date={row.date}
+              by="model"
+              simulated={isSimulated(row.competitor)}
+              avisoNaPagina
+              returnBps={returnOf.get(row.competitor.slug) ?? null}
+              logos={logos}
+            />
+          ))}
+        </div>
+      ) : (
+        <Empty>
+          {action || modelo || cursor
+            ? 'Nenhuma decisão com este filtro.'
+            : 'Nenhuma decisão ainda.'}
+        </Empty>
+      )}
+      {/* a paginação é ação de apoio: a pílula cinza (a primária fica na ação principal; a Regra da Voz Única) */}
+      {feed.nextCursor ? (
+        <NavLink href={feedHref({ action, modelo, cursor: feed.nextCursor })} className="btn">
+          Mais antigas
+        </NavLink>
+      ) : null}
+    </Bloco>
+  );
   // A arena simulada (ui.tsx, quemSimula): algum modelo da temporada exibida decide pelo provedor fake. O elenco vem do ranking (a
   // temporada inteira, depois da primeira liquidação) ou do feed (as decisões do primeiro pregão, antes dela). O feed filtrado mostra só uma
   // parte do elenco: o aviso nomeia os simulados que vê, sem concluir que são todos.
@@ -319,6 +372,7 @@ export default withApiDown(async function ArenaPage({
     <ComBarra
       largura={400}
       vista={vista}
+      junto={decisoes}
       barra={
         <BarraCarteiras
           carteiras={carteiras}
@@ -335,14 +389,21 @@ export default withApiDown(async function ArenaPage({
         telas={telasDaArena('arena', lastCycle?.date ?? null)}
         acao={REGRAS}
       />
-      <PageHead title="Arena">
+      <PageHead
+        title="Arena"
+        sub={
+          equity && equity.dates.length > 0
+            ? `Quem está ganhando depois de ${equity.dates.length} ${equity.dates.length === 1 ? 'pregão' : 'pregões'}.`
+            : undefined
+        }
+      >
         <p className="max-w-[60ch] text-sm text-pretty">
           Modelos de linguagem decidem BUY, SELL ou HOLD na B3 com o mesmo prompt, ao lado do
           Sorteio (o controle) e das referências: CDI, igual-peso e BOVA11. Dinheiro fictício.
         </p>
       </PageHead>
       <AvisoSimulado competitors={elenco} parcial={parcial} />
-      {/* No celular e no tablet, uma vista por vez: as decisões (o conteúdo da arena) ou as carteiras, como o "Feed | Portfolios" do Rallies.
+      {/* No celular e no tablet, uma vista por vez: as decisões (o conteúdo da arena) ou as carteiras, pelo segmentado.
           São links do servidor (a URL guarda a escolha), no desenho do segmentado, com a escolhida marcada; a partir de 1280 px as duas
           aparecem e as abas somem. */}
       <div className="mt-6 xl:hidden">
@@ -431,106 +492,65 @@ export default withApiDown(async function ArenaPage({
 
         {season ? (
           <Bloco id="ciclos" title="Ciclos">
-            <Facts>
-              <Fact term="Último ciclo">
+            {/* Uma linha da grade das cotações acima (as três colunas, de uma borda à outra da coluna; o pedido do Artur em 18/11/2026: o
+                fio da esquerda do BUY é o mesmo da Selic e do Dólar): o último e o próximo ciclo nas duas primeiras colunas, e a contagem de
+                BUY, SELL e HOLD na terceira, dividida em três. No celular, uma embaixo da outra. A última linha encosta no fio da seção de
+                baixo, como a das cotações. */}
+            <div className="-mx-5 -mb-8 grid gap-px border-t border-folha bg-folha sm:grid-cols-3 lg:-mx-6">
+              <div
+                className={`min-w-0 bg-canvas px-5 pb-3 lg:px-6 [&_dl>div:last-child]:border-b-0 ${lastCycle ? 'sm:col-span-2' : 'sm:col-span-3'}`}
+              >
+                <Facts>
+                  <Fact term="Último ciclo">
+                    {lastCycle ? (
+                      <>
+                        <NavLink href={`/ciclos/${lastCycle.date}`} className={LINK}>
+                          {formatDate(lastCycle.date)}
+                        </NavLink>{' '}
+                        <span className="text-sm text-body">{CYCLE_STATUS[lastCycle.status]}</span>
+                      </>
+                    ) : (
+                      'Ainda não houve ciclo nesta temporada.'
+                    )}
+                  </Fact>
+                  <Fact term="Próximo ciclo">
+                    {nextCycle ? (
+                      <>
+                        {formatWeekdayDate(nextCycle.date)}, às {formatTime(nextCycle.decisionAt)}{' '}
+                        (Brasília).{' '}
+                        <Countdown
+                          at={nextCycle.decisionAt}
+                          initial={countdownText(nextCycle.decisionAt, now)}
+                        />
+                      </>
+                    ) : season.status === 'FINISHED' ? (
+                      'Nenhum: a temporada acabou.'
+                    ) : (
+                      'Nenhum: o último pregão da temporada já abriu.'
+                    )}
+                  </Fact>
+                </Facts>
                 {lastCycle ? (
-                  <>
-                    <NavLink href={`/ciclos/${lastCycle.date}`} className={LINK}>
-                      {formatDate(lastCycle.date)}
-                    </NavLink>{' '}
-                    <span className="text-sm text-body">{CYCLE_STATUS[lastCycle.status]}</span>
-                  </>
-                ) : (
-                  'Ainda não houve ciclo nesta temporada.'
-                )}
-              </Fact>
-            </Facts>
-            {lastCycle ? (
-              <>
-                <div className="overflow-hidden rounded-lg border border-hairline">
-                  <Strip columns={3}>
-                    {(['BUY', 'SELL', 'HOLD'] as const).map((name) => (
-                      <StripItem key={name} term={name}>
+                  <p className="muted text-xs">
+                    BUY, SELL e HOLD: itens válidos de todas as decisões do último ciclo.
+                  </p>
+                ) : null}
+              </div>
+              {lastCycle ? (
+                <dl className="grid grid-cols-3 gap-px">
+                  {(['BUY', 'SELL', 'HOLD'] as const).map((name) => (
+                    <div key={name} className="flex min-w-0 flex-col gap-2 bg-canvas px-5 py-4">
+                      <dt className="text-13 text-muted">{name}</dt>
+                      <dd className="text-26 leading-none text-ink tabular-nums">
                         {lastCycle.counts[name]}
-                      </StripItem>
-                    ))}
-                  </Strip>
-                </div>
-                <p className="muted">
-                  BUY, SELL e HOLD: itens válidos de todas as decisões do último ciclo.
-                </p>
-              </>
-            ) : null}
-            <Facts>
-              <Fact term="Próximo ciclo">
-                {nextCycle ? (
-                  <>
-                    {formatWeekdayDate(nextCycle.date)}, às {formatTime(nextCycle.decisionAt)}{' '}
-                    (Brasília).{' '}
-                    <Countdown
-                      at={nextCycle.decisionAt}
-                      initial={countdownText(nextCycle.decisionAt, now)}
-                    />
-                  </>
-                ) : season.status === 'FINISHED' ? (
-                  'Nenhum: a temporada acabou.'
-                ) : (
-                  'Nenhum: o último pregão da temporada já abriu.'
-                )}
-              </Fact>
-            </Facts>
-          </Bloco>
-        ) : null}
-
-        <Bloco
-          id="feed"
-          title="Decisões"
-          extra={
-            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
-              <Segmentado
-                preto
-                label="Filtrar decisões"
-                items={FILTERS.map(([label, value]) => ({
-                  label,
-                  href: feedHref({ action: value, modelo }),
-                  atual: action === value ? 'true' : undefined,
-                }))}
-              />
-              {modelos.length > 0 ? (
-                <FiltroModelo modelos={modelos} atual={modelo} action={action} />
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
               ) : null}
             </div>
-          }
-        >
-          {feed.rows.length > 0 ? (
-            <div className="max-w-2xl">
-              {feed.rows.map((row) => (
-                <DecisionCard
-                  key={`${row.date}/${row.competitor.slug}`}
-                  decision={row}
-                  date={row.date}
-                  by="model"
-                  simulated={isSimulated(row.competitor)}
-                  avisoNaPagina
-                  returnBps={returnOf.get(row.competitor.slug) ?? null}
-                  logos={logos}
-                />
-              ))}
-            </div>
-          ) : (
-            <Empty>
-              {action || modelo || cursor
-                ? 'Nenhuma decisão com este filtro.'
-                : 'Nenhuma decisão ainda.'}
-            </Empty>
-          )}
-          {/* a paginação é ação de apoio: a pílula cinza (a primária fica na ação principal; a Regra da Voz Única) */}
-          {feed.nextCursor ? (
-            <NavLink href={feedHref({ action, modelo, cursor: feed.nextCursor })} className="btn">
-              Mais antigas
-            </NavLink>
-          ) : null}
-        </Bloco>
+          </Bloco>
+        ) : null}
 
         <Bloco id="temporada" title="Temporada">
           {season ? (

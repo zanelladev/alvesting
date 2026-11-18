@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   arenaCurrent: vi.fn(),
   decisions: vi.fn(),
   leaderboard: vi.fn(),
+  equity: vi.fn(),
 }));
 const quotes = vi.hoisted(() => ({ readBars: vi.fn(), readTape: vi.fn() }));
 vi.mock('../../lib/api', async (importOriginal) => ({
@@ -18,8 +19,6 @@ vi.mock('../../lib/api', async (importOriginal) => ({
   api,
 }));
 vi.mock('../../lib/quotes', () => ({ REFERENCE_TICKER: 'BOVA11', ...quotes }));
-// o índice dos logos das ações (lib/logos.ts, só do servidor): a justificativa mostra o logo ao lado do ticker; aqui, nenhum (os monogramas)
-vi.mock('../../lib/logos', () => ({ versoesDosLogos: () => Promise.resolve(new Map()) }));
 
 const { default: Landing } = await import('./page');
 
@@ -76,7 +75,7 @@ describe('a landing', () => {
     quotes.readTape.mockRejectedValue(error);
     const out = await render();
     expect(out).not.toContain(FAILED);
-    expect(out).toContain('Modelos de linguagem investindo na B3</h1>');
+    expect(out).toContain('Modelos de linguagem <span class="tom2">investindo na B3</span></h1>');
     expect(out).toContain(
       'O mesmo briefing para todos os modelos: o BOVA11 e o macro do Banco Central. Cotações: brapi.dev, pregão de 04/11/2026.',
     );
@@ -90,16 +89,17 @@ describe('a landing', () => {
     expect(out).not.toContain('Modelos de linguagem investindo na B3');
   });
 
-  it('sem temporada: nada de ranking, o cartão e os painéis dizem o que falta, e os ladrilhos trazem o nome dos laboratórios', async () => {
+  it('sem temporada: nada de ranking, o placar diz o que falta, e o elenco traz o nome dos laboratórios', async () => {
     const out = await render();
     expect(api.leaderboard).not.toHaveBeenCalled();
-    // as leituras da landing (d.10): uma página de decisões, nada do patrimônio nem do Monte Carlo
+    // as leituras da landing (d.10): uma página de decisões; o ranking e o patrimônio só com ciclo, e nada do Monte Carlo
+    expect(api.equity).not.toHaveBeenCalled();
     expect(api.decisions).toHaveBeenCalledWith({ limit: 6 });
     expect(out).toContain(NO_RESULT);
-    expect(out).toContain('O primeiro ciclo aparece aqui depois do primeiro pregão.');
-    expect(out).toContain('Nenhuma decisão ainda.');
+    // sem decisão, a citação não aparece
+    expect(out).not.toContain('<blockquote>');
     for (const lab of ['OpenAI', 'Anthropic', 'Google', 'xAI', 'DeepSeek', 'Alibaba Cloud']) {
-      expect(out).toContain(`<span>${lab}</span>`);
+      expect(out).toContain(`text-ink">${lab}</span>`);
     }
     expect(out).not.toContain('simulado');
     expect(out).not.toContain(SIMULATED_NOTICE);
@@ -118,7 +118,14 @@ describe('a landing', () => {
         startedAt: null,
         finishedAt: null,
         settledThrough: null,
-        params: { sessions: 20 },
+        params: {
+          sessions: 20,
+          capitalCents: 10_000_000,
+          monteCarloRuns: 1000,
+          tradeCostBps: 3,
+          decisionTimeBrt: '08:00',
+          deadlineTimeBrt: '09:30',
+        },
       },
       lastCycle: {
         date: '2026-11-04',
@@ -134,25 +141,32 @@ describe('a landing', () => {
       nextCursor: null,
     });
     api.leaderboard.mockResolvedValue({ season: null, asOf: null, rows: [] });
+    api.equity.mockResolvedValue({ season: null, dates: [], series: [] });
     const out = await render();
     expect(api.leaderboard).toHaveBeenCalledWith('temporada-1');
+    expect(api.equity).toHaveBeenCalledWith('temporada-1');
     expect(out).toContain('Temporada em andamento · último pregão em 04/11');
-    // os dois modelos do elenco nos ladrilhos deles (o laboratório pelo slug), e os outros quatro só com o nome do laboratório; o
-    // "simulado" vai uma vez, no cabeçalho da faixa (docs/DESIGN.md: uma vez por contexto), e não em cada ladrilho
-    expect(out).toMatch(/data-lab="anthropic"[^>]*><\/span><span>Claude Opus 5\.5<\/span><\/li>/);
-    expect(out).toMatch(/data-lab="openai"[^>]*><\/span><span>GPT-6\.1 Sol<\/span><\/li>/);
-    expect(out).toContain('<span>Google</span>');
+    // os dois modelos do elenco nas células deles (o laboratório pelo slug), com o nome do modelo e o do laboratório embaixo, e os outros
+    // quatro só com o nome do laboratório; o "simulado" vai uma vez, no cabeçalho do elenco (docs/DESIGN.md: uma vez por contexto), e não em
+    // cada célula
+    expect(out).toMatch(
+      /data-lab="anthropic"[^>]*><\/span><span [^>]*><span [^>]*>Claude Opus 5\.5<\/span><span class="text-muted">Anthropic<\/span>/,
+    );
+    expect(out).toMatch(
+      /data-lab="openai"[^>]*><\/span><span [^>]*><span [^>]*>GPT-6\.1 Sol<\/span><span class="text-muted">OpenAI<\/span>/,
+    );
+    expect(out).toContain('text-ink">Google</span>');
     const strip = out.slice(out.indexOf('id="laboratorios-titulo"'));
     const header = strip.slice(0, strip.indexOf('<ul'));
     expect(header.match(/>simulado</g)).toHaveLength(1);
     expect(strip.slice(0, strip.indexOf('</ul>')).match(/>simulado</g)).toHaveLength(1);
     expect(out).toContain(SIMULATED_NOTICE);
-    // o painel do ciclo: a contagem e o hash; o da justificativa: a decisão mais nova
-    expect(out).toContain('Ciclo de 04/11/2026');
-    expect(out).toContain('a'.repeat(64));
+    // a cena do briefing leva a data do último ciclo, a do prompt a versão dele; a citação, a decisão mais nova
+    expect(out).toContain('Briefing de 04/11/2026');
+    expect(out).toContain('versão v1');
     expect(out).toContain('Resumo de Claude Opus 5.5');
     expect(out).not.toContain('Resumo de GPT-6.1 Sol');
-    // sem ranking ainda: o cartão diz que o resultado sai depois da primeira liquidação
+    // sem ranking ainda: o placar diz que o resultado sai depois da primeira liquidação
     expect(out).toContain(NO_RESULT);
   });
 });

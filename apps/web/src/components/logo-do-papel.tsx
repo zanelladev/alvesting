@@ -1,4 +1,4 @@
-// O logo de um papel, ao lado do ticker (ADR 0036, "Como o site mostra"; docs/TELAS.md, "Logos das ações"), como o Rallies mostra o da
+// O logo de um papel, ao lado do ticker (ADR 0036, "Como o site mostra"; docs/TELAS.md, "Logos das ações"), como o site mostra o da
 // empresa: um círculo de 16 px nas listas e tabelas e um de 40 px no cabeçalho da página da ação (o do logo do laboratório no cabeçalho do
 // modelo). Com a versão (lib/logos.ts, versoesDosLogos, no servidor), o <img> da rota do site (app/logos): o SVG nunca entra na página como
 // marcação, e o navegador só fala com o nosso domínio. O círculo é branco nos dois temas (o desenho da brapi conta com o branco atrás; no
@@ -7,7 +7,7 @@
 // desenho chega), `loading="lazy"` e `decoding="async"`. Sem a versão (o papel sem logo, ou a leitura do índice que falhou), o monograma: a
 // primeira letra do ticker num círculo com as cores do tema, o mesmo desenho da inicial do competidor (globals.css, `.logo[data-inicial]`).
 // Os dois são decorativos (o ticker está ao lado): `alt=""` e `aria-hidden`, e a letra vem do atributo (`::before`), fora do textContent e do
-// innerText que o e2e lê. O respiro até o ticker é de quem chama (`className`; nas listas, `mr-3.5`, os 14 px do Rallies).
+// innerText que o e2e lê. O respiro até o ticker é de quem chama (`className`; nas listas, `mr-3.5`, 14 px).
 // Sem 'use client' e sem import nenhum: serve aos componentes de servidor e aos de cliente.
 const TAMANHOS = {
   lista: { px: 16, classe: 'size-4' },

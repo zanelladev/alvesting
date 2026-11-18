@@ -4,7 +4,7 @@ import { formatBps, formatPercentile } from '../lib/format';
 import { labOf } from '../lib/laboratorio';
 import { LINK, NavLink, NotaSimulada, SimulatedTag, direction, isSimulated } from './ui';
 
-// O competidor como o Rallies mostra um modelo (ADR 0035; plano, g.4): o logo do laboratório num círculo, o nome e a etiqueta "simulado"
+// O competidor como o site mostra um modelo (ADR 0041; plano, g.4): o logo do laboratório num círculo, o nome e a etiqueta "simulado"
 // do modelo da arena simulada. O logo é decorativo (aria-hidden), por atributo (globals.css, `.logo`): o do laboratório; o ícone nosso do
 // Sorteio e de cada referência (o dado, o "%" do CDI, o gráfico do BOVA11, a balança do igual-peso); e, sem nenhum dos dois (um modelo de
 // laboratório sem logo), a inicial. Nada vira texto: o textContent e o innerText do nome, que o e2e lê, continuam "Nome" e "Nome simulado".
@@ -109,15 +109,15 @@ export function NomeCurto({ name, type }: { name: string; type?: string }) {
   );
 }
 
-// A faixa dos modelos do Rallies (plano, e.3): um cartão de 176 px por competidor, separados por fio, na ordem do ranking, com o logo e o
-// nome numa linha (o nome curto: o sufixo de versão vai para o leitor de tela e para o tooltip da arena), o retorno (com o glifo ▲ ▼ ■ e o
-// sinal) e o percentil, cada um levando à página do competidor. A rolagem é da própria lista (com nome e foco de teclado, como a
-// TableScroll), nunca da página, sem barra à vista; com o mouse, o botão redondo "›" do Rallies rola, só por CSS (globals.css, `.faixa`: os
-// `::scroll-button()` do Chromium). Usada pela landing e pela arena; no app ela vai de uma borda à outra do principal (globals.css). Todo
-// cartão tem a mesma altura, com o retorno e o percentil no pé, o fundo que acende no hover e no toque em 150 ms, e o contorno do foco por
-// dentro: a caixa que rola cortaria o de fora. A nota "simulado" vem uma vez, antes da faixa (`avisoNaPagina` a tira, quando a página já
-// avisa). `envolver`: quem usa a peça envolve cada cartão (a arena põe o tooltip da Arc, que é de cliente: a peça fica de servidor, e a
-// landing não carrega o Motion por ela).
+// O placar dos modelos (plano, e.3; ADR 0041): uma régua de células iguais, uma por competidor, separadas pelos fios de 1 px, na ordem do
+// ranking, com a posição em cima (o contador do CSS, fora do texto que se lê), o logo e o nome numa linha (o nome curto: o sufixo de versão
+// vai para o leitor de tela e para o tooltip da arena), o retorno grande (com o glifo ▲ ▼ ■ e o sinal) e o percentil, cada uma levando à
+// página do competidor. Onde não cabe, a rolagem é da própria lista (com nome e foco de teclado, como a TableScroll), nunca da página, sem
+// barra à vista, e a borda da direita esmaece enquanto há mais (globals.css, `.faixa`). Usada pela landing e pela arena; no app ela vai de
+// uma borda à outra da coluna (globals.css). Toda célula tem a mesma altura, com o retorno e o percentil no pé, o fundo que acende no hover e
+// no toque em 150 ms, e o contorno do foco por dentro: a caixa que rola cortaria o de fora. A nota "simulado" vem uma vez, antes do placar
+// (`avisoNaPagina` a tira, quando a página já avisa). `envolver`: quem usa a peça envolve cada célula (a arena põe o tooltip da Arc, que é
+// de cliente: a peça fica de servidor, e a landing não carrega o Motion por ela).
 export function FaixaDeModelos({
   rows,
   label,
@@ -138,28 +138,24 @@ export function FaixaDeModelos({
       {avisoNaPagina ? null : (
         <NotaSimulada competitors={rows.map((row) => row.competitor)} className="px-4 pb-3" />
       )}
-      <div
-        role="region"
-        aria-label={label}
-        tabIndex={0}
-        className="faixa overflow-x-auto border-y border-hairline"
-      >
-        <ul className="flex w-max divide-x divide-hairline">
+      <div role="region" aria-label={label} tabIndex={0} className="faixa">
+        <ul>
           {rows.map((row) => {
             const cartao = (
               <NavLink
                 href={`/modelos/${row.competitor.slug}`}
-                className="faixa-cartao flex h-full min-h-11 flex-col gap-1.5 py-4 focus-visible:-outline-offset-4"
+                className="faixa-cartao flex h-full min-h-11 flex-col gap-2 pt-4 pb-4 focus-visible:-outline-offset-4"
               >
-                <span className="flex min-w-0 items-center gap-2 text-13 font-medium text-ink">
+                {/* a posição (o contador do CSS, `.faixa-topo::before`) e o logo na linha de cima; o nome sozinho embaixo, na largura toda */}
+                <span className="faixa-topo flex items-center justify-between">
                   <Logo competitor={row.competitor} className="size-5" />
-                  <span className="min-w-0 truncate">
-                    <NomeCurto name={row.competitor.name} type={row.competitor.type} />
-                  </span>
+                </span>
+                <span className="min-w-0 truncate text-13 font-medium text-ink">
+                  <NomeCurto name={row.competitor.name} type={row.competitor.type} />
                 </span>
                 <span
                   data-dir={direction(row.returnBps)}
-                  className="mt-auto text-base font-semibold text-ink tabular-nums"
+                  className="mt-auto text-[1.5rem] leading-tight font-medium tracking-[-0.025em] whitespace-nowrap text-ink tabular-nums"
                 >
                   {formatBps(row.returnBps)}
                 </span>
@@ -171,7 +167,7 @@ export function FaixaDeModelos({
             return (
               // `relative`: o sufixo de versão do nome é `sr-only` (absoluto); sem um ancestral posicionado dentro da caixa que rola, ele
               // escaparia do corte dela e alargaria a página no celular (a posição dele seria a do cartão, centenas de px à direita)
-              <li key={row.competitor.slug} className="relative w-44 shrink-0">
+              <li key={row.competitor.slug} className="relative">
                 {envolver ? envolver(cartao, row) : cartao}
               </li>
             );

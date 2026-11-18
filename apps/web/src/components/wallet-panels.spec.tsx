@@ -221,7 +221,7 @@ describe('WalletSummary', () => {
   const dts = (markup: string) =>
     [...markup.matchAll(/<dt[^>]*>(.*?)<\/dt>/g)].map((m) => plain(m[1]!));
 
-  // a ordem do Today do Rallies (ADR 0035): o valor estimado em cima, a frase do resultado e o custo total
+  // a ordem da coluna da carteira (ADR 0041): o valor estimado em cima, a frase do resultado e o custo total
   it('o valor estimado, o resultado com sinal, percentual e palavra, e o custo', () => {
     const out = html(<WalletSummary totals={totals()} />);
     expect(dts(out)).toEqual(['Valor estimado', 'Resultado', 'Custo total']);
@@ -346,7 +346,7 @@ describe('WalletSummary', () => {
   });
 });
 
-describe('WalletPositions: o desenho limpo do Rallies', () => {
+describe('WalletPositions: o desenho limpo', () => {
   it('o ticker na sans 500 com o logo à esquerda, ligado à página da ação; nenhuma mono na tabela', () => {
     const out = html(
       <WalletPositions

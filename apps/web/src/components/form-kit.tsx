@@ -20,7 +20,7 @@ import { BUTTON, CAIXA_ERRO, INPUT } from './ui';
 
 // As peças dos formulários da conta (etapa 11, parte 2): campo com rótulo, erro ligado ao campo por aria-describedby, foco no primeiro
 // erro, aviso de status e o botão. Os campos são não controlados (o valor mora no DOM), o envio lê o FormData, e quem manda é a api: a
-// conferência daqui só poupa a ida. O sistema visual do Rallies (src/app/globals.css; ADR 0035): o campo do cadastro deles (44 px, raio 8, o
+// conferência daqui só poupa a ida. O sistema visual (src/app/globals.css; ADR 0041): o campo (44 px, raio 8, o
 // cinza do painel, com o fio de controle) e o envio na pílula primária. O campo com erro troca o fio pelo vermelho do erro (`aria-invalid`, no
 // globals.css), e a frase do erro vem embaixo dele, ligada por aria-describedby e lida pelo leitor de tela (`role="alert"`).
 //
@@ -91,7 +91,7 @@ export function AccountForm({
   // o envio é a ação principal da superfície: a pílula primária (uma por superfície). Sair, excluir a conta e as ações do painel ficam na
   // pílula cinza
   primary?: boolean;
-  // os botões na largura da coluna, um embaixo do outro: o envio do cadastro do Rallies, nas telas de entrar e criar conta (a tela dividida)
+  // os botões na largura da coluna, um embaixo do outro: o envio nas telas de entrar e criar conta
   largo?: boolean;
 }) {
   const hydrated = useHydrated();

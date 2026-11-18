@@ -68,8 +68,8 @@ test.describe('cadastro, verificação, entrar, conta, exportar, sair e excluir'
     const privacy = docs.documents.find((d) => d.document === 'PRIVACY')!;
     const address = email('fluxo');
 
-    // sem sessão, o link fixo da casca do app (o trilho no desktop, a barra de abas no celular) leva à entrada (com o caminho de volta) e
-    // dela ao cadastro; a landing (o site) tem a pílula "Entrar", e a "Conta" mora na casca do app
+    // sem sessão, o link fixo da casca do app (a lateral no desktop, a barra de abas no celular) leva à entrada (com o caminho de volta) e
+    // dela ao cadastro; a landing (o site) tem o botão "Entrar", e a "Conta" mora na casca do app
     await page.goto('/ranking');
     await abrirMenu(page);
     await page.getByRole('banner').getByRole('link', { name: 'Conta', exact: true }).click();
@@ -725,7 +725,7 @@ test.describe('por toque', () => {
     await expect(terms).toBeChecked();
     await expect(terms).not.toHaveAttribute('aria-invalid', 'true');
     // marcada, a caixa é a NATIVA de 20 px na cor da tinta, com o ✓ do sistema (não depende da cor para dizer que está marcada; o e2e roda
-    // no tema claro, ADR 0035, em que a tinta é a quase preta): o que uma medida de DOM não vê e o projeto não confere por captura de tela (a
+    // no tema claro, ADR 0041, em que a tinta é o azul quase preto): o que uma medida de DOM não vê e o projeto não confere por captura de tela (a
     // linha de base de uma plataforma não vale em outra). Nativa quer dizer sem `appearance: none`: o ✕ de antes, num `::before` do <input>,
     // o Firefox não desenhava (globals.css, `.check`).
     const painted = await terms.evaluate((box) => {
@@ -737,7 +737,7 @@ test.describe('por toque', () => {
         size: [Math.round(rect.width), Math.round(rect.height)],
       };
     });
-    expect(painted).toEqual({ nativa: true, accent: 'rgb(10, 10, 10)', size: [20, 20] });
+    expect(painted).toEqual({ nativa: true, accent: 'rgb(13, 15, 43)', size: [20, 20] });
     await page.getByText(/^Li e aceito a política de privacidade/).tap();
     await expect(privacy).toBeChecked();
 

@@ -3,7 +3,7 @@ import { readLegal } from '../lib/account';
 import { formatDate } from '../lib/format';
 import { documentOf } from '../lib/legal';
 import { LegalText, Sumario, sumarioDoTexto } from './legal-text';
-import { Fact, Facts, LINK, NavLink, PageHead } from './ui';
+import { Faixa, Fact, Facts, LINK, NavLink, PageHead } from './ui';
 
 // Uma das duas páginas de texto legal (etapa 11, parte 2): o título, a versão, a vigência e o SHA-256 acima do texto, que é o que a api
 // serve e o que o aceite grava (sem cache: um texto velho em cache faria a pessoa aceitar uma versão que a api já recusa). A política
@@ -18,7 +18,7 @@ export async function LegalDocumentPage({ id }: { id: LegalDocumentId }) {
       : (['/termos', 'Termos de uso'] as const);
 
   return (
-    <>
+    <Faixa>
       {/* o h1 e os pares (a versão, a vigência, o SHA-256 na mono e, na política, o controlador e o contato) num cartão cinza, acima da prosa
           (ADR 0035) */}
       <PageHead title={doc.title}>
@@ -75,6 +75,6 @@ export async function LegalDocumentPage({ id }: { id: LegalDocumentId }) {
           </NavLink>
         </li>
       </ul>
-    </>
+    </Faixa>
   );
 }

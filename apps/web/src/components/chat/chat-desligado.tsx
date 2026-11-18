@@ -1,7 +1,7 @@
 import { Icone, IconeArena, IconeCarteira, IconeChat } from '../icones';
 import { NavLink } from '../ui';
 
-// O chat desligado (ADR 0035): o desenho do Chat do Rallies, pronto e sem nenhuma chamada. O chat é a etapa 13
+// O chat desligado (ADR 0035): pronto e sem nenhuma chamada. O chat é a etapa 13
 // e só começa depois do aval do orientador (CLAUDE.md). Componentes de servidor: sem `'use client'`, sem `fetch`, sem `<form>`, sem leitura da api
 // nem da sessão. Os controles moram num `<fieldset disabled>`: a caixa não aceita texto e nenhum botão responde, então nada do que a pessoa digite
 // ou toque sai do navegador (o chat.spec.ts confere). O `/chat` usa a caixa e as sugestões; a carteira, o painel "Perguntar", que leva ao /chat.
@@ -21,7 +21,7 @@ const IconeEnviar = () => (
     <path d="M10 15.5v-11M5.5 9 10 4.5 14.5 9" />
   </Icone>
 );
-// a seta curva das perguntas do painel (o "↳" do Rallies)
+// a seta curva das perguntas do painel (o "↳")
 const IconeSetaCurva = () => (
   <Icone size={16}>
     <path d="M5 4.5v5a3 3 0 0 0 3 3h7M12 9.5l3 3-3 3" />
@@ -50,8 +50,9 @@ const SUGESTOES = [
   ['Minha carteira', <IconeCarteira key="carteira" size={16} />],
 ] as const;
 
-// A tela do chat: as abas em pílula ("Perguntar", a escolhida, e "Conversas", o histórico que a etapa 13 traz), a caixa grande com o "+" e o
-// enviar redondos (32 px visíveis na caixa de 44) e as sugestões em chips. Tudo dentro do fieldset desativado.
+// A tela do chat: as abas em chip ("Perguntar", a escolhida, e "Conversas", o histórico que a etapa 13 traz), a caixa grande no raio do
+// cartão (12 px; ADR 0041) com o "+" e o enviar no raio do botão (32 px visíveis na caixa de 44) e as sugestões nas etiquetas de contorno.
+// Tudo dentro do fieldset desativado.
 export function ChatDesligado() {
   return (
     <fieldset disabled className="chat-desligado w-full min-w-0 space-y-4">
@@ -70,7 +71,7 @@ export function ChatDesligado() {
           Conversas
         </button>
       </div>
-      <div className="rounded-3xl border border-hairline bg-surface-card px-3 pt-3 pb-1.5 text-left">
+      <div className="rounded-xl border border-hairline bg-surface-card px-3 pt-3 pb-1.5 text-left">
         <label htmlFor="chat-pergunta" className="sr-only">
           Pergunta para o chat
         </label>
@@ -86,7 +87,7 @@ export function ChatDesligado() {
             aria-label="Anexar"
             className="grid size-11 cursor-not-allowed place-items-center text-muted"
           >
-            <span className="grid size-8 place-items-center rounded-full border border-hairline-strong">
+            <span className="grid size-8 place-items-center rounded-lg border border-hairline-strong">
               <IconeAnexar />
             </span>
           </button>
@@ -95,7 +96,7 @@ export function ChatDesligado() {
             aria-label="Enviar"
             className="grid size-11 cursor-not-allowed place-items-center text-muted"
           >
-            <span className="grid size-8 place-items-center rounded-full bg-surface-strong">
+            <span className="grid size-8 place-items-center rounded-lg bg-surface-strong">
               <IconeEnviar />
             </span>
           </button>
@@ -115,7 +116,7 @@ export function ChatDesligado() {
   );
 }
 
-// As perguntas do painel "Perguntar" da carteira (o "Go deeper" do Today): exemplos do que o chat vai responder, em texto. Não são controles: a
+// As perguntas do painel "Perguntar" da carteira: exemplos do que o chat vai responder, em texto. Não são controles: a
 // tela da carteira não tem botão que não faça nada (o carteira-layout.spec.ts espera que todo botão do `main` ligue depois da hidratação).
 const PERGUNTAS_DA_CARTEIRA = [
   'Como as minhas ações foram no último pregão?',
@@ -154,10 +155,10 @@ export function PainelPerguntar() {
         </ul>
         <div
           aria-hidden="true"
-          className="flex items-center justify-between gap-2 rounded-3xl border border-hairline bg-surface-card py-1.5 pr-1.5 pl-4 text-sm text-muted"
+          className="flex items-center justify-between gap-2 rounded-xl border border-hairline bg-surface-card py-1.5 pr-1.5 pl-4 text-sm text-muted"
         >
           Chat desligado
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-strong">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-strong">
             <IconeEnviar />
           </span>
         </div>

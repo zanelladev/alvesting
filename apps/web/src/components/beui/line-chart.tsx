@@ -11,7 +11,7 @@
 // ele; nada se desenha na abertura da página: a linha se desenha quando o dado muda (a série que a legenda mostra de novo), e a escala anda
 // por molas sem quique (as do lib/motion.ts) quando a legenda esconde ou mostra uma série; ficaram a faixa p5 a p95 do Monte Carlo (num tom
 // que não compete com as linhas), as cores dos laboratórios (os `--chart-*`, que apontam para os tokens), o Sorteio tracejado, as
-// referências pontilhadas e o logo no fim de cada linha com o valor numa pílula da cor dela; o valor do painel é o contador da Arc, que rola
+// referências pontilhadas e o logo no fim de cada linha (com o anel da cor dela) e o valor ao lado; o valor do painel é o contador da Arc, que rola
 // só quando o ponteiro muda de pregão (pelo teclado e pelo toque ele troca na hora, como o cursor: animação no teclado cansa, e o deslize sob
 // o dedo parece atraso), e o dinheiro é o de lib/format.ts; a série que volta se desenha por um recorte do CSS (globals.css, `.linha-desenha`);
 // no celular, o toque fora da figura e a rolagem fecham a leitura (não há Esc); a leitura (o painel e o leitor de tela) lista as séries do
@@ -307,7 +307,7 @@ export function LineChart({
           />
         </div>
       </div>
-      {/* a calha da direita é a das pílulas do fim da linha (o logo tem metade dentro do desenho) */}
+      {/* a calha da direita é a dos rótulos do fim da linha (o logo tem metade dentro do desenho) */}
       <div className="mr-30">
         {/* a altura em px, a da escala: em rem ela cresceria com a fonte padrão do navegador, e o desenho esticaria longe dos rótulos e dos
             pontos, que ficam em px */}
@@ -413,7 +413,7 @@ export function LineChart({
             ))}
           </div>
           {/* o fim de cada linha: o logo e o patrimônio final. Decorativo para o leitor de tela, que tem o mesmo valor na descrição e na
-              tabela. O logo fica centrado no fim da linha (na borda direita do desenho), e a pílula na calha; com uma data só, o rótulo fica
+              tabela. O logo fica centrado no fim da linha (na borda direita do desenho), e o valor na calha; com uma data só, o rótulo fica
               logo depois do ponto. */}
           <ul aria-hidden="true">
             {ends.map((l, i) => (
@@ -431,10 +431,7 @@ export function LineChart({
                   className="size-5 border-[1.5px] bg-canvas"
                   style={{ borderColor: l.cor }}
                 />
-                <span
-                  className="rounded-sm px-1.5 text-11 leading-[18px] font-medium whitespace-nowrap text-canvas tabular-nums"
-                  style={{ backgroundColor: l.cor }}
-                >
+                <span className="text-xs leading-[18px] font-semibold whitespace-nowrap text-ink tabular-nums">
                   {valor(lastValue(l.cents)!)}
                 </span>
               </motion.li>

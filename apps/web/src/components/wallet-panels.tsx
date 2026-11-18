@@ -59,7 +59,7 @@ export const TickerComLogo = ({ ticker, versao }: { ticker: string; versao?: str
   </NavLink>
 );
 
-// A coluna da carteira (o "Portfolio" do Today do Rallies; ADR 0035): o valor estimado, o resultado com o sinal, o
+// A coluna da carteira (ADR 0041): o valor estimado, o resultado com o sinal, o
 // percentual e a palavra, e o custo total, no contador da Arc (rola quando o número muda depois de lançar, editar ou apagar; nada na abertura);
 // a alocação na rosca da beUI, com a legenda ligada; e, no pé, a pílula cinza "Lançar compra", que abre o modal de lançar (o botão é uma ilha
 // de cliente, de wallet-lots.tsx). Os três números são os pares termo/valor da região "Resumo", nesta ordem, que o e2e confere contra a api.

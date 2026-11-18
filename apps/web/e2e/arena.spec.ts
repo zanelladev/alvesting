@@ -153,7 +153,7 @@ async function expectCard(
 const newsStamp = (n: NewsItem) =>
   n.source.startsWith('cvm') ? brt(n.publishedAt).slice(0, 10) : brt(n.publishedAt);
 
-// A arena (/arena): o conteúdo que era da home, no desenho da Arena do Rallies (ADR 0035). A landing da / não
+// A arena (/arena): o conteúdo que era da home (ADR 0041). A landing da / não
 // tem mais estas regiões.
 test.describe('arena', () => {
   test('mostra a temporada, as cotações com a data, os ciclos e o ranking do banco sintético', async ({
@@ -304,7 +304,7 @@ test.describe('arena', () => {
     }
 
     // no fim de cada linha à vista, o logo do laboratório (o Sorteio e as referências, o ícone de cada uma; nenhuma inicial) e o patrimônio
-    // final numa pílula; decorativo para o leitor de tela, que tem a tabela. Os rótulos não se encavalam: de cima para baixo, cada um começa
+    // final em texto, ao lado do logo; decorativo para o leitor de tela, que tem a tabela. Os rótulos não se encavalam: de cima para baixo, cada um começa
     // depois de o de cima terminar.
     const icone: Record<string, string> = {
       RANDOM: 'sorteio',
@@ -333,7 +333,7 @@ test.describe('arena', () => {
   });
 
   // A escala dos valores (o pedido do Artur em 17/11/2026): o segmentado "R$ | %" troca o patrimônio pelo rendimento sobre o capital inicial
-  // na pílula do fim de cada linha, na tabela, no controle do teclado e na legenda, e o desenho não muda (todo competidor começa do mesmo
+  // no fim de cada linha, na tabela, no controle do teclado e na legenda, e o desenho não muda (todo competidor começa do mesmo
   // capital). O rendimento esperado sai da api pela regra do projeto (o meio para longe do zero), escrito de novo aqui.
   test('o gráfico troca o patrimônio em R$ pelo rendimento em % sobre o capital inicial, e volta', async ({
     page,
@@ -645,7 +645,7 @@ test.describe('arena', () => {
     expect(desenho!.ate).not.toMatch(/100%/);
   });
 
-  // A faixa dos modelos do Rallies (plano, e.3): um cartão por modelo e o Sorteio, na ordem do ranking, com o nome, o retorno e o percentil.
+  // O placar dos modelos (plano, e.3): um cartão por modelo e o Sorteio, na ordem do ranking, com o nome, o retorno e o percentil.
   test('a faixa traz os modelos e o Sorteio na ordem do ranking, com retorno e percentil', async ({
     page,
     request,
@@ -760,7 +760,7 @@ test.describe('arena', () => {
   });
 });
 
-// Abaixo de 1280 px a arena mostra uma vista por vez: as decisões (o padrão) ou as carteiras, como as abas "Feed | Portfolios" do Rallies.
+// Abaixo de 1280 px a arena mostra uma vista por vez: as decisões (o padrão) ou as carteiras, pelo segmentado.
 // São abas de verdade, do servidor (`?vista=`, links com o `aria-current`, no desenho do segmentado), sem JavaScript; a partir de 1280 px as
 // duas ficam lado a lado e as abas somem (o QA do fechamento, achado 7: antes eram âncoras que pareciam abas e nenhuma ficava marcada).
 test.describe('a arena no celular: Decisões ou Carteiras', () => {
@@ -777,7 +777,7 @@ test.describe('a arena no celular: Decisões ou Carteiras', () => {
     await expect(region(page, 'Decisões')).toBeVisible();
     await expect(region(page, 'Patrimônio')).toBeVisible();
     await expect(region(page, 'Carteiras')).toBeHidden();
-    // o desenho do segmentado: o trilho cinza e a pílula do canvas na escolhida
+    // o desenho do segmentado: o trilho do segundo plano e a escolhida no canvas
     await expect(tabs.locator('ul')).toHaveClass(/segmentado/);
 
     await carteiras.click();
@@ -876,8 +876,8 @@ for (const path of ['/arena?vista=carteiras', '/ranking']) {
 }
 
 // A Regra da Voz Única (docs/DESIGN.md): a primária pinta a ação principal, a escolha atual, o foco e a marca. A paginação "Mais antigas" é
-// ação de apoio, a pílula cinza (o QA do fechamento, achado 8: era a única primária da arena e das notícias).
-test('a paginação "Mais antigas" é a pílula cinza, e não a primária', async ({ page }) => {
+// ação de apoio, o botão de contorno (o QA do fechamento, achado 8: era a única primária da arena e das notícias).
+test('a paginação "Mais antigas" é o botão de apoio, e não a primária', async ({ page }) => {
   for (const path of ['/arena', '/noticias']) {
     await page.goto(path);
     const more = page.getByRole('link', { name: 'Mais antigas', exact: true });
@@ -1028,7 +1028,7 @@ test.describe('filtro do feed por BUY, SELL e HOLD', () => {
   });
 });
 
-// O filtro do feed por modelo (o "Funds ▾" do Rallies; plano, c.4): um `details` com um link por modelo, sem JavaScript. Junta-se ao filtro
+// O filtro do feed por modelo (plano, c.4): um `details` com um link por modelo, sem JavaScript. Junta-se ao filtro
 // por ação, e a paginação segue os dois.
 test.describe('filtro do feed por modelo', () => {
   test('só as decisões do modelo, na ordem da api, e o filtro por ação junto', async ({
@@ -1305,7 +1305,7 @@ test('com a fonte padrão de 20 px, o eixo das velas e o fim das linhas do patri
 
 // As tabelas do ranking (o QA do fechamento, achados 4 e 17): as três (modelos, Sorteio e referências) têm as mesmas larguras de coluna (a
 // coluna de uma fica embaixo da mesma coluna da outra), a tabela que passa da coluna dá a pista de que há mais à direita (o esmaecimento na
-// borda, que some no fim da rolagem; com o mouse, também o "›" redondo da faixa), e o nome do competidor fica numa linha.
+// borda, que some no fim da rolagem), e o nome do competidor fica numa linha.
 test.describe('as tabelas do ranking', () => {
   test('as três tabelas têm as mesmas colunas, e a que passa da coluna esmaece na borda até o fim da rolagem', async ({
     page,
@@ -1572,7 +1572,7 @@ test.describe('movimento reduzido', () => {
   });
 });
 
-// O Explorar (plano, f.1), no desenho do Discover: um cartão por competidor (conferido contra o ranking e as carteiras), o universo da
+// O Explorar (plano, f.1): um cartão por competidor (conferido contra o ranking e as carteiras), o universo da
 // semana (contra a fita da rota interna, como o site a lê), a busca e a barra "Explorar".
 test.describe('explorar', () => {
   test('um cartão por competidor, com o retorno do ranking e as posições da carteira (só os modelos)', async ({
@@ -1878,7 +1878,9 @@ test.describe('ciclo', () => {
 
   // a situação do ciclo é a etiqueta cinza sem borda, com o texto na tinta: o colchete diz o estado, e a cor do dado fica só no glifo ▲ ▼ ■ (a
   // Regra do Glifo; o QA do fechamento, achado 12: era o verde do dado, com borda)
-  test('a situação do ciclo é a pílula cinza sem borda, com o texto na tinta', async ({ page }) => {
+  test('a situação do ciclo é a etiqueta cinza sem borda, com o texto na tinta', async ({
+    page,
+  }) => {
     await page.goto(`/ciclos/${CYCLE_DAY}`);
     const flag = page.getByText('[ok] fechado', { exact: true });
     await expect(flag).toBeVisible();
@@ -2258,7 +2260,7 @@ test.describe('navegação de ponta a ponta', () => {
     await expect(page).toHaveURL(new RegExp(`/acoes/${ticker}$`));
     await expect(page.getByRole('heading', { level: 1, name: ticker })).toBeVisible();
 
-    // ação -> notícias da ação -> notícias -> a arena (pela navegação da casca do app: o trilho no desktop, a barra de abas no celular) ->
+    // ação -> notícias da ação -> notícias -> a arena (pela navegação da casca do app: a lateral no desktop, a barra de abas no celular) ->
     // o início (pela marca)
     await page.getByRole('link', { name: `Todas as notícias de ${ticker}` }).click();
     await expect(page).toHaveURL(new RegExp(`/noticias\\?ticker=${ticker}$`));

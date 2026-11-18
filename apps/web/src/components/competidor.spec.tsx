@@ -162,9 +162,10 @@ describe('FaixaDeModelos', () => {
   const rows = [row(qwen, 734, 7_200), row(sorteio, -15, null), row(real, 0, 5_000)];
   const out = html(<FaixaDeModelos label="Os modelos e o Sorteio, por retorno" rows={rows} />);
 
+  // a régua rola dentro da própria caixa onde não cabe (o `overflow-x: auto` mora na classe `.faixa`, globals.css)
   it('é uma lista que rola dentro da própria caixa, com nome e foco de teclado', () => {
     expect(out).toMatch(
-      /<div role="region" aria-label="Os modelos e o Sorteio, por retorno" tabindex="0" class="[^"]*overflow-x-auto[^"]*"><ul/,
+      /<div role="region" aria-label="Os modelos e o Sorteio, por retorno" tabindex="0" class="faixa"><ul>/,
     );
     expect(out.match(/<li /g)).toHaveLength(3);
   });
@@ -182,14 +183,18 @@ describe('FaixaDeModelos', () => {
     expect(covered).toMatch(/^<div role="region"/);
   });
 
-  // O nome do cartão numa linha só (o pedido do Artur: o "(0902)" e a etiqueta quebravam o nome em duas e três linhas): o curto à vista, o
-  // sufixo para o leitor de tela; o nome acessível do cartão é o nome inteiro, o retorno e o percentil.
+  // O nome da célula numa linha só (o pedido do Artur: o "(0902)" e a etiqueta quebravam o nome em duas e três linhas), sozinho na linha dele
+  // (a posição e o logo ficam na de cima): o curto à vista, o sufixo para o leitor de tela; o nome acessível da célula é o nome inteiro, o
+  // retorno e o percentil (a posição é do CSS, fora do texto).
   it('cada cartão leva à página do competidor, com o nome curto numa linha, o retorno com a direção e o percentil', () => {
     const cards = [...out.matchAll(/<li [^>]*>(.*?)<\/li>/g)].map((m) => m[1]!);
     expect(cards[0]).toMatch(/^<a [^>]*href="\/modelos\/qwen3-8-max"/);
     expect(cards[0]!.match(/<a /g)).toHaveLength(1);
+    expect(cards[0]).toMatch(
+      /<span class="faixa-topo [^"]*"><span aria-hidden="true" data-lab="qwen"/,
+    );
     expect(cards[0]).toContain(
-      'class="min-w-0 truncate">Qwen3.8 Max<span class="sr-only"> (0902)</span></span>',
+      'class="min-w-0 truncate text-13 font-medium text-ink">Qwen3.8 Max<span class="sr-only"> (0902)</span></span>',
     );
     expect(text(cards[0]!)).toBe('Qwen3.8 Max (0902)+7,34%percentil 72,0');
     expect(cards[0]).toContain('data-dir="up"');

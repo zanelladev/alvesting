@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-// Os ícones da casca (ADR 0035): SVG em linha, desenhados à mão, formas genéricas (colunas, bússola, carteira, balão, três pontos, lupa,
+// Os ícones da casca (ADR 0035 e ADR 0041): SVG em linha, desenhados à mão, formas genéricas (colunas, bússola, carteira, balão, três pontos, lupa,
 // pessoa), sem biblioteca. 20 px (`size` muda: o chat os usa em 16 e 18), traço de 1,5 na cor do texto (o tema pinta). Decorativos: o nome
 // vem sempre ao lado, em texto. O chat (components/chat/chat-desligado.tsx) desenha os dele com o mesmo `Icone`.
 type Tamanho = { size?: number };
@@ -116,6 +116,54 @@ export const IconeInfo = (p: Tamanho) => (
     <circle cx="10" cy="10" r="7.25" />
     <path d="M10 9.25v4.5" />
     <circle cx="10" cy="6.5" r=".9" fill="currentColor" stroke="none" />
+  </Icone>
+);
+
+// Os da landing (ADR 0041): os dos selos de seção, os dos ícones dentro do texto e os das cenas do método. O mesmo traço de 1,5.
+export const IconeBriefing = (p: Tamanho) => (
+  <Icone {...p}>
+    <rect x="3" y="4" width="14" height="12" rx="1.5" />
+    <path d="M6 7.5h8M6 10.5h8M6 13.5h5" />
+  </Icone>
+);
+export const IconeCadeado = (p: Tamanho) => (
+  <Icone {...p}>
+    <rect x="4.5" y="9" width="11" height="8" rx="1.5" />
+    <path d="M7 9V6.5a3 3 0 0 1 6 0V9" />
+  </Icone>
+);
+export const IconeGrafico = (p: Tamanho) => (
+  <Icone {...p}>
+    <path d="M3 16h14M4.5 13l3.5-4 3 2.5L16 5" />
+  </Icone>
+);
+export const IconeMoeda = (p: Tamanho) => (
+  <Icone {...p}>
+    <circle cx="10" cy="10" r="7" />
+    <path d="M12.2 7.6c-.4-.7-1.2-1.1-2.2-1.1-1.3 0-2.2.7-2.2 1.7 0 2.3 4.6 1.2 4.6 3.6 0 1-.9 1.8-2.4 1.8-1.1 0-2-.5-2.4-1.3M10 5v1.5M10 13.5V15" />
+  </Icone>
+);
+export const IconeCheck = (p: Tamanho) => (
+  <Icone {...p}>
+    <path d="m5 10.5 3.2 3L15 7" />
+  </Icone>
+);
+export const IconeMetodo = (p: Tamanho) => (
+  <Icone {...p}>
+    <path d="M10 3 17 6.5 10 10 3 6.5zM3 10l7 3.5 7-3.5M3 13.5 10 17l7-3.5" />
+  </Icone>
+);
+export const IconeElenco = (p: Tamanho) => (
+  <Icone {...p}>
+    <circle cx="7" cy="7.5" r="2.5" />
+    <circle cx="13.5" cy="8" r="2" />
+    <path d="M2.75 16c.6-2.4 2.2-3.75 4.25-3.75S10.65 13.6 11.25 16M11.5 12.6c.6-.25 1.3-.35 2-.35 1.8 0 3.1 1.2 3.75 3.75" />
+  </Icone>
+);
+export const IconePergunta = (p: Tamanho) => (
+  <Icone {...p}>
+    <circle cx="10" cy="10" r="7" />
+    <path d="M8 8a2 2 0 1 1 3 1.7c-.6.4-1 .8-1 1.6M10 13.6v.1" />
   </Icone>
 );
 

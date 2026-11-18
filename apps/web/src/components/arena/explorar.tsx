@@ -6,7 +6,7 @@ import { Competidor, Logo, NomeCurto } from '../competidor';
 import { LogoDoPapel } from '../logo-do-papel';
 import { Empty, LINK, NavLink, NotaSimulada, direction, isSimulated } from '../ui';
 
-// O Explorar no desenho do Discover do Rallies (plano do redesenho, f.1): a barra com o acordeão "Populares" e os grupos, os cartões dos
+// O Explorar (plano do redesenho, f.1): a barra com o acordeão "Populares" e os grupos, os cartões dos
 // competidores e o universo da semana. Componentes de servidor: o acordeão é o `details` do navegador, sem JavaScript. O "simulado" vai uma
 // vez por contexto (docs/DESIGN.md: a nota no cabeçalho dos populares e da grade dos modelos), e o nome curto fica à vista (o sufixo de versão
 // vai para o leitor de tela e para o tooltip da página). O tooltip da Arc é de cliente: quem o põe é a página (`envolver`, `termo`), para
@@ -26,7 +26,7 @@ export function BarraExplorar({ rows }: { rows: readonly LeaderboardRow[] }) {
       {/* a partir de 1280 px, a linha de 45 px do topo da barra, com o fio de uma borda à outra (como a "Carteiras"; pagina.tsx, ComBarra) */}
       <h2
         id="explorar-titulo"
-        className="mb-3 border-b border-hairline pb-3 text-15 font-medium text-ink xl:-mx-5 xl:flex xl:h-[45px] xl:items-center xl:px-5 xl:pb-0"
+        className="mb-3 border-b border-folha pb-3 text-15 font-medium text-ink xl:-mx-5 xl:flex xl:h-14 xl:items-center xl:px-5 xl:pb-0"
       >
         Explorar
       </h2>
@@ -120,9 +120,9 @@ export function descricao(competitor: PublicCompetitor): string {
   }
 }
 
-// O cartão do Discover: o logo (ou a inicial), o nome curto, a descrição, o número de posições da carteira (só os modelos têm composição
+// O cartão do Explorar: o logo (ou a inicial), o nome curto, a descrição, o número de posições da carteira (só os modelos têm composição
 // pública; nos outros, o traço), o retorno com o glifo e, embaixo dele, o percentil (quando há). O cartão inteiro é o link para a página do
-// competidor; no hover ele acende e o conteúdo sobe 2 px, em 150 ms (o levantar discreto do Discover; globals.css, bloco do explorar), e no
+// competidor; no hover ele acende e o conteúdo sobe 2 px, em 150 ms (o levantar discreto; globals.css, bloco do explorar), e no
 // toque acende no cinza do trilho. `envolver`: a página põe o tooltip da Arc em volta do link (o nome inteiro e o que é o percentil).
 export function CartaoCompetidor({
   row,
@@ -137,7 +137,7 @@ export function CartaoCompetidor({
   const link = (
     <NavLink
       href={`/modelos/${competitor.slug}`}
-      className="cartao-explorar flex h-full min-h-11 flex-col rounded-lg px-4 pt-4 pb-5"
+      className="cartao-explorar flex h-full min-h-11 flex-col px-5 pt-5 pb-6 lg:px-6"
     >
       <span className="cartao-explorar-corpo flex flex-1 flex-col">
         <Logo competitor={competitor} className="size-10" />
@@ -145,7 +145,7 @@ export function CartaoCompetidor({
           <NomeCurto name={competitor.name} type={competitor.type} />
         </span>
         <span className="mt-1 line-clamp-2 text-13 text-muted">{descricao(competitor)}</span>
-        {/* os rótulos numa linha e os valores na de baixo, como no Discover (`items-start`); o percentil fica embaixo do retorno */}
+        {/* os rótulos numa linha e os valores na de baixo (`items-start`); o percentil fica embaixo do retorno */}
         <dl className="mt-auto flex items-start justify-between gap-4 pt-4">
           <div>
             <dt className="text-xs text-muted">Posições</dt>
@@ -170,7 +170,7 @@ export function CartaoCompetidor({
     </NavLink>
   );
   return (
-    <li data-cartao={competitor.slug} className="relative min-w-0 border-b border-hairline pb-3">
+    <li data-cartao={competitor.slug} className="celula-regrada relative min-w-0">
       {envolver ? envolver(link) : link}
     </li>
   );

@@ -7,8 +7,9 @@ import { expect, test, type Page } from '@playwright/test';
 test.skip(Boolean(process.env.BASE_URL), 'precisa da api local com o banco sintético');
 
 const SCREENS = ['/', '/ranking'] as const;
-const LIGHT = 'rgb(255, 255, 255)';
-const DARK = 'rgb(23, 23, 23)';
+// o fundo da página é a folha, o tom dos fios (ADR 0041): as células são o canvas
+const LIGHT = 'rgb(230, 233, 240)';
+const DARK = 'rgb(30, 33, 66)';
 
 // o que o <html> e o fundo dizem do tema (o `data-theme` da Arc saiu no fechamento da onda: nenhuma peça o lia)
 const look = (page: Page) =>
@@ -30,7 +31,7 @@ const frames = (page: Page) =>
     () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
   );
 
-// O seletor visível: a partir de 1024 px, no cabeçalho do site e no pé do trilho do app; abaixo, numa folha (a do "Menu" no site, a do
+// O seletor visível: a partir de 1024 px, no cabeçalho do site e no pé da lateral do app; abaixo, numa folha (a do "Menu" no site, a do
 // "Mais" no app). Os outros ficam escondidos e fora da árvore de acessibilidade.
 async function selector(page: Page) {
   const group = page.getByRole('group', { name: 'Tema' });
@@ -177,8 +178,9 @@ for (const screen of SCREENS) {
   });
 }
 
-// Pelo teclado: o Tab chega ao grupo (no radio escolhido), as setas trocam a escolha e o tema na hora, e o anel de foco aparece. Só no
-// desktop: o pixel-7 e o iphone-15 são de toque (e o Tab do WebKit do Playwright não percorre links).
+// Pelo teclado: o Tab chega ao grupo (no radio escolhido), as setas trocam a escolha e o tema na hora, e o anel de foco aparece. Na lateral
+// do app o grupo vem logo depois do "Mais". Só no desktop: o pixel-7 e o iphone-15 são de toque (e o Tab do WebKit do Playwright não
+// percorre links).
 test(
   'o seletor funciona pelo teclado, com o anel de foco',
   { tag: '@tema' },
@@ -187,7 +189,7 @@ test(
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/ranking');
     const system = await systemIsDark(page);
-    await page.getByRole('link', { name: 'Buscar', exact: true }).focus();
+    await page.getByRole('button', { name: 'Mais', exact: true }).focus();
     await page.keyboard.press('Tab');
     const focused = () =>
       page.evaluate(() => {

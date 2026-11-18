@@ -1,6 +1,7 @@
 # ADR 0035: O design do Rallies AI, nos dois temas
 
-- **Status:** aceita
+- **Status:** aceita; o sistema visual daqui foi substituído pelo ADR 0041 (18/11/2026), e a arquitetura de informação (as cascas, as
+  rotas, o item ativo pelo layout, os temas, os logos, a arte na moldura, o "simulado" uma vez por contexto) continua valendo
 - **Data:** 05/11/2026
 - **Origem:** o pedido do Artur ("Quero que copie o Design do Rallies AI": rallies.ai, `/discover`, `/arena` e `/chat") e as decisões dele
   (os dois temas seguindo o sistema; uma landing pública com a escadaria no hero e o app; o `/chat` pronto e desligado; os logos dos

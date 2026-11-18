@@ -40,7 +40,7 @@ function fakeDom({
   const radios = ['claro', 'escuro', 'sistema', 'claro', 'escuro', 'sistema'].map(radio);
   const metas = [
     { media: '(prefers-color-scheme: light)', content: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', content: '#171717' },
+    { media: '(prefers-color-scheme: dark)', content: '#0b0d20' },
   ];
   const documentListeners = new Map<string, Listener[]>();
   const windowListeners = new Map<string, Listener[]>();
@@ -155,12 +155,12 @@ describe('themeScript (o tema antes da pintura)', () => {
     expect(dom.attributes.get('data-tema')).toBe('escuro');
     expect(dom.classes.has('dark')).toBe(true);
     expect(dom.radios.map((r) => r.checked)).toEqual([false, true, false, false, true, false]);
-    expect(dom.metas.map((m) => m.content)).toEqual(['#171717', '#171717']);
+    expect(dom.metas.map((m) => m.content)).toEqual(['#0b0d20', '#0b0d20']);
     dom.choose(2, 'keyboard');
     expect(dom.store.has('tema')).toBe(false);
     expect(dom.attributes.get('data-tema')).toBe('sistema');
     expect(dom.classes.has('dark')).toBe(false);
-    expect(dom.metas.map((m) => m.content)).toEqual(['#ffffff', '#171717']);
+    expect(dom.metas.map((m) => m.content)).toEqual(['#ffffff', '#0b0d20']);
   });
 
   // a revelação (a View Transition) só no toque que muda o tema em uso; o teclado troca na hora
@@ -209,10 +209,7 @@ describe('ThemeSelector', () => {
     expect(out).not.toContain('checked');
   });
 
-  it('em pé no trilho, e com o rótulo visível quando o lugar pede', () => {
-    expect(renderToStaticMarkup(<ThemeSelector name="t" vertical />)).toMatch(
-      /^<fieldset class="tema tema-vertical">/,
-    );
+  it('com o rótulo visível quando o lugar pede', () => {
     expect(renderToStaticMarkup(<ThemeSelector name="t" label />)).toMatch(
       /^<div class="tema-linha"><span class="tema-rotulo" aria-hidden="true">Tema<\/span><fieldset class="tema">/,
     );

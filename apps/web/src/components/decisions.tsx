@@ -58,15 +58,10 @@ const DROP_REASON: Record<DropReason, string> = {
   max_positions: 'acima do limite de posições',
 };
 
-// Compra e venda cheia ou vazada, e o HOLD tracejado: o que o item faz se lê pela palavra e pela borda, sem depender de cor (a etiqueta
-// `badge` do sistema, globals.css), na sans 500 (a mono é só para hash e código).
-const BADGE: Record<Action, string> = {
-  BUY: 'border-ink bg-ink text-canvas',
-  SELL: 'border-ink text-ink',
-  HOLD: 'border-dashed text-body',
-};
+// A etiqueta da ação, na cor dela (o pedido do Artur em 18/11/2026; globals.css, `.badge[data-action]`): BUY no verde, SELL no vermelho e
+// HOLD no cinza. A palavra diz a ação, e a cor só reforça: quem não vê a cor lê a palavra. Na sans 500 (a mono é só para hash e código).
 export const ActionBadge = ({ action }: { action: Action }) => (
-  <span data-action={action} className={`badge font-medium ${BADGE[action]}`}>
+  <span data-action={action} className="badge font-medium">
     {action}
   </span>
 );
@@ -76,10 +71,10 @@ const percentOf = (action: Action, percent: number | null): string | null =>
     ? null
     : `${formatPercentValue(percent)} ${action === 'BUY' ? 'do patrimônio' : 'da posição'}`;
 
-// O nome e a data do cabeçalho: links sem o sublinhado (o desenho do feed do Rallies), na caixa de 44 px do `link`.
+// O nome e a data do cabeçalho: links sem o sublinhado em repouso (ele acende no hover), na caixa de 44 px do `link`.
 const HEAD_LINK = `${LINK} no-underline hover:underline`;
 
-// O item do feed do Rallies (plano do redesenho, e.5): no cabeçalho o logo do laboratório, o nome do modelo, o retorno dele na temporada
+// O item do feed (plano do redesenho, e.5): no cabeçalho o logo do laboratório, o nome do modelo, o retorno dele na temporada
 // (`returnBps`, do ranking: quem não o tem não o mostra) e a data do pregão; o resumo do modelo como o título do item; cada ordem com a
 // etiqueta, o ticker num chip, o percentual, a confiança e a justificativa; os itens descartados recuados, como uma resposta. Um item por
 // vez, separado do de cima por um fio (o primeiro da lista, sem). `date`: a data do pregão, como link para o ciclo (não vai na página do
@@ -195,7 +190,7 @@ export function DecisionCard({
         </ul>
       ) : null}
 
-      {/* os descartados, recuados com a quina, como a resposta de um item do feed do Rallies */}
+      {/* os descartados, recuados com a quina, como a resposta a um item do feed */}
       {decision.dropped.length > 0 ? (
         <div className="flex gap-3 pl-1 text-sm">
           <span

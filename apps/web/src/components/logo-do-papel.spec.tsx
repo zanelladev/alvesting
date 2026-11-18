@@ -26,7 +26,7 @@ describe('LogoDoPapel', () => {
       'data-logo': 'imagem',
     });
     expect(attributes(out)).not.toHaveProperty('aria-hidden');
-    // o tamanho das listas e das tabelas (o do Rallies, 16 px), o círculo branco nos dois temas e o contorno da better-ui: preto a 10% no
+    // o tamanho das listas e das tabelas (16 px), o círculo branco nos dois temas e o contorno da better-ui: preto a 10% no
     // claro e branco a 10% no escuro, por dentro da borda (os tokens `logo-fundo` e `logo-contorno` do globals.css: o `light-dark()` segue o
     // `color-scheme` da página, o do tema)
     // inline-block: o preflight do Tailwind faz todo <img> virar bloco, e no h1 (texto corrido) o logo ficaria numa linha só dele

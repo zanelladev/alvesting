@@ -3,7 +3,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import type { PublicCompetitor } from '@alvesting/contracts';
 import { IconeBuscar } from './icones';
 
-// As peças comuns das telas (o sistema visual do Rallies, ADR 0035): o link, o cabeçalho de página, a seção, o par termo/valor, a faixa de
+// As peças comuns das telas (o sistema visual, ADR 0041): o link, o cabeçalho de página, a seção, o par termo/valor, a faixa de
 // números, o texto de estado vazio, a rolagem da tabela, e a navegação de dentro das telas (o segmentado, as abas e a trilha). Server
 // Components: o único JavaScript que levam ao navegador é o `Link` do Next, no NavLink. As classes que se repetem estão em
 // src/app/globals.css (@layer components).
@@ -18,33 +18,48 @@ export const INPUT = 'field';
 // api que ninguém fez. O endereço é um <a href> comum, então funciona sem JavaScript.
 export const NavLink = (props: ComponentProps<typeof Link>) => <Link prefetch={false} {...props} />;
 
-// O cabeçalho de página do Rallies: o h1 na sans 600 de 26 e o que o explica em muted, embaixo (a descrição herda a cor). `logo`: o logo do
-// competidor ao lado do título, fora do texto dele, para a linha que quebrar no celular começar embaixo do nome e não embaixo do logo (o QA do
-// fechamento, achado 5); o teto de 32 ch deixa "DeepSeek V4 Pro (0813)" numa linha no desktop.
+// O cabeçalho de página: o h1 de 34 px na sans 500 e, quando a tela tem, a segunda linha no apoio (`sub`: "Quem está ganhando depois de 17
+// pregões."), em dois tons como os títulos da landing; o que explica vem embaixo, no apoio (a descrição herda a cor). `logo`: o logo do
+// competidor ao lado do título, fora do texto dele, para a linha que quebrar no celular começar embaixo do nome e não embaixo do logo; o
+// teto de 32 ch deixa "DeepSeek V4 Pro (0813)" numa linha no desktop.
 export const PageHead = ({
   title,
+  sub,
   logo,
   children,
 }: {
   title: ReactNode;
+  sub?: ReactNode;
   logo?: ReactNode;
   children?: ReactNode;
 }) => (
-  <header className="space-y-2 pb-6 text-muted">
-    {logo ? (
-      <div className="flex items-start gap-3">
-        <span className="shrink-0 pt-0.5">{logo}</span>
-        <h1 className="max-w-[32ch] min-w-0 font-display text-26 text-balance">{title}</h1>
+  <header className="space-y-3 pb-6 text-muted">
+    <div className={logo ? 'flex items-start gap-3' : undefined}>
+      {logo ? <span className="shrink-0 pt-1">{logo}</span> : null}
+      <div className="min-w-0">
+        <h1 className="max-w-[32ch] text-pagina font-medium text-balance">{title}</h1>
+        {sub ? (
+          <p className="mt-1 text-xl tracking-[-0.02em] text-pretty text-muted lg:text-2xl">
+            {sub}
+          </p>
+        ) : null}
       </div>
-    ) : (
-      <h1 className="max-w-[32ch] font-display text-26 text-balance">{title}</h1>
-    )}
+    </div>
     {children}
   </header>
 );
 
-// Uma seção da página: 48 px de respiro, o título na sans 600 de 22 e o conteúdo. A região tem o nome do título, que é como o leitor de tela e
-// o e2e a encontram.
+// Uma faixa da página regrada com uma coluna só (globals.css, `.linha`): as páginas do site que não montam faixas próprias (o Como funciona,
+// os textos legais, a 404) entram nela, com o respiro da coluna.
+export const Faixa = ({ children }: { children: ReactNode }) => (
+  <div className="linha">
+    <div className="coluna px-5 pt-10 pb-16 lg:px-12 lg:pt-14 lg:pb-20">{children}</div>
+  </div>
+);
+
+// A seção da página regrada (ADR 0041; a da arena é a mesma, arena/page.tsx, Bloco): uma faixa, com o fio de 1 px em cima e o título de
+// 18 px na tinta (globals.css, `.secao`). No app o fio vai de uma borda à outra da coluna ou do painel (come o respiro: 20 px no celular, 24
+// no desktop); nas páginas de leitura do site, ele acompanha a largura do texto.
 export function Section({
   id,
   title,
@@ -55,8 +70,8 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section id={id} aria-labelledby={`${id}-titulo`} className="mt-12">
-      <h2 id={`${id}-titulo`} className="pb-4 font-display text-22">
+    <section id={id} aria-labelledby={`${id}-titulo`} className="secao">
+      <h2 id={`${id}-titulo`} className="secao-titulo">
         {title}
       </h2>
       <div className="space-y-4">{children}</div>
@@ -93,17 +108,17 @@ export const Fact = ({
   </div>
 );
 
-// A faixa de números (a faixa dos modelos do Rallies): os pares lado a lado em células separadas por um fio, que aparece pelo vão de 1 px
-// entre as células de canvas.
+// A faixa de números: os pares lado a lado em células separadas pelos fios da página regrada, que aparecem pelo vão de 1 px entre as
+// células de canvas, de uma borda à outra da coluna (come o respiro dela, como a grade das cotações da arena).
 export const Strip = ({ children, columns }: { children: ReactNode; columns: 3 | 6 }) => (
   <dl
-    className={`grid gap-px bg-hairline ${columns === 3 ? 'grid-cols-3 [&_dd]:text-26' : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-6'}`}
+    className={`-mx-5 grid gap-px border-y border-folha bg-folha lg:-mx-6 ${columns === 3 ? 'grid-cols-3 [&_dd]:text-26' : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-6'}`}
   >
     {children}
   </dl>
 );
 export const StripItem = ({ term, children }: { term: string; children: ReactNode }) => (
-  <div className="flex min-w-0 flex-col gap-2 bg-canvas px-(--calha) py-6 xl:px-5">
+  <div className="flex min-w-0 flex-col gap-2 bg-canvas px-5 py-5 lg:px-6">
     <dt className="text-sm text-muted">{term}</dt>
     <dd className="font-display text-lg font-semibold text-ink tabular-nums">{children}</dd>
   </div>
@@ -185,15 +200,15 @@ export function NotaSimulada({
 
 // A tabela larga rola dentro da própria caixa, nunca a página (WCAG 1.4.10 deixa a tabela de dados em duas dimensões). A caixa recebe
 // o foco do teclado e tem nome, para quem não usa o mouse poder rolar. Sem a barra de rolagem à vista, a pista de que há mais colunas é só CSS
-// (globals.css, `.tabela-rola`): a borda da direita esmaece enquanto há mais para lá, e com o mouse o "›" redondo da faixa rola a tabela. O
-// botão se põe sobre a caixa pela casca de fora (`.tabela`).
+// (globals.css, `.tabela-rola`): a borda da direita esmaece enquanto há mais para lá. A caixa é a da página regrada: um fio em cima e outro
+// embaixo, sem cantos (ADR 0041).
 export const TableScroll = ({ label, children }: { label: string; children: ReactNode }) => (
   <div className="tabela">
     <div
       role="region"
       aria-label={label}
       tabIndex={0}
-      className="tabela-rola overflow-x-auto rounded-lg border border-hairline bg-canvas"
+      className="tabela-rola overflow-x-auto border-y border-hairline bg-canvas"
     >
       {children}
     </div>
@@ -201,7 +216,7 @@ export const TableScroll = ({ label, children }: { label: string; children: Reac
 );
 
 // Um campo de busca que é um formulário GET comum: funciona sem JavaScript, e a URL guarda o que foi buscado. O desenho é o da busca do
-// Discover do Rallies, o mesmo em toda tela que busca (o Explorar, as ações, as notícias): a lupa e o texto de exemplo à vista, o rótulo para
+// o mesmo em toda tela que busca (o Explorar, as ações, as notícias): a lupa e o texto de exemplo à vista, o rótulo para
 // o leitor de tela. `capitalize`: o campo que só aceita ticker põe o teclado do celular em caixa alta; o que também aceita nome, não.
 // `invalidId`: o id do aviso (role="alert", na página) que diz por que o valor digitado não vale, ligado ao campo para o leitor de tela.
 export function SearchForm({

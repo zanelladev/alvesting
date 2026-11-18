@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { arenaCurrentSchema } from '@alvesting/contracts';
 import { brl, dmy, fetchApi, fetchTape, pct } from './data';
 
-// O hero da landing (ADR 0035): o título, os dois CTAs e a pílula da temporada com os endereços, a
+// O topo da landing (ADR 0041): o título, os dois botões e a etiqueta da temporada com os endereços, a
 // legenda com o crédito das cotações e a fita no pé da moldura, e a arte. A arte é arquivo e o código só troca o quadro: o quadro 0 vem no HTML
 // (sem JavaScript), o celular nunca pede o arquivo inteiro, a partir de 1024 px ela anda, e com movimento reduzido nada anda (nem a fita). Roda
 // em pixel-7, iphone-15 e desktop; as larguras que importam são postas à mão. O resto da landing está em landing.spec.ts.
@@ -21,7 +21,7 @@ function wholeArtRequests(page: Page): string[] {
   return asked;
 }
 
-test('o título, os dois CTAs, a pílula da temporada e a legenda com o crédito das cotações', async ({
+test('o título, os dois botões, a etiqueta da temporada e a legenda com o crédito das cotações', async ({
   page,
   request,
 }) => {
@@ -33,7 +33,7 @@ test('o título, os dois CTAs, a pílula da temporada e a legenda com o crédito
 
   const main = page.getByRole('main');
   await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible();
-  // a temporada do banco sintético acabou: a pílula diz o último pregão e leva ao último ciclo
+  // a temporada do banco sintético acabou: a etiqueta diz o último pregão e leva ao último ciclo
   expect(season.status).toBe('FINISHED');
   const total = season.params.sessions;
   await expect(
@@ -42,8 +42,8 @@ test('o título, os dois CTAs, a pílula da temporada e a legenda com o crédito
       exact: true,
     }),
   ).toHaveAttribute('href', `/ciclos/${last.date}`);
-  // os dois CTAs (no hero e de novo no fim da landing; o cartão "Arena agora" também leva à arena): a pílula preta para a arena e a cinza para
-  // as regras, todos com o mesmo endereço
+  // os dois botões (no topo e de novo no convite do fim; o placar "Arena agora" também leva à arena): o primário para a arena e o de
+  // contorno para as regras, todos com o mesmo endereço
   const toArena = main.getByRole('link', { name: 'Abrir a arena', exact: true });
   await expect(toArena).toHaveCount(3);
   for (const link of await toArena.all()) await expect(link).toHaveAttribute('href', '/arena');
@@ -52,7 +52,7 @@ test('o título, os dois CTAs, a pílula da temporada e a legenda com o crédito
   await expect(toRules).toHaveCount(2);
   for (const link of await toRules.all())
     await expect(link).toHaveAttribute('href', '/como-funciona');
-  // o hero primeiro: o título e os CTAs vêm antes da moldura da arte, que vem antes do cartão
+  // o topo primeiro: o título e os botões vêm antes da moldura da arte
   const top = async (locator: ReturnType<typeof page.locator>) => (await locator.boundingBox())!.y;
   expect(await top(toArena.first())).toBeLessThan(await top(page.locator('.moldura')));
 
@@ -135,7 +135,7 @@ test('em 1440 px a arte anda (o quadro muda), e a fita rola', async ({ page }) =
 });
 
 // O laço só busca o arquivo inteiro quando o navegador fica à toa, depois do `load`. Quem sai da landing por navegação suave nesse meio tempo
-// (o "Ver o ranking" do painel do Sorteio) não baixa a arte para uma página que não está mais na tela. O ócio fica nas mãos do teste: o laço o
+// (o "Ler o feed" da justificativa em destaque) não baixa a arte para uma página que não está mais na tela. O ócio fica nas mãos do teste: o laço o
 // agenda, e ele só chega depois da saída.
 test('em 1440 px, quem sai da landing antes de o laço começar não baixa o arquivo inteiro da arte', async ({
   page,
@@ -157,9 +157,9 @@ test('em 1440 px, quem sai da landing antes de o laço começar não baixa o arq
     () => (window as unknown as { scheduled: () => number }).scheduled() > 0,
   );
   await page.evaluate(() => Object.assign(window, { mesmaJanela: true }));
-  await page.getByRole('link', { name: 'Ver o ranking', exact: true }).click();
-  await expect(page).toHaveURL(/\/ranking$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Ranking');
+  await page.getByRole('link', { name: 'Ler o feed', exact: true }).click();
+  await expect(page).toHaveURL(/\/arena#feed$/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Arena');
   // a navegação foi suave (a mesma janela): a landing saiu da tela sem recarregar, e o laço dela seguia agendado
   expect(await page.evaluate(() => 'mesmaJanela' in window)).toBe(true);
   await page.evaluate(() => (window as unknown as { arrive: () => void }).arrive());

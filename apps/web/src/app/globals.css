@@ -19,27 +19,36 @@
     format('woff2');
 }
 
-/* O sistema visual (ADR 0035 e ADR 0037; docs/DESIGN.md): a linguagem do Rallies AI, a primária do logo (#14144C) e os dois temas, com o
-   seletor (claro, escuro e sistema). Os tokens moram aqui e só aqui; o nome vira utilitário do Tailwind (bg-canvas, text-ink,
-   border-hairline). Cada cor leva os dois temas no mesmo lugar, `light-dark(claro, escuro)`: o navegador escolhe pelo `color-scheme` do
-   <html>, que segue o sistema (`light dark`) ou a escolha guardada (`data-tema`, na camada base). O `@theme` comum (e não o `inline` nem o
-   `static`) só emite a variável que algum utilitário ou regra usa, e o utilitário lê a variável. O contraste de cada par nos dois temas é
-   conferido pelo tokens.spec.ts (a razão da WCAG, lida deste arquivo). Espaço é a escala numérica do Tailwind (base de 4 px); raio também
-   (rounded-md 6, rounded-lg 8, rounded-xl 12, rounded-2xl 16, rounded-3xl 24, rounded-full a pílula: os valores medidos no Rallies). */
+/* O sistema visual (ADR 0041; docs/DESIGN.md): a página regrada, a primária do logo (#14144C) e os dois temas, com o seletor (claro, escuro
+   e sistema). Os tokens moram aqui e só aqui; o nome vira utilitário do Tailwind (bg-canvas, text-ink, border-hairline). Cada cor leva os
+   dois temas no mesmo lugar, `light-dark(claro, escuro)`: o navegador escolhe pelo `color-scheme` do <html>, que segue o sistema
+   (`light dark`) ou a escolha guardada (`data-tema`, na camada base). O `@theme` comum (e não o `inline` nem o `static`) só emite a variável
+   que algum utilitário ou regra usa, e o utilitário lê a variável. O contraste de cada par nos dois temas é conferido pelo tokens.spec.ts
+   (a razão da WCAG, lida deste arquivo). Espaço é a escala numérica do Tailwind (base de 4 px); raio também (rounded-md 6, rounded-lg 8 no
+   botão e no campo, rounded-xl 12 no cartão que flutua; a célula da página tem 4). Os neutros são tingidos do azul do logo, e o escuro é o
+   azul-noite. */
 @theme {
-  /* superfícies: o fundo, o cinza dos painéis, campos e ladrilhos, e o cinza do trilho do segmentado e da pílula cinza */
-  --color-canvas: light-dark(#ffffff, #171717);
-  --color-surface-card: light-dark(#f5f5f5, #1f1f1f);
-  --color-surface-strong: light-dark(#efefef, #242424);
-  /* linhas: toda borda tem 1 px. O `hairline` separa; o `control` identifica um controle (o fio do campo), com 3:1 no canvas e no cinza do
-     painel (WCAG 1.4.11) */
-  --color-hairline: light-dark(#e5e5e5, #262626);
-  --color-hairline-strong: light-dark(#d4d4d4, #333333);
-  --color-control: light-dark(#8a8a90, #707077);
-  /* texto sobre o canvas: a tinta, o corpo e o secundário (o muted passa o AA também nas superfícies cinza) */
-  --color-ink: light-dark(#0a0a0a, #fafafa);
-  --color-body: light-dark(#17171f, #f5f5f7);
-  --color-muted: light-dark(#6b6b72, #a3a3a9);
+  /* a folha: o fundo da página, que aparece só nos vãos de 1 px entre as células (`.linha`, abaixo), e por isso desenha os fios da página */
+  --color-folha: light-dark(#e6e9f0, #1e2142);
+  /* superfícies: a célula (o canvas), o segundo plano (o painel, o campo, o vazio, o hover) e o terceiro (o toque, a escolha em repouso) */
+  --color-canvas: light-dark(#ffffff, #0b0d20);
+  --color-surface-card: light-dark(#f4f5f9, #11142d);
+  --color-surface-strong: light-dark(#eceef4, #171a37);
+  /* linhas de dentro da célula: toda borda tem 1 px. O `hairline` separa; o `control` identifica um controle (o fio do campo), com 3:1 no
+     canvas e no segundo plano (WCAG 1.4.11) */
+  --color-hairline: light-dark(#e4e7ee, #1a1d39);
+  --color-hairline-strong: light-dark(#d2d6e1, #272b4d);
+  --color-control: light-dark(#7c8198, #6c71a6);
+  /* texto sobre a célula: a tinta (títulos, números, nomes), o corpo (o texto corrido) e o apoio (rótulos, a segunda linha dos títulos) */
+  --color-ink: light-dark(#0d0f2b, #eef0fa);
+  --color-body: light-dark(#3a3e5a, #c6c9dd);
+  --color-muted: light-dark(#5f647d, #9398b6);
+  /* a faixa escura do fim do site (o convite e o rodapé), escura nos dois temas (no escuro, um tom abaixo do canvas, para ela se destacar),
+     e o fio entre as células dela */
+  --color-escuro: light-dark(#0b0c24, #070818);
+  --color-escuro-fio: light-dark(#22254a, #1b1e3e);
+  /* o texto na faixa escura, o mesmo nos dois temas (com a opacidade, o apoio dela: 62% passa dos 7:1) */
+  --color-escuro-tinta: #ffffff;
   /* A primária: o azul do logo, #14144C (o 950), numa escala do mesmo tom em OKLCH (a matiz 275,49 e o croma que cabe no sRGB). No claro
      é o 950; no escuro, onde o azul quase preto some, o 300. Ela vai na ação principal (o botão primário), na escolha atual (o chip, o
      filtro, o seletor de tema), no anel de foco e na marca, e nunca em enfeite (o link fica na tinta, abaixo). Os tons claros (50 a 300)
@@ -58,13 +67,13 @@
   --color-primary: light-dark(var(--color-primary-950), var(--color-primary-300));
   --color-primary-hover: light-dark(var(--color-primary-800), var(--color-primary-200));
   --color-primary-foreground: light-dark(#ffffff, var(--color-primary-950));
-  /* o anel de foco é a primária (17:1 no branco, 9,5:1 no escuro), um só em todo o site. O link fica na tinta, como no Rallies: na
-     primária, todo ticker e todo nome das tabelas viraria azul no escuro, e o acento passaria dos 10% da tela */
+  /* o anel de foco é a primária (17:1 no branco, 10:1 no escuro), um só em todo o site. O link fica na tinta: na primária, todo ticker e
+     todo nome das tabelas viraria azul, e o acento passaria dos 10% da tela */
   --color-link: var(--color-ink);
   --color-ring: var(--color-primary);
   /* dado: sempre com glifo (▲ ▼ ■) e sinal, nunca só a cor */
-  --color-data-up: light-dark(#007a32, #9ae600);
-  --color-data-down: light-dark(#d6003a, #ff637e);
+  --color-data-up: light-dark(#057a45, #4fd69c);
+  --color-data-down: light-dark(#c2183c, #ff7a90);
   --color-data-flat: var(--color-muted);
   /* sistema: erro e sucesso de formulário, as cores do dado. Não há cor de aviso: aviso é [!] em cinza */
   --color-semantic-success: var(--color-data-up);
@@ -81,19 +90,19 @@
   /* a matriz do DotSpinner, decorativa */
   --color-dot-on: var(--color-ink);
   --color-dot-off-card: var(--color-surface-strong);
-  /* as séries do gráfico, uma por laboratório (a cor do logo, ajustada para passar os 3:1 da linha e os 4,5:1 do texto na pílula do valor);
-     a identidade da linha vem do logo e da legenda, nunca só da cor */
+  /* as séries do gráfico, uma por laboratório (a cor do logo, ajustada para passar os 3:1 da linha no canvas; o valor no fim dela é texto na
+     tinta); a identidade da linha vem do logo e da legenda, nunca só da cor */
   --color-serie-openai: light-dark(#0b7a5c, #22c08f);
   --color-serie-anthropic: light-dark(#c4512c, #f08a63);
   --color-serie-google: light-dark(#1a62d6, #6ea2ff);
-  --color-serie-xai: light-dark(#0a0a0a, #fafafa);
+  --color-serie-xai: light-dark(#0d0f2b, #eef0fa);
   --color-serie-deepseek: light-dark(#3b54e0, #8b9cff);
   --color-serie-qwen: light-dark(#6b46d9, #a98cff);
-  --color-serie-neutra: light-dark(#6b6b72, #a3a3a9);
+  --color-serie-neutra: light-dark(#5f647d, #9398b6);
 
   /* Uma sans só, a do sistema (SF, Roboto, Segoe), com os pesos de verdade dela (400, 500 e 600) e os algarismos tabulares em todo número
-     (body, abaixo): é a fonte que o Rallies usa no lugar dele, e nenhuma fonte baixada entra no caminho do LCP da landing. O `display` é a
-     mesma sans (o nome fica para os títulos que já o usam). A mono é só para hash e código (`.hash`). A `marca` é a Exo 2 600 do nome
+     (body, abaixo): nenhuma fonte baixada entra no caminho do LCP da landing. O `display` é a mesma sans (o nome fica para os títulos que já
+     o usam). A mono é só para hash e código (`.hash`). A `marca` é a Exo 2 600 do nome
      "Alvesting" (a tipografia da logo; o `@font-face` em linha no topo deste arquivo), e nada mais a usa. */
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -106,7 +115,7 @@
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* A escala do Rallies (plano, seção b): o tamanho, a entrelinha e o espaçamento juntos. Os da escala padrão do Tailwind (12, 14, 16, 18,
+  /* A escala de tipo (plano, seção b): o tamanho, a entrelinha e o espaçamento juntos. Os da escala padrão do Tailwind (12, 14, 16, 18,
      20...) usam o nome dela (text-xs, text-sm, text-base); aqui entram os que ela não tem, pelo número em px. O espaçamento dos títulos
      grandes para em -0,04 em (abaixo disso as letras se tocam). */
   --text-11: 11px;
@@ -127,22 +136,24 @@
   --text-26: 26px;
   --text-26--line-height: 1.5;
   --text-26--letter-spacing: -0.02em;
-  --text-30: 30px;
-  --text-30--line-height: 1.3;
-  --text-30--letter-spacing: -0.027em;
   --text-32: 32px;
   --text-32--line-height: 1.25;
   --text-32--letter-spacing: -0.022em;
   --text-40: 40px;
   --text-40--line-height: 1.15;
   --text-40--letter-spacing: -0.03em;
-  --text-42: 42px;
-  --text-42--line-height: 1.08;
-  --text-42--letter-spacing: -0.04em;
-  /* o nome gigante do rodapé do site: cabe em 360 px e para nos 280 px do Rallies */
-  --text-gigante: clamp(72px, 19vw, 280px);
-  --text-gigante--line-height: 1;
-  --text-gigante--letter-spacing: -0.04em;
+  /* Os títulos da página regrada (ADR 0041): o h1 do topo da landing e o título de cada seção dela crescem com a tela até o teto (a landing é
+     de marca); o título da página do app é fixo (o produto não muda de escala). Os dois tons do título (a tinta e o apoio, `.tom2`) moram no
+     bloco da landing. */
+  --text-titulo: clamp(2.5rem, 1.6rem + 2.6vw, 3.625rem);
+  --text-titulo--line-height: 1.04;
+  --text-titulo--letter-spacing: -0.034em;
+  --text-secao: clamp(1.875rem, 1.3rem + 1.9vw, 2.75rem);
+  --text-secao--line-height: 1.08;
+  --text-secao--letter-spacing: -0.03em;
+  --text-pagina: 2.125rem;
+  --text-pagina--line-height: 1.12;
+  --text-pagina--letter-spacing: -0.03em;
 }
 
 @layer base {
@@ -162,6 +173,9 @@
     --chart-6: var(--color-serie-qwen);
     --chart-7: var(--color-serie-neutra);
     --shadow-raised: 0 6px 18px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.04);
+    /* o relevo do botão primário (a sombra de 1 px e o brilho de cima) e o da escolha do segmentado e do seletor de tema (o fio por dentro) */
+    --shadow-botao: 0 1px 2px rgb(13 15 43 / 0.24), inset 0 1px 0 rgb(255 255 255 / 0.14);
+    --shadow-escolha: 0 1px 2px rgb(13 15 43 / 0.14), inset 0 0 0 1px var(--color-hairline);
     --space-2: 0.5rem;
     --space-3: 0.75rem;
     --radius-panel: 0.5rem;
@@ -190,8 +204,8 @@
   :root[data-tema='escuro'] {
     color-scheme: dark;
   }
-  /* Nenhuma barra de rolagem à vista, em lugar nenhum, como no Rallies (o pedido do Artur, 05/11/2026; o macOS com as barras clássicas as
-     mostrava no painel das carteiras e na borda da página): a página, a barra secundária, a faixa, as tabelas e as folhas continuam rolando
+  /* Nenhuma barra de rolagem à vista, em lugar nenhum (o pedido do Artur, 05/11/2026; o macOS com as barras clássicas as mostrava no painel
+     das carteiras e na borda da página): a página, a barra das carteiras, a faixa, as tabelas e as folhas continuam rolando
      pela roda, pelo trackpad, pelo toque e pelo teclado, e a barra também não come a largura da página. O `scrollbar-width` é o padrão (o
      Chromium desde o 121, o Firefox, o Safari desde o 18.2); o `::-webkit-scrollbar` cobre o Safari de antes. Sem JavaScript. */
   * {
@@ -207,7 +221,7 @@
     color-scheme: light dark;
     overflow-wrap: break-word;
     font-synthesis-weight: none;
-    scroll-padding-top: 4rem;
+    scroll-padding-top: 5rem;
   }
   /* no celular a barra de abas do app fica no pé: o foco e a âncora param acima dela (WCAG 2.4.11) */
   @media (width < 64rem) {
@@ -216,9 +230,10 @@
       scroll-padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
     }
   }
-  /* todo número é tabular (o dado alinhado na coluna, como no Rallies) */
+  /* Todo número é tabular (o dado alinhado na coluna). O fundo da página é a folha: o que é conteúdo mora numa célula no canvas, e a folha só
+     aparece nos fios entre as células (`.linha`, abaixo). */
   body {
-    background: var(--color-canvas);
+    background: var(--color-folha);
     color: var(--color-body);
     font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
@@ -241,9 +256,8 @@
     color: var(--color-ink);
     font-weight: 600;
   }
-  /* O anel de foco, um só em todo o site: o contorno sólido de 2 px na primária, com 2 px de recuo, nos dois temas (17:1 e 9,5:1 no
-     canvas; tokens.spec.ts). Só no foco do teclado (`:focus-visible`): o clique não acende anel. O do Rallies (`auto 1px`, cinza a 50%) não
-     passa os 3:1 da WCAG 1.4.11. */
+  /* O anel de foco, um só em todo o site: o contorno sólido de 2 px na primária, com 2 px de recuo, nos dois temas (17:1 e 10:1 no canvas;
+     tokens.spec.ts). Só no foco do teclado (`:focus-visible`): o clique não acende anel. */
   :focus-visible {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
@@ -264,24 +278,24 @@
 
 /* As classes que se repetem dezenas de vezes por página (link, botão, célula de tabela) moram aqui, e não em cada elemento: o mesmo texto
    repetido no HTML e de novo no payload do React somava um terço do documento (docs/TELAS.md, seção 5). Todo link e todo botão tem alvo de
-   toque de pelo menos 44 px, em toda largura (plano §13): onde o desenho do Rallies pede uma pílula menor (28 a 36 px), a caixa do link tem
-   44 px e a pílula visível é o ::before, por dentro. As medidas vêm do Rallies (referência de desenho, nenhum código copiado). */
+   toque de pelo menos 44 px, em toda largura (plano §13): onde o desenho pede uma peça visível menor (o chip de 36 px, a escolha do
+   segmentado de 38 px), a caixa do link tem 44 px e a peça visível é o ::before, por dentro. */
 @layer components {
   /* o link: a tinta, com o sublinhado discreto que acende na cor do texto */
   .link {
     @apply inline-flex min-h-11 min-w-11 items-center justify-start text-link underline decoration-hairline-strong underline-offset-4 transition-[text-decoration-color] duration-150 ease-out-quart hover:decoration-current;
   }
   /* O botão, o mesmo em toda tela (ADR 0037: a classe, e não um componente, porque ele vive em tela de servidor, em `<a>` e em `<button>`):
-     a pílula cinza (a ação de apoio) e a primária (a principal, uma por superfície), 44 px, o texto 14/500. No toque ele encolhe a 0,96 em
-     150 ms, e a transição nomeia o que muda (nunca `all`). */
+     o de apoio (o canvas com o fio forte por dentro) e o primário (a primária, uma por superfície), 44 px, raio 8, o texto 14/500. No toque
+     ele encolhe a 0,96 em 150 ms, e a transição nomeia o que muda (nunca `all`). */
   .btn {
-    @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full bg-surface-strong px-5 text-sm font-medium text-ink transition-[scale,background-color,color,opacity] duration-150 ease-out-quart hover:bg-hairline active:scale-96 disabled:cursor-not-allowed disabled:bg-surface-card disabled:text-muted disabled:active:scale-100;
+    @apply inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg bg-canvas px-[1.125rem] text-sm font-medium text-ink shadow-[inset_0_0_0_1px_var(--color-hairline-strong)] transition-[scale,background-color,color,opacity] duration-150 ease-out-quart hover:bg-surface-card active:scale-96 disabled:cursor-not-allowed disabled:bg-surface-card disabled:text-muted disabled:active:scale-100;
   }
   .btn-primary {
-    @apply bg-primary text-primary-foreground hover:bg-primary-hover;
+    @apply bg-primary text-primary-foreground shadow-(--shadow-botao) hover:bg-primary-hover;
   }
-  /* o campo do cadastro do Rallies (44 px, raio 8, o cinza do painel), com o fio que identifica o controle (o `control`, 3:1 no canvas e no
-     cinza do painel: WCAG 1.4.11). 16 px: abaixo disso o Safari do iPhone dá zoom na página ao focar o campo (carteira-layout.spec.ts) */
+  /* o campo (44 px, raio 8, o segundo plano), com o fio que identifica o controle (o `control`, 3:1 no canvas e no segundo plano: WCAG
+     1.4.11). 16 px: abaixo disso o Safari do iPhone dá zoom na página ao focar o campo (carteira-layout.spec.ts) */
   .field {
     @apply min-h-11 min-w-0 rounded-lg border border-control bg-surface-card px-3 text-base text-ink placeholder:text-muted disabled:text-muted;
   }
@@ -312,17 +326,17 @@
   [aria-invalid='true'] {
     border-color: var(--color-semantic-error);
   }
-  /* A tabela do Rallies, densa: a célula 13/400, o cabeçalho 11/500 em muted (em caixa normal: o e2e lê o texto), 8 px de cada lado (a
-     tabela de posições da carteira, de seis colunas, cabe inteira no painel do meio em 1440 px). Tudo na sans, com os algarismos tabulares
-     (a mono é só para hash e código). A linha acende no hover em 150 ms (o cinza do painel), e a célula presa à esquerda junto. */
+  /* A tabela densa: a célula 13/400, o cabeçalho 12/500 no apoio (em caixa normal: o e2e lê o texto), 8 px de cada lado (a tabela de
+     posições da carteira, de seis colunas, cabe inteira no painel do meio). Tudo na sans, com os algarismos tabulares (a mono é só para hash
+     e código). A linha acende no hover em 150 ms (o segundo plano), e a célula presa à esquerda junto. */
   .tbl {
     @apply w-full border-collapse text-left text-13 tabular-nums;
   }
   .th {
-    @apply px-2 py-2 text-11 font-medium tracking-[0.04em] whitespace-nowrap text-muted;
+    @apply px-2 py-2.5 text-xs font-medium whitespace-nowrap text-muted;
   }
   .td {
-    @apply px-2 py-2 whitespace-nowrap text-ink;
+    @apply px-2 py-2.5 whitespace-nowrap text-ink;
   }
   .row {
     @apply border-t border-hairline transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card;
@@ -364,67 +378,86 @@
     @apply text-sm text-muted;
   }
 
-  /* A pílula de contorno (o anúncio do hero, "Entrar", "Regras da arena") e o chip cinza (o ticker, o filtro em link): a caixa de 44 px, a
-     pílula de 32 px desenhada por dentro. O chip escolhido é a primária, como o filtro do Rallies. Como o botão, o fundo anda em 150 ms e o
-     toque encolhe a 0,96 (o QA do fechamento, achado 13: no cabeçalho do site eles trocavam na hora); a regra global do movimento reduzido para
-     os dois. */
+  /* A peça de contorno (a etiqueta da temporada no topo da landing, o filtro por modelo do feed) e o chip (o ticker, o filtro em link): a
+     caixa de 44 px e a peça de 36 px desenhada por dentro, com raio 8 (o chip, 6). O chip escolhido é a primária. Como o botão, o fundo anda em 150 ms e o toque
+     encolhe a 0,96; a regra global do movimento reduzido para os dois. */
   .pill,
   .chip {
     @apply relative isolate inline-flex min-h-11 min-w-11 max-w-full items-center justify-center gap-1.5 px-3 text-sm text-ink transition-[scale] duration-150 ease-out-quart active:scale-96;
   }
   .pill::before,
   .chip::before {
-    @apply absolute inset-x-0 inset-y-1.5 -z-10 rounded-full transition-[background-color] duration-150 ease-out-quart content-[''];
+    @apply absolute inset-x-0 inset-y-1 -z-10 transition-[background-color] duration-150 ease-out-quart content-[''];
   }
   .pill::before {
-    @apply border border-hairline bg-canvas;
+    @apply rounded-lg bg-canvas shadow-[inset_0_0_0_1px_var(--color-hairline-strong)];
   }
   .pill:hover::before {
     @apply bg-surface-card;
   }
+  .chip {
+    @apply font-medium;
+  }
   .chip::before {
-    @apply bg-surface-strong;
+    @apply inset-y-1.5 rounded-md bg-surface-card shadow-[inset_0_0_0_1px_var(--color-hairline)];
   }
   .chip:hover::before {
-    @apply bg-hairline;
+    @apply bg-surface-strong;
   }
-  /* a escolha atual é a primária (o chip escolhido, o filtro do feed, o seletor de tema) */
+  /* a escolha atual é a primária (o chip escolhido, o filtro do feed); a do segmentado e a do seletor de tema é o canvas */
   .chip[aria-current='true'] {
     @apply text-primary-foreground;
   }
   .chip[aria-current='true']::before {
-    @apply bg-primary;
+    @apply bg-primary shadow-none;
   }
-  /* a etiqueta: 24 px, neutra, com o texto em muted */
+  /* a etiqueta dos selos BUY, SELL e HOLD e da situação do ciclo: 24 px, raio 6, o fio forte por dentro, a sans 600 na tinta */
   .badge {
-    @apply inline-flex min-h-6 items-center rounded-full border border-hairline-strong px-2 align-middle font-sans text-xs leading-none font-normal whitespace-nowrap text-muted;
+    @apply inline-flex min-h-6 items-center rounded-md px-2 align-middle font-sans text-xs leading-none font-semibold tracking-[0.02em] whitespace-nowrap text-ink shadow-[inset_0_0_0_1px_var(--color-hairline-strong)];
   }
-  /* o cartão do app: o canvas com o fio, sem sombra, raio 8 */
+  /* o selo da ação, na cor dela (o pedido do Artur em 18/11/2026): BUY no verde do dado, SELL no vermelho e HOLD no cinza do apoio, com o
+     fundo da cor a 10% e o fio dela a 35% por dentro. A palavra diz a ação, e a cor reforça (a Regra do Glifo é do número: nele, a cor
+     nunca anda sem o ▲ ▼ ■). O texto passa os 4,5:1 no fundo tingido, nos dois temas (docs/DESIGN.md) */
+  .badge[data-action='BUY'] {
+    @apply text-data-up;
+    background: color-mix(in oklab, var(--color-data-up) 10%, var(--color-canvas));
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-data-up) 35%, transparent);
+  }
+  .badge[data-action='SELL'] {
+    @apply text-data-down;
+    background: color-mix(in oklab, var(--color-data-down) 10%, var(--color-canvas));
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-data-down) 35%, transparent);
+  }
+  .badge[data-action='HOLD'] {
+    @apply bg-surface-card text-muted;
+  }
+  /* o cartão que flutua dentro de uma célula: o canvas com o fio, raio 12, sem sombra */
   .card {
-    @apply min-w-0 rounded-lg border border-hairline bg-canvas p-6;
+    @apply min-w-0 rounded-xl border border-hairline bg-canvas p-6;
   }
-  /* o que não tem dado ainda: o texto no cinza do painel */
+  /* o que não tem dado ainda: o texto no segundo plano */
   .vazio {
-    @apply rounded-lg bg-surface-card p-6 text-sm text-muted;
+    @apply rounded-xl bg-surface-card p-6 text-sm text-muted;
   }
 
-  /* O segmentado (as sub-telas de uma área no celular, "Arena | Ranking | Último ciclo"): o trilho cinza de 40 px com 4 px de respiro e a
-     pílula do canvas escolhida, de 32 px; cada item é um link com a caixa de 44 px. O `-preto` é o filtro do feed: a sans 12/500 e a pílula
-     da primária escolhida. A cor do texto e o fundo da pílula trocam em 150 ms (a navegação é um link do servidor: a pílula não anda). */
+  /* O segmentado (as sub-telas de uma área no celular, "Arena | Ranking | Último ciclo", e as vistas da arena): o trilho do segundo plano com
+     o fio, 44 px e raio 10, e a escolha no canvas com o fio por dentro, de 38 px e raio 7; cada item é um link com a caixa de 44 px. O
+     `-preto` é o filtro do feed: a escolha na primária. A cor do texto e o fundo da escolha trocam em 150 ms (a navegação é um link do
+     servidor: a escolha não anda). */
   .segmentado {
-    @apply flex h-10 w-max max-w-full items-center rounded-full bg-surface-strong px-1;
+    @apply flex h-11 w-max max-w-full items-center rounded-[10px] bg-surface-card px-[3px] shadow-[inset_0_0_0_1px_var(--color-hairline)];
   }
   .segmentado a {
     @apply relative isolate inline-flex min-h-11 min-w-11 items-center justify-center px-3 text-sm font-medium whitespace-nowrap text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
   }
   .segmentado a::before {
-    @apply absolute inset-x-0 inset-y-1.5 -z-10 rounded-full transition-[background-color] duration-150 ease-out-quart content-[''];
+    @apply absolute inset-x-0 inset-y-[3px] -z-10 rounded-[7px] transition-[background-color,box-shadow] duration-150 ease-out-quart content-[''];
   }
   .segmentado a[aria-current] {
     @apply text-ink;
   }
   .segmentado a[aria-current]::before {
-    @apply bg-canvas;
+    @apply bg-canvas shadow-(--shadow-escolha);
   }
   .segmentado-preto a {
     @apply text-xs;
@@ -433,19 +466,40 @@
     @apply text-primary-foreground;
   }
   .segmentado-preto a[aria-current]::before {
-    @apply bg-primary;
+    @apply bg-primary shadow-none;
   }
-  /* As abas do topo do principal ("Arena / Ranking / Último ciclo", 15/500): a escolhida na tinta, as outras em muted. */
+  /* As abas do topo do principal ("Arena / Ranking / Último ciclo", 15/500): a escolhida na tinta, com o traço de 2 px embaixo, na altura do
+     fio da linha das abas; as outras no apoio. */
   .abas {
-    @apply flex flex-wrap items-center gap-x-5;
+    @apply flex flex-wrap items-center gap-x-1;
   }
   .abas a {
-    @apply inline-flex min-h-11 min-w-11 items-center text-15 font-medium text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
+    @apply relative inline-flex min-h-14 min-w-11 items-center px-3 text-15 font-medium text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
   }
   .abas a[aria-current] {
     @apply text-ink;
   }
-  /* A trilha do celular ("Início › Arena", 14/400 muted): o último item é texto. */
+  .abas a[aria-current]::after {
+    @apply absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-ink content-[''];
+  }
+  /* A seção da página regrada (ui.tsx, Section; a da arena, arena/page.tsx, Bloco): o fio de 1 px em cima e o título de 18 px na tinta. No
+     app, o fio vai de uma borda à outra da coluna ou do painel (come o respiro deles: 20 px no celular, 24 a partir de 1024 px); nas páginas
+     de leitura do site (o Como funciona), ele acompanha a largura do texto. */
+  .secao {
+    @apply mt-8 border-t border-folha pt-7;
+  }
+  .coluna-app .secao {
+    @apply -mx-5 px-5 lg:-mx-6 lg:px-6;
+  }
+  /* a célula de uma grade regrada que pode ter a última linha incompleta (os cartões do Explorar): o fio é a sombra de 1 px em volta da
+     célula, que enche o vão de 1 px entre ela e as vizinhas; a casa vazia fica no fundo da página, e não no cinza da folha */
+  .celula-regrada {
+    @apply bg-canvas shadow-[0_0_0_1px_var(--color-folha)];
+  }
+  .secao-titulo {
+    @apply pb-4 text-lg font-semibold tracking-[-0.015em] text-ink;
+  }
+  /* A trilha do celular ("Início › Arena", 14/400 no apoio): o último item é texto. */
   .trilha {
     @apply flex flex-wrap items-center gap-x-1.5 text-sm text-muted;
   }
@@ -454,15 +508,15 @@
   }
 
   /* O logo do laboratório (components/competidor.tsx; os arquivos em public/laboratorios, com a procedência em docs/DEPENDENCIAS.md): o
-     desenho colorido da marca, como imagem de fundo, num círculo branco nos dois temas com o contorno de 1 px, o mesmo do logo das ações
-     (components/logo-do-papel.tsx, os tokens `logo-fundo` e `logo-contorno`). A OpenAI e a xAI só têm o desenho em preto (a marca é
-     monocromática): a máscara pintada de preto, no mesmo círculo. O Sorteio e as referências têm ícones nossos, desenhados à mão
-     (public/referencias, desde 06/11/2026: o dado, o "%" do CDI, o gráfico do BOVA11 e a balança do igual-peso), na mesma máscara preta. Sem
-     nenhum dos dois (um modelo de laboratório sem logo), a inicial, pelo atributo e não por texto: fica fora do textContent e do innerText que
-     os testes leem. O desenho é uma imagem de prioridade baixa, pedida só quando um logo aparece. O tamanho é o da caixa (size-6, size-8,
-     size-10). */
+     desenho colorido da marca, como imagem de fundo, num quadrado de cantos arredondados (28% do lado) branco nos dois temas, com o contorno
+     de 1 px, o mesmo do logo das ações (components/logo-do-papel.tsx, os tokens `logo-fundo` e `logo-contorno`). A OpenAI e a xAI só têm o
+     desenho em preto (a marca é monocromática): a máscara pintada de preto, no mesmo quadrado. O Sorteio e as referências têm ícones nossos,
+     desenhados à mão (public/referencias, desde 06/11/2026: o dado, o "%" do CDI, o gráfico do BOVA11 e a balança do igual-peso), na mesma
+     máscara preta. Sem nenhum dos dois (um modelo de laboratório sem logo), a inicial, pelo atributo e não por texto: fica fora do
+     textContent e do innerText que os testes leem. O desenho é uma imagem de prioridade baixa, pedida só quando um logo aparece. O tamanho é
+     o da caixa (size-6, size-8, size-10). */
   .logo {
-    @apply inline-grid size-6 shrink-0 place-items-center rounded-full bg-logo-fundo align-middle outline -outline-offset-1 outline-logo-contorno;
+    @apply inline-grid size-6 shrink-0 place-items-center rounded-[28%] bg-logo-fundo align-middle outline -outline-offset-1 outline-logo-contorno;
     container-type: size;
   }
   .logo::before {
@@ -516,94 +570,48 @@
     --logo: url(/referencias/igual-peso.svg);
   }
 
-  /* A faixa dos modelos (components/competidor.tsx, FaixaDeModelos). Na casca do app ela vai de uma borda à outra do principal, como a do
-     Rallies (os fios de cima e de baixo e os divisores entre os cartões): come o respiro do `main`, e o texto de cada cartão começa no respiro
-     dele, alinhado com o h1 (o da direita fica menor). Na landing ela fica dentro do cartão "Arena agora", como estava. O cartão acende no
-     hover (o cinza do painel) e no toque (o do trilho), em 150 ms. */
+  /* O placar dos modelos (components/competidor.tsx, FaixaDeModelos): uma régua de células iguais, de pelo menos 216 px, separadas pelos fios
+     de 1 px (a folha nos vãos), com a posição em cima de cada uma (o contador do CSS, fora do texto que o leitor de tela e o e2e leem: o texto
+     alternativo do `content` é vazio). Na casca do app ela vai de uma borda à outra da coluna (come o respiro dela); onde as células não
+     cabem (os sete competidores, na coluna de 1.040 px, já não cabem: o pedido do Artur em 18/11/2026, a régua de 140 px cortava os nomes),
+     ela rola para o lado dentro da própria caixa, pelo trackpad, pelo dedo e pelas setas com o foco nela, sem barra à vista, e a borda da
+     direita esmaece enquanto há mais células. A célula acende no hover (o segundo plano) e no
+     toque (o terceiro), em 150 ms. */
+  .faixa {
+    @apply overflow-x-auto border-y border-folha;
+  }
+  .faixa > ul {
+    counter-reset: posicao;
+    @apply grid auto-cols-[minmax(13.5rem,1fr)] grid-flow-col gap-px bg-folha;
+  }
+  .faixa > ul > li {
+    counter-increment: posicao;
+    @apply bg-canvas;
+  }
   .faixa-cartao {
     @apply px-4 transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card active:bg-surface-strong;
   }
-  .app-coluna .faixa {
+  .faixa-topo::before {
+    content: counter(posicao) 'º';
+    content: counter(posicao) 'º' / '';
+    @apply text-xs text-muted;
+  }
+  .coluna-app .faixa {
     @apply -mx-5 lg:-mx-6;
   }
-  .app-coluna .faixa-cartao {
-    @apply pr-2 pl-5 lg:pl-6;
+  /* a primeira célula começa no respiro da coluna, alinhada com o título */
+  .coluna-app .faixa li:first-child .faixa-cartao {
+    @apply pl-5 lg:pl-6;
   }
-  /* O botão redondo do Rallies no lugar da barra de rolagem: o "›" na ponta direita, no meio da altura da faixa, e o "‹" na esquerda depois
-     de rolar. São os `::scroll-button()` do Chromium, só CSS: o navegador rola a faixa, e o botão some no fim da rolagem (`:disabled`). Onde
-     o navegador não os tem (o Safari, o Firefox) não há botão: o trackpad, o toque, o Shift com a roda e as setas (a faixa recebe o foco)
-     rolam. Só com o mouse (`pointer: fine`): no celular o dedo rola, e o botão cobriria o cartão. O botão nasce fora da caixa que rola, como
-     irmão dela, e se põe sobre ela pela âncora (uma faixa por página: a da arena ou a da landing). A caixa tem os 44 px do alvo de toque, e
-     o círculo visível, os 36 px do Rallies (a borda transparente de 4 px). */
-  @media (pointer: fine) {
-    /* o foco do Tab para antes do botão: a rolagem que leva o cartão focado à vista deixa livre a largura do "›" (e do "‹") na ponta (o QA do
-       fechamento, achado 15: o anel do cartão da ponta ficava embaixo do botão) */
-    .faixa {
-      anchor-name: --faixa;
-      scroll-padding-inline: 3.5rem;
-    }
-    .faixa::scroll-button(*) {
-      position-anchor: --faixa;
-      top: calc(anchor(center) - 22px);
-    }
-    /* A tabela que rola (ui.tsx, TableScroll) tem o mesmo botão, posto pela casca de fora dela (`.tabela`), no meio da altura (o QA do
-       fechamento, achado 4). */
-    .tabela-rola::scroll-button(*) {
-      top: calc(50% - 22px);
-    }
-    :is(.faixa, .tabela-rola)::scroll-button(*) {
-      position: absolute;
-      display: grid;
-      place-items: center;
-      width: 44px;
-      height: 44px;
-      padding-bottom: 2px;
-      border: 4px solid transparent;
-      border-radius: 50%;
-      background: var(--color-surface-card) padding-box;
-      box-shadow: inset 0 0 0 1px var(--color-hairline);
-      color: var(--color-ink);
-      font-size: 24px;
-      line-height: 1;
-      cursor: pointer;
-    }
-    :is(.faixa, .tabela-rola)::scroll-button(*):hover {
-      background-color: var(--color-surface-strong);
-    }
-    :is(.faixa, .tabela-rola)::scroll-button(*):focus-visible {
-      outline: 2px solid var(--color-ring);
-      outline-offset: -2px;
-    }
-    /* `visibility`, e não `display: none`: no Chromium 156 o `display: none` no botão que tem o foco (o clique o foca, e ele fica
-       desabilitado no fim da rolagem) derruba a aba quando o foco sai dele (layout.spec.ts, a faixa que rola pelo "›") */
-    :is(.faixa, .tabela-rola)::scroll-button(*):disabled {
-      visibility: hidden;
-    }
-    .faixa::scroll-button(right) {
-      content: '›' / 'Rolar a faixa para a direita';
-      right: calc(anchor(right) + 0.5rem);
-    }
-    .faixa::scroll-button(left) {
-      content: '‹' / 'Rolar a faixa para a esquerda';
-      left: calc(anchor(left) + 0.5rem);
-    }
-    .tabela-rola::scroll-button(right) {
-      content: '›' / 'Rolar a tabela para a direita';
-      right: 0.5rem;
-    }
-    .tabela-rola::scroll-button(left) {
-      content: '‹' / 'Rolar a tabela para a esquerda';
-      left: 0.5rem;
-    }
-  }
-  /* A pista de que a tabela continua (o QA do fechamento, achado 4): sem a barra de rolagem à vista, a borda da direita esmaece enquanto há
-     mais colunas para lá, e para de esmaecer no fim da rolagem. A largura do esmaecer segue a rolagem da própria caixa (uma animação ligada
-     a ela, `animation-timeline: scroll()`), só CSS: a tabela que cabe não tem rolagem e não esmaece, e o navegador sem a linha do tempo da
-     rolagem fica sem o esmaecer. A célula presa à esquerda fica fora dele. */
+  /* A pista de que a tabela (ou o placar) continua: sem a barra de rolagem à vista, a borda da direita esmaece enquanto há mais colunas para
+     lá, e para de esmaecer no fim da rolagem. A largura do esmaecer segue a rolagem da própria caixa (uma animação ligada a ela,
+     `animation-timeline: scroll()`), só CSS: a tabela que cabe não tem rolagem e não esmaece, e o navegador sem a linha do tempo da rolagem
+     fica sem o esmaecer. A célula presa à esquerda fica fora dele. */
   .tabela {
     @apply relative;
   }
-  .tabela-rola {
+  .tabela-rola,
+  .faixa {
     mask-image: linear-gradient(to left, transparent, #000 var(--mais-a-direita));
     animation: tabela-mais linear both;
     animation-timeline: scroll(self inline);
@@ -611,36 +619,100 @@
 
   /* A moldura da arte: escura nos dois temas (a arte é o azul claro da marca sobre o preto, a brasa refeita pelo scripts/arte-azul.mjs, e
      invertida perderia o desenho). Dentro dela só moram a arte, a legenda (`text-moldura-cinza`), a fita (`text-moldura-tinta`) e texto
-     para o leitor de tela: o que segue o tema da página (o cartão "Arena agora", as pílulas) fica fora dela, por cima. Um número com
-     `[data-dir]` não entra aqui: o verde e o vermelho do claro não passam o AA sobre o preto. */
+     para o leitor de tela: o que segue o tema da página fica fora dela. Um número com `[data-dir]` não entra aqui: o verde e o vermelho do
+     claro não passam o AA sobre o preto. */
   .moldura {
     background: var(--color-moldura);
     color: var(--color-moldura-tinta);
   }
 
-  /* A casca do site (components/site-chrome.tsx): o cabeçalho de 64 px, preso no topo. A partir de 1024 px, os links no meio e a pílula
-     "Entrar" à direita; abaixo, uma folha `popover` (sem JavaScript), aberta pelo botão "Menu", com uma linha de 52 px por link. O popover
-     fechado é `display: none` (a regra do navegador), que o desktop desfaz. */
+  /* A página regrada (ADR 0041): a coluna do conteúdo no centro, entre duas células laterais, e um vão de 1 px entre elas, onde a folha (o
+     fundo da página) aparece e desenha os fios. Cada faixa da página é uma `.linha`: as laterais são o ::before e o ::after dela (nenhum
+     elemento a mais na árvore), e a coluna é o único filho. Uma faixa abaixo da outra, com o vão de 1 px entre elas, desenha os fios
+     horizontais, que atravessam a página inteira. As células têm cantos de 4 px. A coluna tem até 1.140 px no site e 1.040 px no app (cada
+     casca diz a dela, `--coluna`); abaixo de 1024 px as laterais somem e a coluna enche a tela. A faixa escura (`.escura`: o convite do fim
+     da landing e o rodapé do site) pinta as três células com o `escuro`, e o vão entre duas faixas escuras com o `escuro-fio`. */
+  .folha {
+    @apply flex min-w-0 flex-col gap-px bg-folha;
+  }
+  .linha {
+    @apply flex min-w-0 gap-px;
+  }
+  .linha::before,
+  .linha::after {
+    @apply min-w-0 flex-1 bg-canvas content-[''];
+  }
+  .linha::before {
+    @apply rounded-r-sm;
+  }
+  .linha::after {
+    @apply rounded-l-sm;
+  }
+  .coluna {
+    @apply relative min-w-0 shrink-0 rounded-sm bg-canvas;
+    container-type: inline-size;
+    width: min(var(--coluna, 71.25rem), calc(100% - 4rem));
+  }
+  .vao {
+    @apply h-12;
+  }
+  .escura::before,
+  .escura::after,
+  .escura > .coluna {
+    @apply bg-escuro;
+  }
+  /* duas faixas escuras seguidas (o convite do fim da landing e o rodapé) têm o fio entre elas no `escuro-fio`, e não na folha clara */
+  .site-coluna > main:has(> .escura:last-child) + .escura {
+    @apply -mt-px border-t border-escuro-fio;
+  }
+  /* o que uma página do site põe no principal sem faixa própria (a tela de erro, a da api fora do ar) fica numa célula da largura inteira,
+     com o texto na largura da coluna */
+  .site-coluna > main > :not(.linha, :has(> .linha)) {
+    @apply bg-canvas py-10;
+    padding-inline: max(1.25rem, calc((100% - 71.25rem) / 2 + 3rem));
+  }
+  @media (width < 64rem) {
+    .linha::before,
+    .linha::after {
+      @apply hidden;
+    }
+    .coluna {
+      @apply w-full rounded-none;
+    }
+    .vao {
+      @apply h-7;
+    }
+  }
+
+  /* A casca do site (components/site-chrome.tsx): o cabeçalho de 68 px, preso no topo, numa faixa da página regrada. A partir de 1024 px, a
+     marca e os links à esquerda, e o seletor de tema e "Entrar" à direita; abaixo, uma folha `popover` (sem JavaScript), aberta pelo botão
+     "Menu", com uma linha de 52 px por link. O popover fechado é `display: none` (a regra do navegador), que o desktop desfaz. */
+  .topo {
+    @apply sticky top-0 z-30 border-b border-folha;
+  }
+  .cabecalho {
+    @apply flex h-[4.25rem] items-center justify-between gap-2 px-5 lg:justify-start lg:gap-8 lg:pr-4 lg:pl-6;
+  }
   @media (width >= 64rem) {
     .menu {
-      @apply static col-span-2 m-0 grid h-auto w-auto grid-cols-subgrid items-center overflow-visible border-0 bg-transparent p-0 text-inherit;
+      @apply static m-0 flex h-auto w-auto flex-1 items-center overflow-visible border-0 bg-transparent p-0 text-inherit;
     }
     .menu-links {
-      @apply flex items-center gap-1;
+      @apply flex items-center gap-0.5;
     }
     .menu-links a {
-      @apply inline-flex min-h-11 items-center px-3 text-sm text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
+      @apply inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-muted transition-[color,background-color] duration-150 ease-out-quart hover:bg-surface-card hover:text-ink;
     }
-    /* o seletor de tema e a pílula "Entrar", lado a lado */
+    /* o seletor de tema e "Entrar", lado a lado, à direita */
     .menu-acoes {
-      @apply flex items-center gap-3 justify-self-end;
+      @apply ml-auto flex items-center gap-2;
     }
   }
   @media (width < 64rem) {
     /* A folha vai do cabeçalho até o pé da tela: o toque "fora" dos links cai no botão "Fechar o menu", que enche o resto dela, e não na
        página de baixo (o toque fora de um `popover` fecha e segue para o que está embaixo: no WebKit, o fechamento é no pointerdown). */
     .menu:popover-open {
-      @apply fixed inset-x-0 top-16 bottom-0 m-0 flex h-auto w-auto flex-col overflow-y-auto border-0 bg-canvas px-(--calha) pt-2 text-inherit;
+      @apply fixed inset-x-0 top-[4.25rem] bottom-0 m-0 flex h-auto w-auto flex-col overflow-y-auto border-0 border-t border-folha bg-canvas px-5 pt-2 text-inherit;
     }
     .menu-fechar {
       @apply flex-1;
@@ -648,56 +720,99 @@
     .menu-links a {
       @apply flex min-h-13 items-center border-b border-hairline text-base font-medium text-ink;
     }
-    /* na folha: a linha do tema (como a de um link) e a pílula "Entrar" embaixo */
+    /* na folha: a linha do tema (como a de um link) e "Entrar" embaixo */
     .menu-acoes {
       @apply flex flex-col;
     }
-    .menu-acoes .pill {
+    .menu-acoes .btn {
       @apply mt-5 w-full;
     }
   }
 
-  /* A casca do app (components/app-shell.tsx). A partir de 1024 px: o trilho de 80 px à esquerda, fixo, com a marca no topo e os itens com o
-     ícone em cima e o rótulo de 12/500 embaixo, numa caixa de 58 × 54 com raio 16; o ativo com o círculo cheio atrás do ícone e o rótulo na
-     tinta. Abaixo: a marca numa linha no topo e a barra de abas fixa no pé, de 56 px mais a área segura do iPhone, com os seis itens. É a
-     mesma `nav`, desenhada de dois jeitos. */
-  .app-item {
-    @apply flex min-h-11 min-w-11 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl text-xs text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
+  /* A casca do app (components/app-shell.tsx). A partir de 1024 px: a lateral de 248 px à esquerda, fixa, com a marca no topo, a busca, os
+     itens com o ícone ao lado do rótulo (40 px, raio 9; o atual no segundo plano com o fio, e o ícone na primária), e o tema e a conta no
+     pé. Abaixo: a marca numa linha no topo e a barra de abas fixa no pé, de 56 px mais a área segura do iPhone, com seis itens (o ícone em
+     cima e o rótulo embaixo; o atual na tinta, com o ícone na primária). É a mesma `nav`, desenhada de dois jeitos. O principal é a página
+     regrada: a coluna de até 1.040 px no centro do que sobra (`.app-principal`, o ::before e o ::after são as laterais). */
+  .app {
+    @apply relative flex min-w-0 flex-1 flex-col;
+    --coluna: 65rem;
   }
-  /* o círculo atrás do ícone acende no hover e marca a área atual, em 150 ms */
+  .app-item {
+    @apply flex min-h-11 min-w-11 cursor-pointer items-center text-xs text-muted transition-[color,background-color] duration-150 ease-out-quart hover:text-ink;
+  }
   .app-icone {
-    @apply grid size-8 place-items-center rounded-full transition-[background-color] duration-150 ease-out-quart;
+    @apply grid size-6 shrink-0 place-items-center text-muted transition-[color] duration-150 ease-out-quart;
   }
   .app-item:hover .app-icone {
-    @apply bg-surface-card;
+    @apply text-ink;
   }
   .app-item[aria-current='page'] {
     @apply text-ink;
   }
   .app-item[aria-current='page'] .app-icone {
-    @apply bg-surface-strong;
+    @apply text-primary;
+  }
+  .app-principal {
+    @apply flex min-w-0 flex-1 gap-px bg-folha;
+  }
+  .app-principal::before,
+  .app-principal::after {
+    @apply min-w-0 flex-1 bg-canvas content-[''];
+  }
+  .coluna-app {
+    @apply min-w-0 shrink-0 bg-canvas px-5 py-6 lg:px-6;
+    container-type: inline-size;
+    width: min(var(--coluna), calc(100% - 4rem));
+  }
+  .app-rodape {
+    @apply flex gap-px bg-folha pt-px;
+  }
+  .app-rodape::before,
+  .app-rodape::after {
+    @apply min-w-0 flex-1 bg-canvas content-[''];
+  }
+  .app-rodape > footer {
+    @apply min-w-0 shrink-0 bg-canvas;
+    width: min(var(--coluna), calc(100% - 4rem));
   }
   @media (width >= 64rem) {
     .app-topo {
-      @apply fixed inset-y-0 left-0 z-30 flex w-20 flex-col items-center gap-3 overflow-y-auto border-r border-hairline bg-canvas py-3;
+      @apply fixed inset-y-0 left-0 z-30 flex w-62 flex-col gap-1 overflow-y-auto border-r border-folha bg-canvas px-3 pt-3.5 pb-4;
+    }
+    .app-marca {
+      @apply mb-1.5 px-2.5;
     }
     .app-nav,
     .app-itens {
-      @apply flex flex-1 flex-col items-center gap-1.5;
+      @apply flex flex-1 flex-col gap-0.5;
     }
     .app-item {
-      @apply h-[54px] w-[58px] font-medium;
+      @apply h-10 w-full gap-3 rounded-[9px] px-2.5 text-[0.90625rem] font-medium text-body hover:bg-surface-card;
     }
+    .app-item[aria-current='page'] {
+      @apply bg-surface-card shadow-[inset_0_0_0_1px_var(--color-hairline)];
+    }
+    .app-icone {
+      @apply size-5;
+    }
+    /* "Buscar" é o primeiro item, desenhado como o campo de busca: o segundo plano com o fio, e o atalho "/" à direita */
     .app-buscar {
-      @apply mt-auto;
+      @apply mb-2.5;
+    }
+    .app-buscar .app-item {
+      @apply bg-surface-card font-normal text-muted shadow-[inset_0_0_0_1px_var(--color-hairline)] hover:shadow-[inset_0_0_0_1px_var(--color-hairline-strong)];
+    }
+    .app-tema {
+      @apply mt-auto border-t border-hairline pt-3;
     }
     .app-coluna {
-      @apply pl-20;
+      @apply pl-62;
     }
   }
   @media (width < 64rem) {
     .app-topo {
-      @apply flex h-14 items-center px-5;
+      @apply flex h-14 items-center border-b border-folha bg-canvas px-5;
     }
     .app-nav {
       @apply fixed inset-x-0 bottom-0 z-30 border-t border-hairline bg-canvas pb-[env(safe-area-inset-bottom)];
@@ -709,21 +824,32 @@
       @apply flex-1;
     }
     .app-item {
-      @apply size-full rounded-none;
+      @apply size-full flex-col justify-center gap-1 font-medium;
     }
     .app-item[aria-current='page'] {
       @apply font-semibold;
     }
-    .app-buscar {
+    .app-buscar,
+    .app-tema {
       @apply hidden;
     }
     .app-coluna {
       @apply pb-[calc(3.5rem+env(safe-area-inset-bottom))];
     }
+    .app-principal::before,
+    .app-principal::after,
+    .app-rodape::before,
+    .app-rodape::after {
+      @apply hidden;
+    }
+    .coluna-app,
+    .app-rodape > footer {
+      @apply w-full;
+    }
   }
   /* A folha "Mais". No celular, a tela inteira acima da barra de abas, como a folha do site: o título, o ✕ e a lista na própria folha, sem
      vão (o toque na parte vazia dela não chega à página, e a barra de abas segue à vista). No desktop, um menu curto ao lado do item "Mais"
-     do trilho (ancorado nele; sem a âncora, na altura dele), que deixa a coluna do app à vista. */
+     da lateral (ancorado nele; sem a âncora, ao lado da lateral), que deixa a coluna do app à vista. */
   .mais:popover-open {
     @apply fixed m-0 flex h-auto w-auto max-w-none flex-col border-0 bg-canvas p-0 text-inherit;
   }
@@ -745,35 +871,18 @@
     .app-mais {
       anchor-name: --mais;
     }
+    /* a 8 px do fio da lateral: o item vai até 12 px antes dele (o respiro da lateral), e sem a âncora o menu fica no mesmo lugar (256 px) */
     .mais:popover-open {
-      @apply inset-auto top-77 left-22 w-60 rounded-lg border border-hairline p-1;
+      @apply inset-auto top-40 left-64 w-60 rounded-xl border border-hairline p-1 shadow-(--shadow-raised);
       position-anchor: --mais;
       top: anchor(top);
+      left: calc(anchor(right) + 1.3125rem);
     }
     .mais-topo {
       @apply hidden;
     }
     .mais-folha a {
-      @apply min-h-11 rounded-md px-3 text-sm hover:bg-surface-card;
-    }
-  }
-  /* A moldura do app (medida na Arena do Rallies numa janela de 1.917 px, .data/rallies-referencia/arena-1917-logado.png): a coluna do
-     trilho, da barra secundária e do principal tem até 1.550 px, centrada, com o fio de cada lado quando a janela é mais larga que ela (o
-     fundo fica fora); até 1.550 px ela enche a tela, sem fio, como antes. Como no Rallies, o fio da esquerda é o do trilho e o da direita é o
-     da coluna. O trilho e o menu "Mais" são fixos, e o `50%` deles é o da janela: eles acompanham a coluna (775 px é a metade dela). */
-  .app {
-    @apply mx-auto w-full max-w-[1550px];
-  }
-  @media (width > 1550px) {
-    .app {
-      @apply border-r border-hairline;
-    }
-    .app-topo {
-      @apply border-l;
-      left: calc(50% - 775px);
-    }
-    .mais:popover-open {
-      left: calc(50% - 775px + 5.5rem);
+      @apply min-h-11 rounded-lg px-3 text-sm hover:bg-surface-card;
     }
   }
   /* Com uma folha aberta, o que ela cobre sai de vista e da ordem do Tab (o foco não some atrás dela): a página do site; no celular, a
@@ -818,7 +927,7 @@
     }
   }
 
-  /* A fita do pé do hero: a mesma linha duas vezes num trilho, rolando sem parar em linha reta (a volta leva um oitavo de segundo por
+  /* A fita da escadaria: a mesma linha duas vezes num trilho, rolando sem parar em linha reta (a volta leva um oitavo de segundo por
      caractere: uns 8 por segundo), com as pontas dissolvidas. Na sans com os algarismos tabulares do `body`, como o resto da landing (a mono,
      com a célula fixa, andava um caractere por passo). Só o `transform` anima (a composição do navegador, nada no fio principal). Sob
      movimento reduzido a regra global a para no começo. */
@@ -917,7 +1026,7 @@
   }
 }
 
-/* A fundação do design premium (ADR 0037; docs/DESIGN.md): a marca, a mono do hash e o seletor de tema, com a revelação da troca. */
+/* A fundação (ADR 0037 e ADR 0041; docs/DESIGN.md): a marca, a mono do hash e o seletor de tema, com a revelação da troca. */
 @layer components {
   /* A marca: o desenho do logo é o arquivo public/marca.svg (o touro do Artur, o Group.svg de 06/11/2026 sem nenhuma mudança: os caminhos
      brancos dele são o que é opaco), usado como máscara (o que é opaco nele vira a primária, o vazado mostra o fundo), e o tema pinta: o
@@ -932,13 +1041,13 @@
     @apply font-mono break-all;
   }
 
-  /* O seletor de tema (components/beui/theme-selector.tsx): três radios num trilho cinza de 40 px, cada um na caixa de 44 px, e a pílula da
-     escolha, um círculo de 32 px na primária, que anda 44 px por opção em 200 ms. A posição sai do `data-tema` do <html>, que o script do
-     <head> põe antes da pintura, e não do `:checked`: o primeiro quadro já mostra a escolha guardada. Sem JavaScript o seletor não faria
-     nada, e some (o tema segue o sistema). No trilho do app ele fica em pé (`tema-vertical`). */
+  /* O seletor de tema (components/beui/theme-selector.tsx): três radios num trilho do segundo plano com o fio, de 44 px e raio 10, cada um
+     na caixa de 44 px, e a escolha: o canvas com o fio por dentro, de 38 px e raio 7 (o desenho do segmentado), que anda 44 px por opção em
+     200 ms. A posição sai do `data-tema` do <html>, que o script do <head> põe antes da pintura, e não do `:checked`: o primeiro quadro já
+     mostra a escolha guardada. Sem JavaScript o seletor não faria nada, e some (o tema segue o sistema). */
   .tema {
     --i: 2;
-    @apply relative isolate m-0 inline-flex h-10 min-w-0 shrink-0 items-center rounded-full border-0 bg-surface-strong px-0.5 py-0;
+    @apply relative isolate m-0 inline-flex h-11 min-w-0 shrink-0 items-center rounded-[10px] border-0 bg-surface-card px-[3px] py-0 shadow-[inset_0_0_0_1px_var(--color-hairline)];
   }
   html[data-tema='claro'] .tema {
     --i: 0;
@@ -947,14 +1056,14 @@
     --i: 1;
   }
   .tema::before {
-    @apply absolute top-1 left-2 -z-10 size-8 rounded-full bg-primary content-[''];
+    @apply absolute top-[3px] left-1.5 -z-10 size-[38px] rounded-[7px] bg-canvas shadow-(--shadow-escolha) content-[''];
     translate: calc(var(--i) * 2.75rem) 0;
     transition: translate var(--duration-base) var(--ease-out-quint);
   }
   .tema label {
-    @apply relative grid size-11 shrink-0 cursor-pointer place-items-center rounded-full text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
+    @apply relative grid size-11 shrink-0 cursor-pointer place-items-center rounded-[7px] text-muted transition-[color] duration-150 ease-out-quart hover:text-ink;
   }
-  /* o radio cobre a caixa inteira (o alvo de 44 px), invisível: o desenho é o ícone e a pílula */
+  /* o radio cobre a caixa inteira (o alvo de 44 px), invisível: o desenho é o ícone e a escolha */
   .tema input {
     @apply absolute inset-0 m-0 cursor-pointer appearance-none opacity-0;
   }
@@ -965,34 +1074,23 @@
   html[data-tema='claro'] .tema label[data-opcao='claro'],
   html[data-tema='escuro'] .tema label[data-opcao='escuro'],
   html[data-tema='sistema'] .tema label[data-opcao='sistema'] {
-    @apply text-primary-foreground;
+    @apply text-ink;
   }
-  .tema-vertical {
-    @apply h-auto w-10 flex-col px-0 py-0.5;
-  }
-  .tema-vertical::before {
-    @apply top-2 left-1;
-    translate: 0 calc(var(--i) * 2.75rem);
-  }
-  /* o rótulo visível "Tema" ao lado (as folhas) ou embaixo (o trilho); o nome do grupo para o leitor de tela é a legenda */
+  /* o rótulo visível "Tema" ao lado (as folhas e a lateral); o nome do grupo para o leitor de tela é a legenda */
   .tema-linha {
     @apply flex items-center justify-between gap-3;
   }
   .tema-rotulo {
     @apply text-sm text-muted;
   }
-  /* sem JavaScript o seletor não faria nada: some, com a linha da folha "Mais" e o item do trilho que o guardam */
+  /* sem JavaScript o seletor não faria nada: some, com a linha da folha "Mais" e o item da lateral que o guardam */
   html:not([data-tema]) :is(.tema, .tema-linha, .mais-tema, .app-tema) {
     display: none;
   }
-  /* onde ele entra: no pé do trilho, perto de "Conta" (desktop); na folha "Mais" (celular); no cabeçalho do site, antes de "Entrar" (na
-     folha do "Menu" abaixo de 1024 px) */
-  /* no trilho, como os outros itens: o controle em cima e o rótulo embaixo */
+  /* onde ele entra: no pé da lateral, acima de "Conta" (desktop); na folha "Mais" (celular); no cabeçalho do site, antes de "Entrar" (na
+     folha do "Menu" abaixo de 1024 px). Na lateral, o rótulo à esquerda, alinhado com o dos itens. */
   .app-tema .tema-linha {
-    @apply flex-col-reverse gap-1;
-  }
-  .app-tema .tema-rotulo {
-    @apply text-xs font-medium;
+    @apply pl-2.5;
   }
   @media (width < 64rem) {
     .app-tema {
@@ -1010,9 +1108,6 @@
     }
   }
   @media (width >= 64rem) {
-    .app-tema {
-      @apply mt-1.5;
-    }
     .mais-tema {
       @apply hidden;
     }
@@ -1042,63 +1137,403 @@ html[data-tema-revelar]::view-transition-new(root) {
   }
 }
 
-/* landing (T2a): as classes que se repetem na landing e no rodapé do site (ADR 0035). Moram aqui, e não em cada
-   elemento, pelo peso do documento: o mesmo texto iria duas vezes por página, no HTML e no payload do React. */
+/* landing (ADR 0041; docs/TELAS.md, seção 10): as peças da landing na página regrada. Moram aqui, e não em cada elemento, pelo peso do
+   documento: o mesmo texto iria duas vezes por página, no HTML e no payload do React. Acima da dobra nada carrega JavaScript nem biblioteca
+   (o LCP do celular, docs/TELAS.md, seção 5): o que se mexe é CSS. O título e o parágrafo do topo nascem parados e à vista (são o LCP). */
 @layer components {
-  /* o ladrilho da faixa dos laboratórios (d.4): o cinza do painel, raio 6, o logo de 32 px e o nome embaixo dele (o "simulado" vai uma vez,
-     no cabeçalho da faixa) */
-  .ladrilho {
-    @apply flex min-w-0 flex-col items-center gap-3 rounded-md bg-surface-card px-2 py-5 text-center text-13 font-semibold text-balance text-ink;
+  /* o selo de seção: o ícone e o nome numa etiqueta de 30 px, raio 9, no segundo plano com o fio (um por seção, nunca um rótulo em caixa
+     alta) */
+  .selo {
+    @apply inline-flex h-[1.875rem] items-center gap-2 rounded-[9px] bg-surface-card pr-3 pl-2.5 text-sm font-medium whitespace-nowrap text-body shadow-[inset_0_0_0_1px_var(--color-hairline)];
   }
-  /* O recorte de UI (d.3 e d.5): o canvas que flutua sobre a moldura e sobre o cinza do painel, raio 8. A Regra Plana (docs/DESIGN.md): a
-     sombra é a elevação, sem o fio de 1 px por cima dela; a borda vira o anel de 1 px da própria sombra, transparente (preto a 6% no claro,
-     branco a 8% no escuro), que serve no preto e no cinza (better-ui, "shadow as border"), mais a sombra do recorte do Rallies. */
-  .recorte {
-    @apply min-w-0 rounded-lg bg-canvas p-3 sm:p-5;
-    box-shadow:
-      0 0 0 1px light-dark(rgb(0 0 0 / 0.06), rgb(255 255 255 / 0.08)),
-      0 1px 2px -1px rgb(0 0 0 / 0.06),
-      0 24px 64px -24px rgb(0 0 0 / 0.45);
+  .selo > svg {
+    @apply size-4 text-muted;
   }
-  /* o painel de recurso (d.5): o cinza do painel, raio 6; as duas colunas (a partir de 1024 px) quando há recorte */
-  .painel {
-    @apply grid items-center gap-8 rounded-md bg-surface-card p-4 sm:p-10 lg:gap-12 lg:p-12;
+  /* o ponto da temporada em andamento (só com ela em andamento): a primária, que marca o estado atual, com a onda que se abre a cada 2,6 s
+     (parada com movimento reduzido) */
+  .selo-vivo {
+    @apply relative size-2 shrink-0 rounded-full bg-primary;
   }
-  /* o "Saiba mais ›" do Rallies (13/600), na caixa de 44 px */
-  .saiba-mais {
-    @apply inline-flex min-h-11 min-w-11 items-center gap-1.5 text-13 font-semibold text-ink hover:underline;
+  .selo-vivo::after {
+    @apply absolute inset-0 rounded-full bg-primary content-[''];
+    animation: selo-vivo 2.6s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
-  /* o rodapé grande do site (d.8): as colunas (o título 16/500, os links 14/400 em muted, cada um na caixa de 44 px) e a marca à direita */
+  /* o título em dois tons: a primeira parte na tinta, a segunda no apoio, na mesma frase (o h1 e o h2 continuam um texto só) */
+  .tom2 {
+    @apply block text-muted;
+  }
+  /* o ícone dentro do texto corrido: 22 px, raio 6, o canvas com o fio forte, na linha de base do texto */
+  .ico {
+    @apply mx-0.5 inline-grid size-[1.375rem] place-items-center rounded-md bg-canvas align-[-0.3em] text-muted shadow-[inset_0_0_0_1px_var(--color-hairline-strong)];
+  }
+  .ico > svg {
+    @apply size-[0.8125rem];
+  }
+
+  /* O topo: o texto à esquerda e, a partir de 1024 px, a janela do produto (a arena em miniatura, decorativa: o mesmo dado está à vista
+     mais abaixo) saindo pela borda direita da coluna, com o esmaecer embaixo e à direita. No celular, o texto em cima e a janela embaixo,
+     saindo pela direita. A janela sobe 12 px ao abrir a página (só o `transform`: nada que atrase a pintura). */
+  .topo-landing {
+    @apply relative flex flex-col overflow-hidden lg:block lg:h-[40rem];
+  }
+  .topo-texto {
+    @apply relative z-10 flex flex-col items-start gap-6 px-5 pt-9 pb-8 sm:px-10 lg:absolute lg:top-[7.25rem] lg:left-12 lg:w-[36rem] lg:p-0;
+  }
+  .janela-quadro {
+    @apply relative ml-5 h-[26rem] rounded-l-2xl bg-surface-card py-1.5 pl-1.5 shadow-[inset_0_0_0_1px_var(--color-hairline)] sm:ml-10 lg:absolute lg:top-14 lg:left-[41rem] lg:m-0 lg:h-[37.5rem] lg:w-[55rem] lg:rounded-2xl lg:p-1.5;
+    animation: janela-sobe 0.7s var(--ease-out-quint) both;
+  }
+  .janela {
+    @apply flex h-full flex-col overflow-hidden rounded-l-[0.8125rem] bg-canvas shadow-[0_0_0_1px_var(--color-hairline),var(--shadow-raised)] lg:rounded-[0.8125rem];
+  }
+  .janela-barra {
+    @apply flex h-10 shrink-0 items-center gap-3 border-b border-hairline px-4;
+  }
+  .janela-barra > i {
+    @apply size-2.5 rounded-full bg-hairline-strong;
+  }
+  .janela-endereco {
+    @apply mx-auto inline-flex h-6 items-center gap-1.5 rounded-md bg-surface-card px-4 text-xs text-muted;
+  }
+  .janela-corpo {
+    @apply flex min-h-0 flex-1;
+  }
+  .janela-lado {
+    @apply hidden w-[9.75rem] shrink-0 flex-col gap-0.5 border-r border-hairline px-2.5 py-3.5 lg:flex;
+  }
+  .janela-item {
+    @apply flex h-[1.875rem] items-center gap-2 rounded-md px-2 text-[0.78125rem] text-muted;
+  }
+  .janela-item[data-atual] {
+    @apply bg-surface-card font-semibold text-ink shadow-[inset_0_0_0_1px_var(--color-hairline)];
+  }
+  .janela-item[data-atual] > svg {
+    @apply text-primary;
+  }
+  .janela-conteudo {
+    @apply flex min-w-0 flex-1 flex-col gap-4 p-4 lg:px-5;
+  }
+  .janela-placar {
+    @apply grid grid-cols-2 gap-px overflow-hidden rounded-[0.625rem] bg-hairline shadow-[0_0_0_1px_var(--color-hairline)] lg:grid-cols-4;
+  }
+  .janela-placar > div {
+    @apply flex min-w-0 flex-col gap-1.5 bg-canvas p-3;
+  }
+  .janela-grafico {
+    @apply flex min-h-0 flex-1 flex-col gap-2.5 rounded-[0.625rem] p-4 shadow-[0_0_0_1px_var(--color-hairline)];
+  }
+  .esmaece-baixo {
+    @apply pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-28 lg:left-[39.5rem] lg:h-32;
+    background: linear-gradient(to bottom, transparent, var(--color-canvas) 88%);
+  }
+  .esmaece-direita {
+    @apply pointer-events-none absolute inset-y-0 right-0 z-[1] hidden w-28 lg:block;
+    background: linear-gradient(to right, transparent, var(--color-canvas));
+  }
+
+  /* Os números da temporada: uma célula em branco e os números, separados pelos fios (o pedido do Artur em 18/11/2026: a página regrada
+     respira na faixa). A branca é o ::before da grade, e não um elemento dentro do <dl> (nada a ler, e a lista fica válida); ela abre a faixa:
+     no celular, a grade de 2 × 2 começa nela; a partir de 1024 px, uma linha só, com as células da mesma largura. O número em 46 px, e o que
+     ele é embaixo, no apoio. */
+  .numeros {
+    @apply grid grid-cols-2 gap-px bg-folha lg:grid-flow-col lg:grid-cols-none lg:auto-cols-fr;
+  }
+  /* A célula que abre a faixa não fica vazia (o pedido do Artur em 18/11/2026): o serrilhado, fileiras de dentes de 24 px no terceiro plano
+     sobre o canvas (quatro gradientes, só CSS e nos tokens: segue o tema), que anda um dente para o lado a cada 30 s, em linha reta. Com
+     movimento reduzido, para (a regra global: o último quadro é o primeiro, um dente adiante). Decorativo: o ::before não tem texto. */
+  .numeros::before {
+    @apply bg-canvas content-[''];
+    --dente: 1.5rem;
+    background-image:
+      linear-gradient(135deg, var(--color-surface-strong) 25%, transparent 25%),
+      linear-gradient(225deg, var(--color-surface-strong) 25%, transparent 25%),
+      linear-gradient(315deg, var(--color-surface-strong) 25%, transparent 25%),
+      linear-gradient(45deg, var(--color-surface-strong) 25%, transparent 25%);
+    background-size: var(--dente) var(--dente);
+    background-position:
+      calc(var(--dente) / -2) 0,
+      calc(var(--dente) / -2) 0,
+      0 0,
+      0 0;
+    animation: serrilhado 30s linear infinite;
+  }
+  .numeros > div {
+    @apply flex flex-col gap-2.5 bg-canvas px-5 pt-6 pb-5 lg:px-8 lg:pt-9 lg:pb-8;
+  }
+  .numeros dt {
+    @apply order-2 max-w-[24ch] text-[0.84375rem] text-pretty text-muted lg:text-15;
+  }
+  .numeros dd {
+    @apply m-0 text-[2rem] leading-none font-normal tracking-[-0.035em] whitespace-nowrap text-ink lg:text-[2.875rem];
+  }
+
+  /* A escadaria na faixa dela: a moldura escura nos dois temas, a arte enchendo o palco, e embaixo dele, no pé, a legenda e a fita (a arte
+     nunca fica atrás de texto que precise ser lido) */
+  .moldura-faixa {
+    @apply flex h-[20rem] flex-col overflow-hidden lg:h-[30rem];
+  }
+  .moldura-palco {
+    @apply relative min-h-0 flex-1;
+  }
+  .moldura-pe {
+    @apply flex shrink-0 flex-col items-center gap-2.5 pt-2 pb-4;
+  }
+
+  /* O cabeçalho de seção: o selo e o título em dois tons à esquerda; à direita, embaixo, o parágrafo e o link */
+  .cab-secao {
+    @apply grid gap-5 px-5 pt-10 pb-7 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-end lg:gap-14 lg:px-12 lg:pt-[4.75rem] lg:pb-14;
+  }
+  .cab-secao > div {
+    @apply flex flex-col items-start gap-5;
+  }
+  .cab-secao > div + div {
+    @apply gap-2.5 lg:pb-1;
+  }
+
+  /* As cenas do método: três células por linha a partir de 1024 px (uma no celular), cada uma com a cena em cima (o segundo plano, 300 px) e
+     o texto embaixo. A cena é decorativa (`aria-hidden`; o texto diz o mesmo) e está sempre inteira à vista: só os detalhes se mexem (o ✓
+     que aparece, o tracejado que corre, a barra que enche, a linha que acende), em laços de 8 s, e com movimento reduzido nada anda. */
+  .metodo {
+    @apply grid gap-px bg-folha lg:grid-cols-3;
+  }
+  .metodo > li {
+    @apply flex min-w-0 flex-col bg-canvas;
+  }
+  .cena {
+    @apply relative h-[18.75rem] overflow-hidden border-b border-hairline bg-surface-card;
+    container-type: inline-size;
+  }
+  .cena-texto {
+    @apply flex flex-col gap-2 px-5 pt-6 pb-8 lg:px-7;
+  }
+  .cena-cartao {
+    @apply absolute rounded-xl bg-canvas shadow-[0_0_0_1px_var(--color-hairline),var(--shadow-raised)];
+  }
+  .cena-cab {
+    @apply flex items-center justify-between gap-2.5 border-b border-hairline px-3.5 py-3 text-13 font-semibold text-ink;
+  }
+  .cena-linha {
+    @apply flex min-h-10 items-center gap-2.5 border-b border-hairline px-3.5 text-13 text-body last:border-b-0;
+  }
+  .cena-linha > svg {
+    @apply size-4 shrink-0 text-muted;
+  }
+  .cena-ok {
+    @apply ml-auto grid size-5 shrink-0 place-items-center rounded-full bg-semantic-success text-canvas;
+  }
+  .cena-ok > svg {
+    @apply size-3;
+  }
+  .cena-linha:nth-child(2) .cena-ok {
+    animation: cena-ok-1 8s var(--ease-out-quint) infinite;
+  }
+  .cena-linha:nth-child(3) .cena-ok {
+    animation: cena-ok-2 8s var(--ease-out-quint) infinite;
+  }
+  .cena-linha:nth-child(4) .cena-ok {
+    animation: cena-ok-3 8s var(--ease-out-quint) infinite;
+  }
+  /* o tracejado que leva cada laboratório ao prompt: corre para dentro, 8 px por volta */
+  .cena-traco {
+    @apply absolute h-px;
+    background-image: linear-gradient(to right, var(--color-control) 50%, transparent 0);
+    background-size: 8px 1px;
+    animation: cena-traco 1.2s linear infinite;
+  }
+  .cena-traco[data-lado='d'] {
+    animation-direction: reverse;
+  }
+  /* a ordem que acende, uma de cada vez */
+  .cena-ordem {
+    @apply flex min-h-10 items-center gap-2 border-b border-hairline px-3.5 text-13 text-body last:border-b-0;
+    animation: cena-acende 8s var(--ease-out-quart) infinite;
+  }
+  .cena-ordem:nth-child(3) {
+    animation-delay: 1.2s;
+  }
+  .cena-ordem:nth-child(4) {
+    animation-delay: 2.4s;
+  }
+  .cena-pensando {
+    @apply inline-flex h-6 items-center gap-1.5 rounded-full bg-surface-card px-2.5 text-xs font-normal text-muted;
+  }
+  .cena-pensando > i {
+    @apply size-1 rounded-full bg-muted;
+    animation: cena-pontos 1s ease-in-out infinite;
+  }
+  .cena-pensando > i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .cena-pensando > i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+  /* a barra do pregão: enche da decisão à abertura */
+  .cena-barra {
+    @apply h-1 overflow-hidden rounded-full bg-hairline;
+  }
+  .cena-barra > span {
+    @apply block h-full origin-left rounded-full bg-ink;
+    animation: cena-enche 8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+  /* a régua do percentil: de 0 a 100, com a mediana no meio e um logo por competidor, empilhado onde se encontram */
+  .cena-regua {
+    @apply absolute inset-x-5 bottom-24 h-px bg-hairline-strong;
+  }
+  .cena-marcador {
+    @apply absolute -translate-x-1/2;
+  }
+  .cena-marcador > .logo {
+    animation: cena-marcador 8s var(--ease-out-quint) infinite;
+  }
+  .cena-grafico path:not(.grade) {
+    fill: none;
+    stroke-width: 1.75;
+    vector-effect: non-scaling-stroke;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 1;
+    animation: cena-desenha 8s var(--ease-out-quint) infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cena *,
+    .cena *::before,
+    .cena *::after {
+      animation: none !important;
+    }
+  }
+
+  /* A citação: a justificativa de um modelo em 31 px, em dois tons (o contexto no apoio, a decisão na tinta), e quem disse na célula ao lado */
+  .citacao {
+    @apply grid gap-px bg-folha lg:grid-cols-[minmax(0,1fr)_21.25rem];
+  }
+  .citacao > * {
+    @apply min-w-0 bg-canvas;
+  }
+  .citacao blockquote {
+    @apply m-0 px-5 py-9 text-[1.3125rem] leading-[1.42] font-normal tracking-[-0.018em] text-pretty text-muted lg:px-14 lg:py-16 lg:text-[1.625rem];
+  }
+  .citacao blockquote strong {
+    @apply font-normal text-ink;
+  }
+  .citacao figcaption {
+    @apply flex flex-col justify-end gap-3.5 px-5 pt-6 pb-7 lg:px-9 lg:py-10;
+  }
+
+  /* O placar e o gráfico da landing: a tabela de um lado, o gráfico do patrimônio do outro (um embaixo do outro no celular) */
+  .placar-landing {
+    @apply grid gap-px bg-folha lg:grid-cols-[minmax(0,1.12fr)_minmax(0,1fr)];
+  }
+  .placar-landing > * {
+    @apply min-w-0 bg-canvas;
+  }
+  .grafico-landing {
+    @apply flex flex-col gap-4 py-6 pr-28 pl-5 lg:py-7 lg:pr-32 lg:pl-7;
+  }
+  .grafico-mini {
+    @apply relative;
+  }
+  .grafico-mini svg {
+    @apply block w-full overflow-visible;
+  }
+  .grafico-mini path {
+    fill: none;
+    stroke-width: 1.75;
+    vector-effect: non-scaling-stroke;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .grafico-mini .grade {
+    stroke: var(--color-hairline);
+    stroke-width: 1;
+    stroke-dasharray: 3 4;
+  }
+  .grafico-mini .tracejada {
+    stroke-dasharray: 4 3;
+    stroke-width: 1.4;
+  }
+  .grafico-fins {
+    @apply absolute inset-y-0 left-full w-32;
+  }
+  .grafico-fins > li {
+    @apply absolute left-2.5 flex -translate-y-1/2 items-center gap-1.5 text-xs font-semibold whitespace-nowrap text-ink tabular-nums;
+  }
+
+  /* Os seis laboratórios: uma célula por modelo (três por linha no celular), o logo de 48 px, o nome, o laboratório e o retorno */
+  .elenco {
+    @apply grid grid-cols-3 gap-px bg-folha lg:grid-cols-6;
+  }
+  .elenco > li {
+    @apply flex min-w-0 flex-col gap-3 bg-canvas px-3 pt-5 pb-5 text-13 lg:px-6 lg:pt-7 lg:pb-6;
+  }
+
+  /* O FAQ: o título numa célula, as perguntas na outra, cada uma um `details` do navegador (o "+" vira "×" aberto, em 250 ms) */
+  .faq {
+    @apply grid gap-px bg-folha lg:grid-cols-[25rem_minmax(0,1fr)];
+  }
+  .faq > * {
+    @apply min-w-0 bg-canvas;
+  }
+  .faq details {
+    @apply border-b border-hairline last:border-b-0;
+  }
+  .faq summary {
+    @apply flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 px-5 text-base font-medium text-ink lg:px-8 lg:text-[1.0625rem];
+  }
+  .faq summary::-webkit-details-marker {
+    display: none;
+  }
+  .faq summary > svg {
+    @apply shrink-0 text-muted transition-[rotate] duration-250 ease-out-quart;
+  }
+  .faq details[open] summary > svg {
+    rotate: 45deg;
+  }
+  .faq details > p {
+    @apply m-0 max-w-[62ch] px-5 pb-6 text-15 leading-relaxed text-pretty text-body lg:px-8;
+  }
+
+  /* O convite do fim, na faixa escura: o título em dois tons no branco, o primário claro e o de contorno */
+  .convite {
+    @apply flex flex-col items-center gap-7 px-5 pt-16 pb-14 text-center lg:pt-26 lg:pb-24;
+  }
+  .convite h2 {
+    @apply text-escuro-tinta;
+  }
+  .convite .tom2 {
+    @apply text-escuro-tinta/62;
+  }
+  .btn-claro {
+    @apply bg-escuro-tinta text-primary-950 shadow-none hover:bg-primary-100;
+  }
+  .btn-vazado {
+    @apply bg-transparent text-escuro-tinta shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--color-escuro-tinta)_24%,transparent)] hover:bg-escuro-tinta/8;
+  }
+
+  /* O rodapé do site, na faixa escura: as colunas do mapa do site, o aviso fixo e as atribuições, o © */
+  .rodape-site {
+    @apply px-5 pt-12 pb-10 text-sm text-escuro-tinta/66 lg:px-12 lg:pt-14;
+  }
+  .rodape-site h2 {
+    @apply pb-2.5 text-sm font-semibold text-escuro-tinta;
+  }
+  .rodape-site a {
+    @apply text-escuro-tinta/66 hover:text-escuro-tinta;
+  }
+  .rodape-site strong {
+    @apply text-escuro-tinta;
+  }
   .mapa {
-    @apply grid grid-cols-2 gap-x-8 gap-y-10 md:grid-cols-[repeat(4,minmax(0,1fr))_auto];
-  }
-  .mapa h2 {
-    @apply pb-2 text-base font-medium;
+    @apply grid grid-cols-2 gap-x-8 gap-y-8 border-b border-escuro-tinta/10 pb-10 md:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,1fr))];
   }
   .mapa a {
-    @apply inline-flex min-h-11 min-w-11 items-center text-sm text-muted hover:text-ink;
+    @apply inline-flex min-h-11 min-w-11 items-center;
   }
-  .mapa-marca {
-    @apply max-md:hidden;
+  .mapa .marca {
+    @apply bg-primary-300;
   }
-  /* o nome gigante, cortado no pé: a Exo 2 600 da marca na tinta a 6%, decorativo. O texto mora aqui, fora do que o leitor de tela e o axe
-     leem (o contraste dele é o de enfeite: a WCAG 1.4.3 o deixa de fora, e o nome está no cabeçalho). Em 360 px ele cabe na largura. */
-  .nome-gigante {
-    @apply pointer-events-none mt-12 block h-[0.72em] overflow-hidden text-center font-marca text-gigante font-semibold select-none;
-  }
-  .nome-gigante::before {
-    content: 'Alvesting';
-    color: color-mix(in oklab, var(--color-ink) 6%, transparent);
-  }
-}
 
-/* landing (T1b, design premium): o movimento da landing, só CSS. Acima da dobra nada carrega JavaScript nem biblioteca (o LCP do celular,
-   docs/TELAS.md, seção 5): o que se mexe é o toque nos botões, a seta que anda no hover, a revelação da troca de tema (a fundação), a fita e
-   o laço da arte (a partir de 1024 px, depois do load). */
-@layer components {
-  /* A seta dos CTAs, da pílula da temporada e do "Saiba mais ›" (hero.tsx e landing/paineis.tsx): anda 2 px para a frente no hover, em
-     150 ms com a saída forte, e volta quando o ponteiro sai (uma transição, que se interrompe). Só o `translate` muda. Sem hover (o toque no
-     celular) e com movimento reduzido ela fica parada. */
+  /* A seta dos botões e dos links "Abrir a arena ›": anda 2 px para a frente no hover, em 150 ms com a saída forte, e volta quando o ponteiro
+     sai (uma transição, que se interrompe). Só o `translate` muda. Sem hover (o toque no celular) e com movimento reduzido ela fica parada. */
   @media (hover: hover) and (prefers-reduced-motion: no-preference) {
     .seta {
       transition: translate var(--duration-fast) var(--ease-out-quart);
@@ -1108,7 +1543,117 @@ html[data-tema-revelar]::view-transition-new(root) {
     }
   }
 }
-/* fim do bloco landing (T1b) */
+@keyframes serrilhado {
+  to {
+    background-position:
+      calc(var(--dente) / 2) 0,
+      calc(var(--dente) / 2) 0,
+      var(--dente) 0,
+      var(--dente) 0;
+  }
+}
+@keyframes selo-vivo {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  80%,
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+@keyframes janela-sobe {
+  from {
+    translate: 0 0.75rem;
+  }
+}
+@keyframes cena-ok-1 {
+  0%,
+  10% {
+    scale: 0.4;
+  }
+  18%,
+  100% {
+    scale: 1;
+  }
+}
+@keyframes cena-ok-2 {
+  0%,
+  24% {
+    scale: 0.4;
+  }
+  32%,
+  100% {
+    scale: 1;
+  }
+}
+@keyframes cena-ok-3 {
+  0%,
+  38% {
+    scale: 0.4;
+  }
+  46%,
+  100% {
+    scale: 1;
+  }
+}
+@keyframes cena-traco {
+  to {
+    background-position: 16px 0;
+  }
+}
+@keyframes cena-acende {
+  0%,
+  6%,
+  30%,
+  100% {
+    background-color: transparent;
+  }
+  12%,
+  22% {
+    background-color: var(--color-surface-card);
+  }
+}
+@keyframes cena-pontos {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@keyframes cena-enche {
+  0%,
+  20% {
+    scale: 0 1;
+  }
+  64%,
+  100% {
+    scale: 1 1;
+  }
+}
+@keyframes cena-marcador {
+  0% {
+    translate: var(--de, 0) 0;
+  }
+  30%,
+  100% {
+    translate: 0 0;
+  }
+}
+@keyframes cena-desenha {
+  0% {
+    stroke-dashoffset: 1;
+  }
+  45%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+/* fim do bloco landing */
 
 /* arena (T1a, design premium): as peças das telas da arena (a /arena, o /ranking, a página do modelo e a do ciclo; docs/TELAS.md, seções 1 e
    10; ADR 0037): a nota "simulado" uma vez por contexto, a linha da carteira, a legenda e os detalhes dos gráficos da beUI. Cores só dos
@@ -1195,7 +1740,7 @@ html[data-tema-revelar]::view-transition-new(root) {
       position-try-fallbacks: flip-block;
     }
   }
-  /* os nomes e os tickers nas tabelas e nas carteiras sem o sublinhado em repouso, como os do Rallies (o sublinhado acende no hover); fora delas
+  /* os nomes e os tickers nas tabelas e nas carteiras sem o sublinhado em repouso (o sublinhado acende no hover); fora delas
      o link segue com o sublinhado discreto */
   .celula-presa .link,
   [data-carteira] h3 .link {
@@ -1224,7 +1769,7 @@ html[data-tema-revelar]::view-transition-new(root) {
 /* fim do bloco arena (T1a) */
 
 /* explorar (T2a, design premium): as peças do Explorar, da busca de ações, da página de cada ação (o terminal) e das notícias (docs/TELAS.md,
-   seções 1, 4 e 10; ADR 0037): o cartão do Discover que levanta, as linhas que acendem, o termo explicado pelo tooltip da Arc, os painéis do
+   seções 1, 4 e 10; ADR 0037): o cartão do Explorar que levanta, as linhas que acendem, o termo explicado pelo tooltip da Arc, os painéis do
    terminal e o realce das velas. Cores só dos tokens; o movimento é de 150 ms com a saída forte e nomeia o que muda; a regra global do
    movimento reduzido o zera, e o levantar do cartão nem existe sem `no-preference`. Nada anima na abertura da página. */
 @layer components {
@@ -1232,8 +1777,8 @@ html[data-tema-revelar]::view-transition-new(root) {
   .linha-explorar {
     @apply transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card active:bg-surface-strong;
   }
-  /* O cartão do Discover (components/arena/explorar.tsx, CartaoCompetidor): em repouso, o canvas sem fio nem sombra (o fio de baixo é o do
-     item da grade); no hover ele acende no cinza do painel e o conteúdo sobe 2 px (o levantar discreto do Discover: sobe o conteúdo, e não o
+  /* O cartão do Explorar (components/arena/explorar.tsx, CartaoCompetidor): uma célula da grade regrada (os fios são os vãos de 1 px entre as
+     células); no hover ele acende no segundo plano e o conteúdo sobe 2 px (o levantar discreto: sobe o conteúdo, e não o
      cartão, para o ponteiro não sair dele no meio do movimento); no toque, o cinza do trilho. O contorno do foco vai por dentro. */
   .cartao-explorar {
     @apply transition-[background-color] duration-150 ease-out-quart hover:bg-surface-card focus-visible:-outline-offset-2 active:bg-surface-strong;

@@ -55,7 +55,7 @@ function positionCells(p: Position): string[] {
   ];
 }
 
-// a coluna da carteira, na ordem do Today do Rallies (ADR 0035): o valor estimado, o resultado e o custo total
+// a coluna da carteira (ADR 0041), nesta ordem: o valor estimado, o resultado e o custo total
 function summaryValues(t: Totals): string[] {
   const priced = t.valueCents !== null;
   return [
@@ -110,7 +110,7 @@ const fields = (scope: Locator) => ({
 });
 
 // O modal de lançar e de editar (o <dialog> do navegador). O formulário mora nele e tem o nome do título dele; o "Lançar compra" do cabeçalho
-// dos lançamentos (a primária) e o da coluna do resumo (a pílula cinza) o abrem.
+// dos lançamentos (a primária) e o da coluna do resumo (o botão de apoio) o abrem.
 const modal = (page: Page) =>
   page.getByRole('dialog', { name: /^(Lançar uma compra|Editar lançamento de)/ });
 const createForm = (page: Page) => page.getByRole('form', { name: 'Lançar uma compra' });
@@ -234,7 +234,7 @@ test.describe('quem pode abrir a carteira', () => {
   }) => {
     const user = await registerVerifiedUser(request, ip, 'carteira-entrar');
     await page.goto('/ranking');
-    // a casca do app não lê a sessão: o link é o mesmo com ou sem login (o trilho no desktop, a barra de abas no pé no celular)
+    // a casca do app não lê a sessão: o link é o mesmo com ou sem login (a lateral no desktop, a barra de abas no pé no celular)
     await abrirMenu(page);
     await page.getByRole('banner').getByRole('link', { name: 'Carteira', exact: true }).click();
     await expect(page).toHaveURL(`${FRONT_DOOR_URL}/entrar?proximo=%2Fcarteira`);
@@ -444,7 +444,7 @@ test.describe('lançar uma compra', () => {
     ]);
     await expectPositions(page, page.request);
     await expectSummary(page, page.request);
-    // o custo total é o último par da coluna (o valor estimado vem primeiro, como no Today)
+    // o custo total é o último par da coluna (o valor estimado vem primeiro)
     expect((await readText(region(page, 'Resumo').locator('dd'))).at(-1)).toBe('R$ 7.100,00');
   });
 
@@ -1427,7 +1427,7 @@ test.describe('por toque', () => {
     await form.getByText('Valor total pago', { exact: true }).tap();
     await expect(f.total).toBeChecked();
     await expect(f.unit).not.toBeChecked();
-    // O controle segmentado: duas metades de 44 px na trilha, e a pílula do canvas na metade escolhida (o `translate` dela anda 100% da
+    // O controle segmentado: duas metades de 44 px na trilha, e a peça do canvas na metade escolhida (o `translate` dela anda 100% da
     // largura, em 250 ms). O radio nativo fica na metade inteira, embaixo do texto, invisível; o texto escolhido fica na tinta.
     const look = (radio: Element) => {
       const label = radio.closest('label')!;
@@ -1443,11 +1443,11 @@ test.describe('por toque', () => {
     expect(empty.target).toBeGreaterThanOrEqual(43.95);
     expect(Math.abs(painted.width - empty.width)).toBeLessThan(1);
     expect([painted.opacity, empty.opacity]).toEqual(['0', '0']);
-    // o e2e roda no tema claro: a tinta é a quase preta e o texto secundário, o cinza (a cor anda em 150 ms)
+    // o e2e roda no tema claro: a tinta é o azul quase preto e o texto secundário, o cinza azulado (a cor anda em 150 ms; ADR 0041)
     const colorOf = (radio: Locator) =>
       radio.evaluate((input) => getComputedStyle(input.closest('label')!).color);
-    await expect.poll(() => colorOf(f.total)).toBe('rgb(10, 10, 10)');
-    await expect.poll(() => colorOf(f.unit)).toBe('rgb(107, 107, 114)');
+    await expect.poll(() => colorOf(f.total)).toBe('rgb(13, 15, 43)');
+    await expect.poll(() => colorOf(f.unit)).toBe('rgb(95, 100, 125)');
     await expect
       .poll(() =>
         f.total.evaluate(

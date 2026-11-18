@@ -20,13 +20,14 @@ const linksOf = (html: string) =>
     /href="([^"]*)"/.exec(m[1]!)?.[1],
   ]);
 
-// O cabeçalho do site (ADR 0035; o do Rallies): a marca, os links no meio e a pílula "Entrar". Ele não lê a sessão (as páginas públicas da
-// arena são dinâmicas com cache de dados, e o LCP da home tem pouca folga contra o teto de 2,5 s): os links são os mesmos com ou sem login.
+// O cabeçalho do site (ADR 0041): a marca e os links à esquerda, e "Entrar" à direita, numa faixa da página regrada. Ele não lê a sessão (as
+// páginas públicas da arena são dinâmicas com cache de dados, e o LCP da home tem pouca folga contra o teto de 2,5 s): os links são os mesmos
+// com ou sem login.
 // O e2e (layout.spec.ts) confere a folha do menu em 360 px e os links em 1280 px.
 describe('SiteHeader', () => {
   const out = renderToStaticMarkup(<SiteHeader />);
 
-  it('a marca, os quatro links do site e a pílula "Entrar", na ordem', () => {
+  it('a marca, os quatro links do site e "Entrar", na ordem', () => {
     expect(linksOf(out)).toEqual([
       ['Alvesting', '/'],
       ['Arena', '/arena'],
@@ -35,7 +36,9 @@ describe('SiteHeader', () => {
       ['Como funciona', '/como-funciona'],
       ['Entrar', '/entrar'],
     ]);
-    expect(out).toContain('<a href="/entrar" class="pill">Entrar</a>');
+    expect(out).toContain('<a href="/entrar" class="btn">Entrar</a>');
+    // a faixa da página regrada: a coluna entre as duas laterais (o ::before e o ::after da `.linha`)
+    expect(out).toMatch(/^<header class="topo linha"><div class="coluna"><div class="cabecalho">/);
   });
 
   // Abaixo de 1024 px o menu é uma folha `popover` aberta pelo botão "Menu", sem JavaScript; a partir de 1024 px, os links na linha.
@@ -65,14 +68,14 @@ describe('SiteHeader', () => {
   it('o seletor de tema vem antes de "Entrar", dentro do menu', () => {
     const menu = /<nav id="menu"[^>]*>(.*)<\/nav>/.exec(out)![1]!;
     expect(menu).toMatch(
-      /<div class="menu-acoes"><div class="tema-linha">.*<fieldset class="tema"><legend class="sr-only">Tema<\/legend>.*<\/fieldset><\/div><a href="\/entrar" class="pill">Entrar<\/a><\/div>/,
+      /<div class="menu-acoes"><div class="tema-linha">.*<fieldset class="tema"><legend class="sr-only">Tema<\/legend>.*<\/fieldset><\/div><a href="\/entrar" class="btn">Entrar<\/a><\/div>/,
     );
     expect(menu.match(/<input type="radio" name="tema-site"/g)).toHaveLength(3);
   });
 });
 
-// A casca do app (ADR 0035): o trilho no desktop e a barra de abas no celular são a mesma `nav "Principal"`, dentro do `banner`; o item da
-// área leva `aria-current="page"` sem JavaScript (cada área tem o seu layout). O "Mais" abre a folha das telas de apoio.
+// A casca do app (ADR 0041): a lateral com rótulos no desktop e a barra de abas no celular são a mesma `nav "Principal"`, dentro do `banner`;
+// o item da área leva `aria-current="page"` sem JavaScript (cada área tem o seu layout). O "Mais" abre a folha das telas de apoio.
 describe('AppShell', () => {
   const out = renderToStaticMarkup(
     <AppShell area="carteira">
@@ -84,19 +87,21 @@ describe('AppShell', () => {
   const sheet = nav.slice(nav.indexOf('<div id="mais"'));
   const items = nav.slice(0, nav.indexOf('<div id="mais"'));
 
-  it('o banner tem a marca, e a navegação os itens na ordem do Rallies adaptada: Arena, Explorar, Carteira, Chat, Mais, Buscar e Conta', () => {
+  it('o banner tem a marca, e a navegação os itens na ordem: Buscar (no topo da lateral), Arena, Explorar, Carteira, Chat, Mais e Conta', () => {
     expect(linksOf(header)[0]).toEqual(['Alvesting', '/']);
     expect(linksOf(items)).toEqual([
+      ['Buscar', '/acoes'],
       ['Arena', '/arena'],
       ['Explorar', '/explorar'],
       ['Carteira', '/carteira'],
       ['Chat', '/chat'],
-      ['Buscar', '/acoes'],
       ['Conta', '/conta'],
     ]);
-    // o "Mais" é um botão que abre a folha, entre o Chat e o Buscar
+    // a busca é o primeiro item (o campo do topo da lateral; no celular ela some da barra de abas), e o "Mais" é um botão que abre a folha,
+    // depois do Chat
+    expect(items).toMatch(/^<ul class="app-itens"><li class="app-buscar">/);
     expect(items).toMatch(
-      /Chat<\/a><\/li><li><button type="button" popoverTarget="mais" class="app-item app-mais">.*Mais<\/button><\/li><li class="app-buscar">/s,
+      /Chat<\/a><\/li><li><button type="button" popoverTarget="mais" class="app-item app-mais">.*Mais<\/button><\/li><li class="app-tema">/s,
     );
   });
 
@@ -110,7 +115,7 @@ describe('AppShell', () => {
     }
   });
 
-  // a folha é a do site (QA da onda Rallies, achado 1): o título e o ✕ na própria folha, antes dos links, e nada de botão vazio enchendo o
+  // a folha é a do site (QA de 05/11, achado 1): o título e o ✕ na própria folha, antes dos links, e nada de botão vazio enchendo o
   // resto da tela
   it('a folha "Mais" é um popover com o título, o ✕ e as telas de apoio', () => {
     expect(sheet).toMatch(
@@ -137,11 +142,11 @@ describe('AppShell', () => {
     expect(sheet.match(/<a href="[^"]+">/g)).toHaveLength(5);
   });
 
-  // O seletor de tema (ADR 0037): no pé do trilho, em pé, entre o "Buscar" e a "Conta" (abaixo de 1024 px ele some da barra de abas); e na
-  // folha "Mais", depois das telas de apoio, para o celular. Cada um com o seu nome de grupo.
-  it('o seletor de tema fica no pé do trilho, perto de "Conta", e na folha "Mais"', () => {
+  // O seletor de tema (ADR 0037): no pé da lateral, deitado, ao lado do rótulo "Tema" e acima da "Conta" (abaixo de 1024 px ele some da barra
+  // de abas); e na folha "Mais", depois das telas de apoio, para o celular. Cada um com o seu nome de grupo.
+  it('o seletor de tema fica no pé da lateral, acima de "Conta", e na folha "Mais"', () => {
     expect(items).toMatch(
-      /Buscar<\/a><\/li><li class="app-tema"><div class="tema-linha">.*<fieldset class="tema tema-vertical">.*<\/fieldset><\/div><\/li><li><a href="\/conta"/s,
+      /Mais<\/button><\/li><li class="app-tema"><div class="tema-linha">.*<fieldset class="tema">.*<\/fieldset><\/div><\/li><li><a href="\/conta"/s,
     );
     expect(items.match(/<input type="radio" name="tema-trilho"/g)).toHaveLength(3);
     expect(sheet).toMatch(
@@ -150,8 +155,12 @@ describe('AppShell', () => {
     expect(sheet.match(/<input type="radio" name="tema-mais"/g)).toHaveLength(3);
   });
 
+  // a página regrada: o conteúdo na coluna do centro do main (as laterais são o ::before e o ::after de `.app-principal`), e o rodapé numa
+  // faixa embaixo, fora do main
   it('o conteúdo vai no main e o aviso fixo no rodapé, fora dele; nada lê a sessão', () => {
-    expect(out).toMatch(/<main[^>]*><p>conteúdo da tela<\/p><\/main><footer/);
+    expect(out).toMatch(
+      /<main class="app-principal"><div class="coluna-app"><p>conteúdo da tela<\/p><\/div><\/main><div class="app-rodape"><footer/,
+    );
     expect(out).toContain('Arena acadêmica com dinheiro fictício');
     expect(header).not.toMatch(/cookie|sessão|session|Sair/i);
   });

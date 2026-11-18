@@ -141,13 +141,12 @@ export default withApiDown(async function WalletPage() {
         </noscript>
       </PageHead>
 
-      {/* O layout do Today do Rallies (ADR 0035): a coluna da carteira, o meio com as posições e os lançamentos, e
-          o painel "Perguntar" (o chat desligado), que a partir de 1280 px é a terceira coluna e abaixo disso um cartão no fim da tela. A partir
-          de 1024 px as colunas são painéis de 360 px separados por fio, como as barras do Rallies: a grade come o respiro do `main` da casca
-          (-mx-6) e cada painel tem o seu. Em 1440 px o meio tem 592 px de conteúdo, e a tabela de posições cabe inteira. No celular, uma
-          coluna só, nesta ordem. A partir de 1024 px o fio embaixo do cabeçalho vai de uma borda à outra do principal, e os fios entre os
-          painéis descem dele (o Today do Rallies, no recorte da landing deles). */}
-      <div className="grid gap-y-10 lg:-mx-6 lg:grid-cols-[22.5rem_minmax(0,1fr)] lg:border-t lg:border-hairline xl:grid-cols-[22.5rem_minmax(0,1fr)_22.5rem]">
+      {/* O layout da carteira em dois painéis (ADR 0041): a coluna da carteira, de 360 px, e o meio com as posições, a comparação e os
+          lançamentos, com o painel "Perguntar" (o chat desligado) embaixo dele. Na coluna de 1.040 px do app, um terceiro painel de 360 px
+          deixaria o meio com 320 px, e a tabela de posições não caberia: em 1440 px o meio tem 632 px de conteúdo, e ela cabe inteira. A
+          partir de 1024 px a grade come o respiro da coluna (-mx-6), cada painel tem o seu, e o fio embaixo do cabeçalho vai de uma borda à
+          outra da coluna, com o fio entre os painéis descendo dele. No celular, uma coluna só, nesta ordem. */}
+      <div className="grid gap-y-10 lg:-mx-6 lg:grid-cols-[22.5rem_minmax(0,1fr)] lg:border-t lg:border-hairline">
         <div className="min-w-0 lg:border-r lg:border-hairline lg:px-6 lg:pt-6">
           {hasLots ? (
             <WalletSummary totals={wallet.totals} positions={wallet.positions} logos={logos} />
@@ -189,7 +188,7 @@ export default withApiDown(async function WalletPage() {
           <WalletLots lots={wallet.lots.map(lotView)} today={today} logos={logos} />
         </div>
 
-        <div className="min-w-0 lg:col-start-2 lg:px-6 xl:col-start-3 xl:row-start-1 xl:border-l xl:border-hairline xl:pt-6">
+        <div className="min-w-0 lg:col-start-2 lg:px-6">
           <PainelPerguntar />
         </div>
       </div>

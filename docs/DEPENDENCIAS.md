@@ -283,13 +283,16 @@ Binários que o `pnpm install` baixa sozinho, sem serem dependências declaradas
 
 ## Desenho de terceiros
 
-Referência de desenho, sem código copiado. Se algum arquivo dele vier para o repositório, o aviso de copyright vai no topo do arquivo. Desde
-05/11/2026 a referência é o Rallies AI (ADR 0035); as medidas do Arc ficaram só no que o ADR 0034 desenhou e ainda não foi trocado.
+Referência de desenho, sem código copiado. Se algum arquivo dele vier para o repositório, o aviso de copyright vai no topo do arquivo. De
+05/11 a 18/11/2026 a referência foi o Rallies AI (ADR 0035); desde 18/11/2026 o sistema visual é próprio (ADR 0041, a página regrada), e a
+referência de ritmo é a landing nova de outro projeto do Artur, fora deste repositório: dela vieram só padrões (as linhas, a coluna no centro,
+as faixas, os títulos em dois tons, as cenas do método), e nenhum código, componente, texto, arquivo, cor ou fonte, por isso ela não tem
+linha aqui. As medidas do Arc ficaram só no que o ADR 0034 desenhou e ainda não foi trocado.
 
 | Item | Tipo | Versão | Licença | Para quê | Onde | Data | Link |
 |---|---|---|---|---|---|---|---|
 | Arc (uiarc.dev) | referência de desenho (os itens gratuitos do registro shadcn) | a licença "Last updated October 25, 2026", consultada em 04/11/2026 (`docs/redesign-ascii/plano.md`, seção 1.3) | MIT nos itens gratuitos, "Copyright (c) 2026 Elia Kuratli" (os itens Pro têm outra licença e não foram usados) | As medidas da casca do ADR 0034 vieram dos componentes do Arc que a v1 copiou. Desde 05/11/2026 (ADR 0037) duas peças gratuitas da Arc (o tooltip e o contador) e os tokens de movimento dela são **código copiado**, com o aviso MIT no topo (seção "Componentes copiados de registros", abaixo; o segmentado e o esqueleto foram copiados e retirados no fechamento da onda, por falta de uso), e desde 06/11/2026 mais três, as do lançamento da carteira (o campo de número, o calendário e o seletor de data) | apps/web/src/app/globals.css, apps/web/src/components/arc | 05/11/2026 | https://uiarc.dev/license |
-| Rallies AI (rallies.ai) | referência de desenho (as páginas públicas `/`, `/discover`, `/arena` e o cadastro do `/chat`, olhadas deslogadas pelo Playwright do projeto) | o site em 05/11/2026 (as capturas e as medidas por computed style ficam fora do git, em `.data/rallies-referencia/` e `.data/orquestracao/rallies/t0/`) | nenhuma licença: é a linguagem visual de um produto de terceiros, usada só como referência (layout, navegação, escala de tipo, espaços, raios, cores e componentes). Não se copia o código, o CSS, o JavaScript, a marca, o nome, o logo, o favicon, as ilustrações, as pinturas, os avatares nem os textos; a FK Grotesk dos títulos deles é paga e não entra (a Geist 600 no lugar) | O sistema visual nos dois temas (os valores dos tokens, ajustados para o AA onde o deles reprova), a casca do site e a do app (o trilho de ícones, a barra de abas, a folha "Mais"), as pílulas, o segmentado, as abas, a trilha, a tabela, o logo do laboratório num círculo (ADR 0035) | apps/web/src/app/globals.css, apps/web/src/components/app-shell.tsx, apps/web/src/components/site-chrome.tsx, apps/web/src/components/competidor.tsx, apps/web/src/components/ui.tsx | 05/11/2026 | https://rallies.ai |
+| Rallies AI (rallies.ai) | referência de desenho (as páginas públicas `/`, `/discover`, `/arena` e o cadastro do `/chat`, olhadas deslogadas pelo Playwright do projeto) | o site em 05/11/2026 (as capturas e as medidas por computed style ficam fora do git, em `.data/rallies-referencia/` e `.data/orquestracao/rallies/t0/`) | nenhuma licença: é a linguagem visual de um produto de terceiros, usada só como referência (layout, navegação, escala de tipo, espaços, raios, cores e componentes). Não se copia o código, o CSS, o JavaScript, a marca, o nome, o logo, o favicon, as ilustrações, as pinturas, os avatares nem os textos; a FK Grotesk dos títulos deles é paga e não entra (a Geist 600 no lugar) | Foi a referência do sistema visual de 05/11 a 18/11/2026 (ADR 0035): os valores dos tokens, a casca do site e a do app, as pílulas, o segmentado, a tabela e o logo num círculo. Saiu com o ADR 0041: nenhum valor, medida, peça, captura ou nome dele fica no site | nenhum arquivo, desde 18/11/2026 (antes: apps/web/src/app/globals.css e as cascas) | 05/11/2026 | https://rallies.ai |
 
 ## Componentes copiados de registros (ADR 0037)
 
@@ -332,7 +335,7 @@ nova (o `lucide-react` que os três pedem virou os ícones nossos, em `component
 ## Logos dos laboratórios
 
 O logo de cada laboratório ao lado do nome do modelo (ADR 0035), desde 06/11/2026 nas cores da
-marca, como imagem num círculo branco nos dois temas (a OpenAI e a xAI, de marca monocromática, em preto por máscara CSS;
+marca, como imagem num quadrado branco de cantos arredondados nos dois temas (num círculo até 18/11/2026, ADR 0041) (a OpenAI e a xAI, de marca monocromática, em preto por máscara CSS;
 `apps/web/src/components/competidor.tsx` e a classe `.logo` do `globals.css`). Fonte: o pacote npm
 `@lobehub/icons-static-svg` **1.102.0**, baixado do registro oficial (`npm pack @lobehub/icons-static-svg@1.102.0 --ignore-scripts
 --registry=https://registry.npmjs.org/`, em 05/11/2026, numa pasta nova e vazia fora do git, `.data/downloads/lobehub-1.102.0/`, sem rodar nada
@@ -344,13 +347,13 @@ em `apps/web/public/laboratorios/LICENSE.txt` (o tarball não traz o arquivo LIC
 "Copyright © 2023 LobeHub. This project is MIT licensed."; o texto do arquivo é o da MIT do SPDX com essa linha). Cada SVG conferido: só
 `<svg>`, `<title>` e `<path>` (e, no do Gemini, `<defs>`, `<linearGradient>` e `<stop>`), sem script, link, `<style>` nem fonte embutida, e
 nenhum `url()` que saia do arquivo (os três `url(#…)` do Gemini apontam para os gradientes dele mesmo; o `<svg>` do pacote traz o atributo
-`style="flex:none;line-height:1"`, inofensivo). O logo usado é o do **modelo** (o que o Rallies mostra), não o da empresa (`anthropic.svg` e
+`style="flex:none;line-height:1"`, inofensivo). O logo usado é o do **modelo**, não o da empresa (`anthropic.svg` e
 `xai.svg` do pacote são os logotipos das empresas), na versão colorida (`-color`) onde o pacote a tem: o Claude, o Gemini, o DeepSeek e o Qwen;
 o GPT e o Grok só existem em preto. **As marcas são dos donos** (OpenAI, Anthropic, Google, xAI, DeepSeek e Alibaba Cloud): a MIT cobre os
 arquivos, não as marcas; o uso é nominativo (o nome do modelo e o logo dele, nas cores da marca, sem alterar o desenho), com o aviso no
 rodapé de toda tela; o modelo de provedor de ensaio leva a etiqueta "simulado" ao lado do nome. O Sorteio e as referências levam, desde
 06/11/2026, ícones nossos desenhados à mão, sem dependência externa (`apps/web/public/referencias`: o dado do Sorteio, o "%" do CDI, o
-gráfico de linha do BOVA11 e a balança do igual-peso), na mesma máscara preta do círculo branco; o BOVA11 não leva o logo do emissor do
+gráfico de linha do BOVA11 e a balança do igual-peso), na mesma máscara preta do quadrado branco; o BOVA11 não leva o logo do emissor do
 fundo (a lista de logos da brapi que buscamos é a das ações, e o ícone fala do que ele é aqui: o mercado).
 
 | Item | Tipo | Versão | Licença | Para quê | Onde | Data | Link |

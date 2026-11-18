@@ -37,7 +37,7 @@ export { direction };
 // o nome e o ticker numa linha só, em toda largura: a tabela rola dentro da caixa dela (com a pista de que há mais, ui.tsx, TableScroll), e
 // o nome é o curto (o das referências também), então as linhas têm a mesma altura (o QA do fechamento, achado 17: no celular os nomes
 // quebravam em duas e três linhas). (A tabela de posições da carteira, wallet-panels.tsx, usa o cabeçalho de coluna e a célula presa à
-// esquerda daqui.) O fundo é o da caixa em que a tabela está. O nome e o ticker em 14/600, como os do Rallies (plano do redesenho, e.2 e e.6).
+// esquerda daqui.) O fundo é o da caixa em que a tabela está. O nome e o ticker em 14/600 (plano do redesenho, e.2 e e.6).
 const PRESA = 'celula-presa py-1 text-left text-sm font-semibold whitespace-nowrap text-ink';
 export const STICKY = `${PRESA} px-2`;
 // a célula do competidor: o logo fica fora do fluxo do texto, no respiro da esquerda (globals.css, `.celula-competidor`)

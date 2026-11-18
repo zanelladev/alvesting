@@ -356,7 +356,7 @@ describe('NotaSimulada', () => {
 });
 
 describe('DecisionCard no feed da arena', () => {
-  // O item do feed do Rallies (plano do redesenho, e.5): o logo do laboratório e o retorno do modelo no cabeçalho. O contrato de DOM que os
+  // O item do feed (plano do redesenho, e.5): o logo do laboratório e o retorno do modelo no cabeçalho. O contrato de DOM que os
   // e2e leem fica: o h3 com o link, um p só no cabeçalho, o resumo como o único p direto do item.
   it('o cabeçalho tem o logo do laboratório (pelo slug, quando o dado não traz o tipo) e o retorno do modelo, fora do h3 e do p', () => {
     const out = html(
@@ -737,15 +737,17 @@ describe('gráfico do patrimônio (o Line Chart da beUI)', () => {
     expect(out).not.toMatch(/aria-valuetext="[^"]*CDI/);
   });
 
-  // O fim de cada linha (o do Rallies): o logo e o patrimônio final numa pílula da cor do laboratório, decorativos (o mesmo valor está na
-  // descrição e na tabela). A cor vai por `var()` dos nomes do shadcn (`--chart-*`), que seguem o tema; nunca hexadecimal.
+  // O fim de cada linha: o logo com o anel da cor do laboratório e o patrimônio final em texto, na tinta (ADR 0041: sem a pílula colorida),
+  // decorativos (o mesmo valor está na descrição e na tabela). A cor vai por `var()` dos nomes do shadcn (`--chart-*`), que seguem o tema;
+  // nunca hexadecimal.
   it('o fim de cada linha leva o logo e o patrimônio final, na cor do laboratório; o Sorteio, neutro e tracejado', () => {
     const out = html(<LineChart {...props} />);
     const labels = /<ul aria-hidden="true">.*?<\/ul>/s.exec(out)![0];
     expect(labels.match(/data-rotulo=/g)).toHaveLength(2);
     expect(labels).toMatch(
-      /data-rotulo="claude-opus-5-5".*data-lab="anthropic".*background-color:var\(--chart-2\)[^>]*>R\$\u00a0101\.000,00</s,
+      /data-rotulo="claude-opus-5-5".*data-lab="anthropic"[^>]*border-color:var\(--chart-2\).*<span class="[^"]*text-ink[^"]*">R\$\u00a0101\.000,00</s,
     );
+    expect(labels).not.toContain('background-color');
     expect(labels).toMatch(/data-rotulo="sorteio".*data-ref="sorteio".*var\(--chart-7\)/s);
     expect(out).toMatch(/data-series="claude-opus-5-5"[^>]*style="stroke:var\(--chart-2\)"/);
     expect(out).toMatch(/data-series="sorteio"[^>]*stroke-dasharray="6 4"/);

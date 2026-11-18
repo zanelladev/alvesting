@@ -35,18 +35,10 @@ const OPCOES = [
 
 // O seletor: um grupo de radios (o leitor de tela diz "Tema, grupo" e "Claro, botão de opção, 1 de 3"; as setas trocam a escolha), com o
 // ícone à vista e o nome em texto. Cada lugar dá o seu `name` (dois grupos com o mesmo nome seriam um grupo só). Nenhum radio vem marcado
-// do servidor: o script marca o da escolha guardada antes da pintura. O desenho e a pílula da escolha estão no globals.css (`.tema`).
-export function ThemeSelector({
-  name,
-  vertical = false,
-  label = false,
-}: {
-  name: string;
-  vertical?: boolean;
-  label?: boolean;
-}) {
+// do servidor: o script marca o da escolha guardada antes da pintura. O desenho e a escolha que anda estão no globals.css (`.tema`).
+export function ThemeSelector({ name, label = false }: { name: string; label?: boolean }) {
   const group = (
-    <fieldset className={vertical ? 'tema tema-vertical' : 'tema'}>
+    <fieldset className="tema">
       <legend className="sr-only">Tema</legend>
       {OPCOES.map(([value, text, Icon]) => (
         <label key={value} data-opcao={value}>
@@ -100,8 +92,8 @@ export function themeScript() {
     const night = root.classList.contains('dark');
     for (let j = 0; j < metas.length; j += 1) {
       const meta = metas[j]!;
-      const own = meta.media.indexOf('dark') < 0 ? '#ffffff' : '#171717';
-      meta.content = choice === 'sistema' ? own : night ? '#171717' : '#ffffff';
+      const own = meta.media.indexOf('dark') < 0 ? '#ffffff' : '#0b0d20';
+      meta.content = choice === 'sistema' ? own : night ? '#0b0d20' : '#ffffff';
     }
   }
   function apply(choice: string) {

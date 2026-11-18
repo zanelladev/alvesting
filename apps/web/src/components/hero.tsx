@@ -1,20 +1,28 @@
 import type { ReactNode } from 'react';
-import type { ArenaCurrent } from '@alvesting/contracts';
-import { formatShortDate } from '../lib/format';
+import type { ArenaCurrent, LeaderboardRow } from '@alvesting/contracts';
+import { formatBps, formatPercentile, formatShortDate } from '../lib/format';
 import { Arte } from './arte';
+import { Logo, NomeCurto } from './competidor';
 import { Fita } from './fita';
-import { BUTTON, NavLink } from './ui';
+import {
+  IconeArena,
+  IconeBriefing,
+  IconeCadeado,
+  IconeCarteira,
+  IconeChat,
+  IconeExplorar,
+  Marca,
+} from './icones';
+import { GraficoMini, type SerieMini } from './landing/grafico-mini';
+import { BUTTON, NavLink, direction } from './ui';
 
-// O hero da landing (ADR 0035), no desenho do Rallies com a arte de antes. Em cima, duas colunas a
-// partir de 1024 px: o título e os dois CTAs à esquerda; a pílula da temporada, o parágrafo e o aviso da arena simulada à direita (no celular,
-// uma coluna nessa ordem, os CTAs em largura cheia). Embaixo, a moldura grande, escura nos dois temas (`.moldura`: a arte é o azul claro da
-// marca sobre o preto, e no claro sumiria no branco): a escadaria enche o palco, e no pé, por dentro, a legenda com o crédito das cotações e a
-// fita. O cartão "Arena agora" segue o tema da página, então fica fora do elemento da moldura: por cima dela, à esquerda e embaixo, a partir de
-// 1024 px (o lado esquerdo da arte é o vazio preto, e o touro fica à direita), e embaixo dela no celular. Componente de servidor, sem entrada
-// animada: o título e o parágrafo nascem visíveis no HTML, antes da moldura (o LCP do celular, d.10). O que se mexe aqui é CSS: o toque nos
-// botões e a seta que anda no hover (`.seta`, globals.css, o bloco da landing).
+// O topo da landing (ADR 0041), na página regrada: o texto à esquerda (o selo da temporada, o título em dois tons, o parágrafo com os ícones
+// dentro do texto, os dois botões e o aviso da arena simulada) e, a partir de 1024 px, a janela da arena em miniatura saindo pela borda
+// direita da coluna (no celular, embaixo do texto). Componente de servidor, sem entrada animada no texto: o título e o parágrafo nascem
+// parados e à vista no HTML (o LCP do celular, d.10); a janela sobe 12 px ao abrir (só o `transform`, globals.css, `.janela-quadro`). Embaixo,
+// numa faixa própria, a escadaria (`Escadaria`), na moldura escura nos dois temas, com a legenda e a fita no pé.
 
-// a seta dos CTAs e da pílula da temporada: anda 2 px para a frente no hover (`.seta`)
+// a seta dos botões e do selo: anda 2 px para a frente no hover (`.seta`)
 const Seta = () => (
   <svg
     width="16"
@@ -36,20 +44,17 @@ const Seta = () => (
 );
 
 export interface HeroProps {
-  // a pílula da temporada ("Temporada encerrada · pregão 20 de 20"); sem temporada, nenhuma
-  pill: { text: string; href: string } | null;
+  // o selo da temporada ("Temporada em andamento · último pregão em 05/11"); sem temporada, nenhum
+  pill: { text: string; href: string; vivo: boolean } | null;
   // algum modelo exibido decide pelo provedor fake (ui.tsx, isSimulated): o aviso da arena simulada
   simulated: boolean;
-  // a legenda do pé da moldura, com o crédito das cotações, e a fita (lib/fita.ts)
-  caption: string;
-  tape: { text: string; label: string };
-  // o cartão "Arena agora" (por cima da moldura a partir de 1024 px)
-  card?: ReactNode;
+  // a janela da arena em miniatura (`JanelaArena`), decorativa
+  janela?: ReactNode;
 }
 
-// A pílula da temporada, levando ao último ciclo; antes do primeiro, o dia dele, levando às regras. Sem temporada, nenhuma. O nome da temporada
-// fica na arena (pode ser longo). A temporada em andamento diz a data do último pregão, e não "pregão N de M": a conta saía das datas do
-// patrimônio, que a landing não lê (d.10: menos leituras que a home de antes); a encerrada fez todos os pregões dos parâmetros.
+// O selo da temporada, levando ao último ciclo; antes do primeiro, o dia dele, levando às regras. Sem temporada, nenhum. O nome da temporada
+// fica na arena (pode ser longo). A temporada em andamento diz a data do último pregão, e não "pregão N de M" (a conta é dos números,
+// abaixo do topo); a encerrada fez todos os pregões dos parâmetros. `vivo`: a temporada está em andamento (o ponto que pulsa).
 export function heroPill({
   season,
   lastCycle,
@@ -57,96 +62,218 @@ export function heroPill({
 }: Pick<ArenaCurrent, 'season' | 'lastCycle' | 'nextCycle'>): HeroProps['pill'] {
   if (!season) return null;
   const total = season.params.sessions;
+  const vivo = season.status !== 'FINISHED';
   if (lastCycle) {
     return {
-      text:
-        season.status === 'FINISHED'
-          ? `Temporada encerrada · pregão ${total} de ${total}`
-          : `Temporada em andamento · último pregão em ${formatShortDate(lastCycle.date)}`,
+      text: vivo
+        ? `Temporada em andamento · último pregão em ${formatShortDate(lastCycle.date)}`
+        : `Temporada encerrada · pregão ${total} de ${total}`,
       href: `/ciclos/${lastCycle.date}`,
+      vivo,
     };
   }
   return nextCycle
     ? {
         text: `Temporada em andamento · primeiro pregão em ${formatShortDate(nextCycle.date)}`,
         href: '/como-funciona',
+        vivo,
       }
     : null;
 }
 
-// Os dois CTAs, no hero e no fim da landing: a pílula primária (a ação principal da superfície) leva à arena e a cinza às regras.
-export const Chamadas = ({ className = '' }: { className?: string }) => (
-  <div className={`flex flex-wrap gap-2 ${className}`}>
-    <NavLink href="/arena" className={`${BUTTON} btn-primary`}>
+// Os dois botões, no topo e no convite do fim: o primário (a ação principal da superfície) leva à arena e o de contorno às regras.
+// `escuro`: na faixa escura do convite, o primário claro e o de contorno no branco.
+export const Chamadas = ({
+  className = '',
+  escuro = false,
+}: {
+  className?: string;
+  escuro?: boolean;
+}) => (
+  <div className={`flex flex-wrap gap-2.5 ${className}`}>
+    <NavLink href="/arena" className={`${BUTTON} ${escuro ? 'btn-claro' : 'btn-primary'}`}>
       Abrir a arena
       <Seta />
     </NavLink>
-    <NavLink href="/como-funciona" className={BUTTON}>
+    <NavLink href="/como-funciona" className={escuro ? `${BUTTON} btn-vazado` : BUTTON}>
       Regras da arena
     </NavLink>
   </div>
 );
 
-export function Hero({ pill, simulated, caption, tape, card }: HeroProps) {
+export function Hero({ pill, simulated, janela }: HeroProps) {
   return (
-    <>
-      <section className="grid gap-x-16 gap-y-6 pt-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)] lg:pt-20">
-        <div className="grid content-start justify-items-start gap-6">
-          <h1 className="max-w-[22ch] font-display text-30 text-balance">
-            Modelos de linguagem investindo na B3
-          </h1>
-          <Chamadas className="max-sm:w-full max-sm:flex-col" />
-        </div>
-        <div className="grid content-start justify-items-start gap-4">
-          {pill ? (
-            <NavLink href={pill.href} className="pill -my-1.5">
-              {pill.text}
-              <Seta />
-            </NavLink>
-          ) : null}
-          <p className="text-15 text-pretty text-muted">
-            Às 08:00 de cada pregão, todos recebem o mesmo briefing e o mesmo prompt, oculto e com o
-            hash publicado. As ordens fictícias executam na abertura, a preço real, com a
-            justificativa aberta.
-          </p>
-          {/* o aviso da página (o `[!]` do sistema, na sans: a mono é só do hash), numa linha discreta, sem caixa */}
-          {simulated ? (
-            <p className="flex gap-2 text-xs text-muted">
-              <span aria-hidden="true" className="shrink-0">
-                [!]
+    <section aria-labelledby="topo-titulo" className="linha">
+      <div className="coluna">
+        <div className="topo-landing">
+          <div className="topo-texto">
+            {pill ? (
+              <NavLink href={pill.href} className="pill -my-1.5">
+                {pill.vivo ? <span aria-hidden="true" className="selo-vivo" /> : null}
+                {pill.text}
+                <Seta />
+              </NavLink>
+            ) : null}
+            <h1 id="topo-titulo" className="max-w-[16ch] text-titulo font-medium">
+              Modelos de linguagem <span className="tom2">investindo na B3</span>
+            </h1>
+            <p className="max-w-[34rem] text-lg/[1.7] text-pretty text-body">
+              Às 08:00 de cada pregão, todos recebem o mesmo
+              <span aria-hidden="true" className="ico">
+                <IconeBriefing />
               </span>
-              <span>
-                <strong>Decisões simuladas: os modelos ainda não estão conectados.</strong> Os nomes
-                são os do elenco, mas quem decide por cada modelo marcado como simulado é uma
-                estratégia fixa e simples. O resultado não diz nada sobre os modelos de verdade.
+              briefing e o mesmo
+              <span aria-hidden="true" className="ico">
+                <IconeCadeado />
               </span>
+              prompt, oculto e com o hash publicado. As ordens fictícias executam na abertura, a
+              preço real, com a justificativa aberta.
             </p>
+            <Chamadas className="max-sm:w-full max-sm:flex-col" />
+            {/* o aviso da página (o `[!]` do sistema), numa linha discreta, sem caixa */}
+            {simulated ? (
+              <p className="flex gap-2 text-xs text-muted">
+                <span aria-hidden="true" className="shrink-0">
+                  [!]
+                </span>
+                <span>
+                  <strong>Decisões simuladas: os modelos ainda não estão conectados.</strong> Os
+                  nomes são os do elenco, mas quem decide por cada modelo marcado como simulado é
+                  uma estratégia fixa e simples. O resultado não diz nada sobre os modelos de
+                  verdade.
+                </span>
+              </p>
+            ) : null}
+          </div>
+          {janela ? (
+            <>
+              {janela}
+              <div className="esmaece-baixo" />
+              <div className="esmaece-direita" />
+            </>
           ) : null}
         </div>
-      </section>
+      </div>
+    </section>
+  );
+}
 
-      {/* A moldura: a partir de 1024 px o palco tem 12:5, e a arte (200 × 120 células, 5:3) enche a largura presa ao pé, sem as linhas de
-          cima, que são só o preto vazio; no celular, a altura do palco de antes, com as 56 linhas de baixo (o touro e a escada). A arte nunca
-          fica atrás de texto: o pé, com a legenda e a fita, vem depois do palco. A grade anda para a direita o bastante para o touro (as
-          colunas 89 a 133 de 200) passar do cartão. */}
-      <div className="relative mt-12 lg:mt-16">
-        <div className="moldura flex flex-col overflow-hidden rounded-lg">
-          <div className="relative isolate h-[min(75vw,420px)] lg:aspect-[12/5] lg:h-auto">
+// A janela da arena em miniatura (o topo da landing): a lateral do app, o placar dos quatro primeiros e o gráfico do patrimônio, com o dado de
+// verdade do último pregão liquidado. Decorativa (`aria-hidden`, nenhum link dentro): o mesmo dado está em texto mais abaixo, no placar.
+export function JanelaArena({
+  rows,
+  series,
+  date,
+}: {
+  rows: readonly Pick<LeaderboardRow, 'competitor' | 'returnBps' | 'percentileBps'>[];
+  series: readonly SerieMini[];
+  date: string | null;
+}) {
+  return (
+    <div aria-hidden="true" className="janela-quadro">
+      <div className="janela">
+        <div className="janela-barra">
+          <i />
+          <i />
+          <i />
+          <span className="janela-endereco">
+            <IconeCadeado size={13} />
+            alvesting · arena
+          </span>
+        </div>
+        <div className="janela-corpo">
+          <div className="janela-lado">
+            <span className="mb-2.5 inline-flex items-center gap-2 px-1.5 font-marca text-sm font-semibold text-ink">
+              <Marca size={16} />
+              Alvesting
+            </span>
+            <span data-atual="" className="janela-item">
+              <IconeArena size={15} />
+              Arena
+            </span>
+            <span className="janela-item">
+              <IconeExplorar size={15} />
+              Explorar
+            </span>
+            <span className="janela-item">
+              <IconeCarteira size={15} />
+              Carteira
+            </span>
+            <span className="janela-item">
+              <IconeChat size={15} />
+              Chat
+            </span>
+          </div>
+          <div className="janela-conteudo">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xl font-semibold tracking-[-0.02em] text-ink">Arena</span>
+              {date ? (
+                <span className="ml-auto text-xs text-muted">
+                  pregão de {formatShortDate(date)}
+                </span>
+              ) : null}
+            </div>
+            <div className="janela-placar">
+              {rows.slice(0, 4).map((row, i) => (
+                <div key={row.competitor.slug}>
+                  <span className="text-[0.6875rem] text-muted">{i + 1}º</span>
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium whitespace-nowrap text-ink">
+                    <Logo competitor={row.competitor} className="size-4" />
+                    <span className="min-w-0 truncate">
+                      <NomeCurto name={row.competitor.name} type={row.competitor.type} />
+                    </span>
+                  </span>
+                  <span
+                    data-dir={direction(row.returnBps)}
+                    className="text-lg leading-tight font-semibold tracking-[-0.02em] whitespace-nowrap text-ink"
+                  >
+                    {formatBps(row.returnBps)}
+                  </span>
+                  <span className="text-[0.6875rem] text-muted">
+                    percentil{' '}
+                    {row.percentileBps === null ? '—' : formatPercentile(row.percentileBps)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {series.length > 0 ? (
+              <div className="janela-grafico">
+                <span className="text-xs text-muted">Patrimônio, em R$</span>
+                <GraficoMini series={series} altura={200} />
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export interface EscadariaProps {
+  // a legenda do pé da moldura, com o crédito das cotações, e a fita (lib/fita.ts)
+  caption: string;
+  tape: { text: string; label: string };
+}
+
+// A escadaria, numa faixa própria: a moldura escura nos dois temas (`.moldura`: a arte é o azul claro da marca sobre o preto, e no claro
+// sumiria no branco), a arte enchendo o palco (no celular, as 56 linhas de baixo: o touro e a escada) e, no pé, por dentro, a legenda com o
+// crédito das cotações e a fita. A arte nunca fica atrás de texto que precise ser lido: o pé fica embaixo do touro, sobre o preto.
+export function Escadaria({ caption, tape }: EscadariaProps) {
+  return (
+    <div className="linha">
+      <div className="coluna">
+        <div className="moldura moldura-faixa">
+          <div className="moldura-palco">
             <Arte nome="escadaria" className="max-lg:[--linhas:56] lg:[--deslocar:10%]" />
           </div>
-          <div className="flex flex-col items-center justify-center gap-3 pt-2 pb-5 lg:h-20 lg:p-0">
+          <div className="moldura-pe">
             <p className="px-(--calha) text-center text-xs text-pretty text-moldura-cinza">
               {caption}
             </p>
             <Fita texto={tape.text} rotulo={tape.label} />
           </div>
         </div>
-        {card ? (
-          <div className="mt-4 lg:absolute lg:bottom-32 lg:left-12 lg:mt-0 lg:w-[min(520px,46%)]">
-            {card}
-          </div>
-        ) : null}
       </div>
-    </>
+    </div>
   );
 }

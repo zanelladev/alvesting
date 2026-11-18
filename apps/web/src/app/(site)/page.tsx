@@ -1,21 +1,28 @@
-import { Chamadas, Hero, heroPill } from '../../components/hero';
+import { Escadaria, Hero, JanelaArena, heroPill } from '../../components/hero';
 import { Faq } from '../../components/landing/faq';
+import type { SerieMini } from '../../components/landing/grafico-mini';
 import { Laboratorios } from '../../components/landing/laboratorios';
-import { ArenaAgora, Paineis } from '../../components/landing/paineis';
+import {
+  ArenaAgora,
+  Carteira,
+  Citacao,
+  Convite,
+  Metodo,
+  Numeros,
+  Vao,
+} from '../../components/landing/paineis';
 import { isSimulated } from '../../components/ui';
 import { api } from '../../lib/api';
 import { heroTape } from '../../lib/fita';
-import { versoesDosLogos } from '../../lib/logos';
 import { REFERENCE_TICKER, readBars, readTape } from '../../lib/quotes';
 import { withApiDown } from '../../lib/with-api-down';
 
-// A landing (ADR 0035), no desenho da landing do Rallies com o nosso conteúdo: o hero de texto, a
-// moldura grande com a escadaria e o cartão "Arena agora" por cima, a faixa dos seis laboratórios, os quatro painéis com recortes de UI de
-// verdade, o FAQ e o CTA; o rodapé grande é da casca do site (components/site-chrome.tsx). O conteúdo da arena (o gráfico do patrimônio, o
-// ranking inteiro, o feed, os ciclos, a temporada e a faixa de cotações) mora na /arena.
-// As leituras (d.10, o LCP do celular: o TTFB entra nele): a temporada atual, as últimas decisões, as barras do BOVA11, a fita e o índice dos
-// logos das ações (lib/logos.ts: uma hora no cache de dados; a falha vira os monogramas, sem derrubar a página) saem juntas;
-// o ranking, depois, só com ciclo (sem ciclo não há liquidação). Nada do patrimônio nem do Monte Carlo. Tudo pelo cache de dados do site
+// A landing (ADR 0041), na página regrada: o topo (o título, os botões e a janela da arena em miniatura), os números da temporada, a
+// escadaria com a fita, o método em seis cenas, a justificativa de um modelo, o placar com o gráfico, o elenco, a carteira, o FAQ e o convite
+// na faixa escura; o rodapé é da casca do site (components/site-chrome.tsx). O conteúdo inteiro da arena (o gráfico que se lê pelo teclado,
+// o feed, os ciclos, a temporada e a faixa de cotações) mora na /arena.
+// As leituras (d.10, o LCP do celular: o TTFB entra nele): a temporada atual, as últimas decisões, as barras do BOVA11 e a fita saem juntas;
+// o ranking e o patrimônio, depois, juntos e só com ciclo (sem ciclo não há liquidação). Nada do Monte Carlo. Tudo pelo cache de dados do site
 // (src/lib/api.ts); a página é dinâmica, porque o `next build` da imagem não tem api para chamar. O BOVA11 não vem da API pública (ela não
 // entrega cotação bruta): sai da rota interna, com o segredo do servidor (src/lib/quotes.ts; docs/API.md, seção 6), e é o portão do segredo
 // das cotações (sem ele, a tela de erro); a fita também, da rota interna do universo da semana.
@@ -28,7 +35,7 @@ const FEED_LIMIT = 6;
 export default withApiDown(async function Landing() {
   // A fita é enfeite: a falha só da rota dela (um 5xx, o prazo, o banco sem o GRANT do universo) cai na fita do BOVA11 e do macro e vai para o
   // log, sem derrubar a landing.
-  const [current, feed, bars, universe, logos] = await Promise.all([
+  const [current, feed, bars, universe] = await Promise.all([
     api.arenaCurrent(),
     api.decisions({ limit: FEED_LIMIT }),
     readBars(REFERENCE_TICKER),
@@ -36,10 +43,12 @@ export default withApiDown(async function Landing() {
       console.error('[web] landing sem a fita:', error);
       return { date: null, rows: [] };
     }),
-    versoesDosLogos(),
   ]);
   const { season, lastCycle, macro } = current;
-  const board = season && lastCycle ? await api.leaderboard(season.slug) : null;
+  const [board, equity] =
+    season && lastCycle
+      ? await Promise.all([api.leaderboard(season.slug), api.equity(season.slug)])
+      : [null, null];
 
   const ranked = (board?.rows ?? []).filter(
     (row) => row.competitor.type === 'MODEL' || row.competitor.type === 'RANDOM',
@@ -48,6 +57,18 @@ export default withApiDown(async function Landing() {
   // inteira, depois da primeira liquidação) e das decisões (as do último ciclo, antes dela).
   const cast = [...(board?.rows ?? []), ...feed.rows].map((row) => row.competitor);
   const simulated = cast.some(isSimulated);
+  const modelos = [
+    ...new Map(cast.filter((c) => c.type === 'MODEL').map((c) => [c.slug, c])).values(),
+  ];
+
+  // as séries do patrimônio: a dos modelos e do Sorteio (o placar e a janela do topo) e a das referências (a cena delas)
+  const serie = (types: readonly string[]): SerieMini[] =>
+    (equity?.series ?? [])
+      .filter((s) => types.includes(s.competitor.type))
+      .map((s) => ({ competitor: s.competitor, cents: s.equityCents }));
+  const competidores = serie(['MODEL', 'RANDOM']);
+  const referencias = serie(['CDI', 'BOVA11', 'EQUAL_WEIGHT']);
+  const liquidados = equity?.dates.length ?? 0;
 
   // o último fechamento do BOVA11 e o anterior (a rota interna dá as barras da mais antiga à mais nova)
   const latest = bars.at(-1);
@@ -59,33 +80,61 @@ export default withApiDown(async function Landing() {
       }
     : null;
   const tape = heroTape(universe, bova11, macro);
+  const decision = feed.rows[0] ?? null;
 
   return (
     <>
+      <Vao />
       <Hero
         pill={heroPill(current)}
         simulated={simulated}
-        caption={tape.caption}
-        tape={tape}
-        card={<ArenaAgora rows={ranked} />}
+        janela={
+          ranked.length > 0 ? (
+            <JanelaArena rows={ranked} series={competidores} date={lastCycle?.date ?? null} />
+          ) : null
+        }
       />
-      <Laboratorios cast={cast} simulated={simulated} />
-      <Paineis
+      {season ? (
+        <Numeros season={season} universo={universe.rows.length} liquidados={liquidados} />
+      ) : null}
+      <Vao />
+      <Escadaria caption={tape.caption} tape={tape} />
+      <Vao />
+      <Metodo
+        season={season}
         lastCycle={lastCycle}
-        decision={feed.rows[0] ?? null}
+        decision={decision}
+        cast={modelos}
         ranked={ranked}
-        logos={logos}
+        referencias={referencias}
+        universo={universe.rows.length}
       />
+      {decision ? (
+        <>
+          <Vao />
+          <Citacao decision={decision} />
+        </>
+      ) : null}
+      <Vao />
+      <ArenaAgora
+        rows={ranked}
+        series={competidores}
+        season={season}
+        lastCycle={lastCycle}
+        liquidados={liquidados}
+      />
+      <Vao />
+      <Laboratorios
+        cast={cast}
+        simulated={simulated}
+        returns={new Map(ranked.map((row) => [row.competitor.slug, row.returnBps]))}
+      />
+      <Vao />
+      <Carteira />
+      <Vao />
       <Faq simulated={simulated} />
-      <section
-        aria-labelledby="cta-titulo"
-        className="mt-28 flex flex-col items-center gap-7 pb-8 text-center"
-      >
-        <h2 id="cta-titulo" className="font-display text-30 lg:text-42">
-          Veja a arena agora.
-        </h2>
-        <Chamadas className="justify-center" />
-      </section>
+      <Vao />
+      <Convite />
     </>
   );
 });

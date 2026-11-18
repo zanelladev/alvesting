@@ -172,11 +172,12 @@ async function open(
   );
 }
 
-// A largura do Rallies (o fechamento da onda): a partir de 1280 px a carteira é a do Today, três painéis separados por fio, os dois do lado
-// com 360 px; em 1440 px a tabela de posições (seis colunas) cabe inteira no painel do meio, sem rolar dentro da própria caixa.
+// A largura da carteira (ADR 0041): a partir de 1024 px a carteira tem dois painéis separados por fio, a coluna da carteira com 360 px e o
+// meio com o resto da coluna do app (o "Perguntar" embaixo dele); em 1440 px a tabela de posições (seis colunas) cabe inteira no meio, sem
+// rolar dentro da própria caixa.
 test.describe('carteira em 1440 px', () => {
   test.use({ baseURL: FRONT_DOOR_URL });
-  test('os painéis do lado têm 360 px e a tabela de posições cabe inteira', async ({
+  test('a coluna da carteira tem 360 px, o meio o resto da coluna, e a tabela de posições cabe inteira', async ({
     page,
     request,
     ip,
@@ -188,7 +189,8 @@ test.describe('carteira em 1440 px', () => {
       right: document.getElementById('perguntar')!.parentElement!.getBoundingClientRect().width,
       page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     }));
-    expect(panes).toEqual({ left: 360, right: 360, page: 0 });
+    // a coluna do app em 1440 px: 1.040 px, e a grade come o respiro dela
+    expect(panes).toEqual({ left: 360, right: 1040 - 360, page: 0 });
     const box = page.getByRole('region', { name: 'Posições da carteira, por ticker' });
     const { scrollWidth, clientWidth } = await box.evaluate((el) => ({
       scrollWidth: el.scrollWidth,
@@ -198,8 +200,8 @@ test.describe('carteira em 1440 px', () => {
   });
 });
 
-// Nenhuma rolagem horizontal da página de 360 a 1920 px, com as posições, a rosca e os lançamentos (a coluna do app vai até 1.550 px e fica no
-// centro acima disso), e nenhuma barra de rolagem à vista (o Rallies; globals.css).
+// Nenhuma rolagem horizontal da página de 360 a 1920 px, com as posições, a rosca e os lançamentos (a coluna do app vai até 1.040 px e fica no
+// centro do que sobra da lateral), e nenhuma barra de rolagem à vista (globals.css).
 test.describe('carteira de 360 a 1920 px', () => {
   test.use({ baseURL: FRONT_DOOR_URL });
   test(

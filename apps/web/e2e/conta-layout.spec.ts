@@ -89,8 +89,8 @@ const SCREENS: Screen[] = [
   },
 ];
 
-// Duas cascas (ADR 0035): os textos legais moram na do site; a conta e as telas de entrar e criar conta, na do app (o trilho e a barra de
-// abas), na área "conta" (desde 06/11/2026; antes, entrar e criar conta eram a tela dividida do cadastro do Rallies).
+// Duas cascas (ADR 0041): os textos legais moram na do site; a conta e as telas de entrar e criar conta, na do app (a lateral e a barra de
+// abas), na área "conta" (desde 06/11/2026; antes, entrar e criar conta eram a tela dividida, com a escadaria).
 type Casca = 'app' | 'site';
 const shellOf = (screen: Screen): Casca =>
   /^\/(termos|privacidade)$/.test(screen.route) ? 'site' : 'app';
@@ -394,12 +394,12 @@ test.describe('o sumário "Nesta página" dos textos legais', () => {
   }
 });
 
-// Entrar e criar conta na casca do app (a pedido do Artur, 06/11/2026; antes, a tela dividida com a escadaria à direita): em 1440 px o trilho
+// Entrar e criar conta na casca do app (a pedido do Artur, 06/11/2026; antes, a tela dividida com a escadaria à direita): em 1440 px a lateral
 // com a "Conta" marcada, o formulário no centro do principal numa coluna de até 448 px, e nenhuma arte na tela nem pedida; em 390 px, a barra
 // de abas no pé, com a "Conta" marcada.
 test.describe('entrar e criar conta na casca do app', () => {
   for (const route of ['/entrar', '/cadastro']) {
-    test(`em 1440 px o trilho marca a "Conta", e o formulário fica no centro, sem arte (${route})`, async ({
+    test(`em 1440 px a lateral marca a "Conta", e o formulário fica no centro, sem arte (${route})`, async ({
       page,
     }) => {
       await page.setViewportSize({ width: 1440, height: 900 });

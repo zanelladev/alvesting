@@ -30,7 +30,7 @@ import { versoesDosLogos } from '../../../../../lib/logos';
 import { orNotFound } from '../../../../../lib/page';
 import { withApiDown } from '../../../../../lib/with-api-down';
 
-// A página de um competidor (plano §3; no desenho do Rallies, ADR 0035): o cabeçalho com o logo do laboratório, o
+// A página de um competidor (plano §3; ADR 0041): o cabeçalho com o logo do laboratório, o
 // nome inteiro (com o sufixo de versão, que os lugares apertados tiram) e a etiqueta "simulado" junto do título (uma vez, docs/DESIGN.md), o
 // modelo com o provedor e o ID fixados na criação da temporada, o resultado, a carteira do último pregão liquidado (com o logo de cada ação),
 // a série de patrimônio (o Line Chart da beUI: uma linha, com o rótulo no fim e a faixa do Monte Carlo) e as decisões, em itens de feed. O Sorteio e as referências também têm página, mas não
@@ -84,28 +84,27 @@ const Signed = ({ bps, glifo = false }: { bps: number | null; glifo?: boolean })
     formatBps(bps)
   );
 
-// Os seis números que dizem como o competidor está vão na faixa dividida (a mesma da home), e o resto em pares termo/valor.
+// Os seis números que dizem como o competidor está vão na faixa de números (a grade regrada, de uma borda à outra da coluna), e o resto em
+// pares termo/valor.
 function Result({ stat }: { stat: NonNullable<CompetitorDetail['stat']> }) {
   return (
     <>
-      <div className="overflow-hidden rounded-lg border border-hairline">
-        <Strip columns={6}>
-          <StripItem term="Posição">{stat.rank}</StripItem>
-          <StripItem term="Patrimônio">{formatBRL(stat.equityCents)}</StripItem>
-          <StripItem term="Retorno">
-            <Signed bps={stat.returnBps} glifo />
-          </StripItem>
-          <StripItem term="Percentil">
-            {stat.percentileBps === null ? 'sem dado' : formatPercentile(stat.percentileBps)}
-          </StripItem>
-          <StripItem term="vs igual-peso">
-            <Signed bps={stat.excessEqualWeightBps} />
-          </StripItem>
-          <StripItem term="vs CDI">
-            <Signed bps={stat.excessCdiBps} />
-          </StripItem>
-        </Strip>
-      </div>
+      <Strip columns={6}>
+        <StripItem term="Posição">{stat.rank}</StripItem>
+        <StripItem term="Patrimônio">{formatBRL(stat.equityCents)}</StripItem>
+        <StripItem term="Retorno">
+          <Signed bps={stat.returnBps} glifo />
+        </StripItem>
+        <StripItem term="Percentil">
+          {stat.percentileBps === null ? 'sem dado' : formatPercentile(stat.percentileBps)}
+        </StripItem>
+        <StripItem term="vs igual-peso">
+          <Signed bps={stat.excessEqualWeightBps} />
+        </StripItem>
+        <StripItem term="vs CDI">
+          <Signed bps={stat.excessCdiBps} />
+        </StripItem>
+      </Strip>
       <Facts dense>
         <Fact term="Drawdown máximo">{formatBps(stat.maxDrawdownBps, { signed: false })}</Fact>
         <Fact term="Acerto">

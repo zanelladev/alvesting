@@ -17,7 +17,7 @@ import { versoesDosLogos } from '../../../../lib/logos';
 import { readTape } from '../../../../lib/quotes';
 import { withApiDown } from '../../../../lib/with-api-down';
 
-// O Explorar (ADR 0035), no desenho do Discover do Rallies: o título, a busca de ações e as carteiras da arena em
+// O Explorar (ADR 0041): o título, a busca de ações e as carteiras da arena em
 // cartões (um por competidor da temporada, com o logo, o que ele é, o número de posições e o retorno), em duas grades, a dos modelos e a do
 // controle e das referências; e o universo da semana (os papéis do briefing do último ciclo, com o fechamento e o logo de cada um). A barra
 // "Explorar" fica ao lado (components/arena/explorar.tsx). Lê a api pelo cache de dados do site e é dinâmica, como as outras telas da arena.
@@ -92,7 +92,7 @@ export default withApiDown(async function ExplorarPage() {
   return (
     <ComBarra largura={300} barra={<BarraExplorar rows={rows} />}>
       <NavegacaoDaArea label="Telas do explorar" area={EXPLORAR} trilha="Explorar" telas={[]} />
-      {/* o fio embaixo da busca vai de uma borda à outra do principal, como o do Discover do Rallies (come o respiro do `main`) */}
+      {/* o fio embaixo da busca vai de uma borda à outra do principal, como as linhas da página regrada (come o respiro da coluna) */}
       <header className="-mx-5 space-y-6 border-b border-hairline px-5 pb-6 lg:-mx-6 lg:px-6">
         <h1 className="max-w-[18ch] font-display text-32 text-balance">
           Explore as carteiras da arena
@@ -112,9 +112,12 @@ export default withApiDown(async function ExplorarPage() {
           <Section key={grupo.id} id={grupo.id} title={grupo.title}>
             {/* o "simulado" uma vez por contexto: a nota no cabeçalho da grade (o Sorteio e as referências não decidem) */}
             <NotaSimulada competitors={grupo.rows.map((row) => row.competitor)} />
+            {/* a grade da página regrada (ADR 0041): uma célula por competidor, de uma borda à outra da coluna. Cada célula desenha o
+                próprio fio (`.celula-regrada`), e não o fundo da grade: a última linha incompleta (seis modelos em quatro colunas) fica com
+                as casas vazias no canvas, e não no cinza da folha */}
             <ul
               aria-label={grupo.title}
-              className="grid gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-4"
+              className="-mx-5 grid gap-px border-y border-folha sm:grid-cols-2 lg:-mx-6 lg:grid-cols-4"
             >
               {grupo.rows.map((row) => (
                 <CartaoCompetidor

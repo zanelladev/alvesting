@@ -71,9 +71,9 @@ for (const route of ROUTES) {
       },
     );
 
-    // A largura do Rallies (o fechamento da onda): o app enche a tela até a coluna de 1.550 px, e acima dela a coluna fica no centro, com o fio
-    // de cada lado (a T2 das linhas, que trouxe os 1920 px: a moldura e os fios de borda a borda comem o respiro do principal, e nada pode
-    // passar da largura). Em nenhuma largura do celular ao desktop largo a página rola para o lado (o de 360 px, acima, mede também os alvos).
+    // A página regrada (ADR 0041): a coluna fica no centro, entre as células laterais e os fios, e o que vai de uma borda à outra dela (o
+    // placar, as faixas, a moldura) come o respiro; nada pode passar da largura. Em nenhuma largura do celular ao desktop largo a página rola
+    // para o lado (o de 360 px, acima, mede também os alvos).
     test('de 390 a 1920 px não rola na horizontal', async ({ page }) => {
       await page.goto(route);
       await loaded(page);
@@ -189,8 +189,8 @@ for (const route of ROUTES) {
   });
 }
 
-// Os dois temas seguem o sistema (ADR 0035), sem botão: o projeto claro e o escuro abrem a mesma tela, e o que muda é o tema que o
-// navegador anuncia. Uma tela do site e uma do app.
+// Os dois temas seguem o sistema (ADR 0041) quando ninguém escolheu outro: o projeto claro e o escuro abrem a mesma tela, e o que muda é o
+// tema que o navegador anuncia. Uma tela do site e uma do app. O fundo da página é a folha (o tom dos fios), e as células são o canvas.
 for (const route of ['/', '/ranking']) {
   test(
     `${route}: o tema é o do sistema, e o navegador sabe dos dois`,
@@ -203,7 +203,7 @@ for (const route of ['/', '/ranking']) {
         scheme: getComputedStyle(document.documentElement).colorScheme,
       }));
       expect(look).toEqual({
-        background: dark ? 'rgb(23, 23, 23)' : 'rgb(255, 255, 255)',
+        background: dark ? 'rgb(30, 33, 66)' : 'rgb(230, 233, 240)',
         scheme: 'light dark',
       });
       // a cor da barra do navegador acompanha o canvas de cada tema; o `color-scheme` também vai no <meta>, antes do CSS
@@ -214,7 +214,7 @@ for (const route of ['/', '/ranking']) {
         );
       expect(themeColors).toEqual([
         ['(prefers-color-scheme: light)', '#ffffff'],
-        ['(prefers-color-scheme: dark)', '#171717'],
+        ['(prefers-color-scheme: dark)', '#0b0d20'],
       ]);
       await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute(
         'content',
@@ -224,7 +224,7 @@ for (const route of ['/', '/ranking']) {
   );
 }
 
-// A casca do app (components/app-shell.tsx; ADR 0035): a mesma `nav "Principal"` é o trilho de ícones no desktop e a barra de abas no pé
+// A casca do app (components/app-shell.tsx; ADR 0041): a mesma `nav "Principal"` é a lateral com rótulos no desktop e a barra de abas no pé
 // no celular, e o item da área leva `aria-current="page"` sem JavaScript. O "Mais" abre uma folha `popover` com as telas de apoio.
 test.describe('casca do app', () => {
   test('a navegação lista as áreas na ordem, com o endereço de cada uma, e marca a área da tela', async ({
@@ -233,12 +233,13 @@ test.describe('casca do app', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto('/ranking');
     const nav = page.getByRole('navigation', { name: 'Principal' });
+    // a busca no topo da lateral, as quatro áreas e a conta no pé
     const links = [
+      ['Buscar', '/acoes'],
       ['Arena', '/arena'],
       ['Explorar', '/explorar'],
       ['Carteira', '/carteira'],
       ['Chat', '/chat'],
-      ['Buscar', '/acoes'],
       ['Conta', '/conta'],
     ] as const;
     await expect(nav.getByRole('link')).toHaveText(links.map(([name]) => name));
@@ -264,8 +265,8 @@ test.describe('casca do app', () => {
     }
   });
 
-  // Em 1280 px o trilho de 80 px fica à esquerda, e todo link do banner tem o alvo de 44 px (o laço de ROUTES mede os alvos só em 360 px).
-  test('em 1280 px é o trilho de 80 px à esquerda, sem botão "Menu", e todo link do banner tem 44 px', async ({
+  // Em 1280 px a lateral de 248 px fica à esquerda, e todo link do banner tem o alvo de 44 px (o laço de ROUTES mede os alvos só em 360 px).
+  test('em 1280 px é a lateral de 248 px à esquerda, sem botão "Menu", e todo link do banner tem 44 px', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -275,52 +276,63 @@ test.describe('casca do app', () => {
     });
     await expect(page.getByRole('button', { name: 'Menu', exact: true })).toHaveCount(0);
     const banner = (await page.getByRole('banner').boundingBox())!;
-    expect(banner).toMatchObject({ x: 0, y: 0, width: 80, height: 720 });
+    expect(banner).toMatchObject({ x: 0, y: 0, width: 248, height: 720 });
     const links = await page.getByRole('banner').getByRole('link').all();
     expect(links).toHaveLength(7);
     for (const link of links) {
       const box = (await link.boundingBox())!;
       expect(box.width, await link.innerText()).toBeGreaterThanOrEqual(43.95);
       expect(box.height, await link.innerText()).toBeGreaterThanOrEqual(43.95);
-      expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(80);
+      expect(box.x + box.width, await link.innerText()).toBeLessThanOrEqual(248);
     }
-    // o principal começa depois do trilho
-    expect((await page.getByRole('main').boundingBox())!.x).toBeGreaterThanOrEqual(80);
+    // o principal começa depois da lateral
+    expect((await page.getByRole('main').boundingBox())!.x).toBeGreaterThanOrEqual(248);
   });
 
-  // A largura do Rallies (medida nas capturas dele, .data/rallies-referencia/): em 1440 px o app não tem teto, a barra secundária encosta no
-  // trilho (400 px na arena, 300 no explorar), o conteúdo começa 24 px depois do fio dela e vai até 24 px da borda; o chat fica no centro da
-  // área toda.
-  test('em 1440 px o app enche a largura, como o Rallies: a barra encosta no trilho, e o chat fica no centro', async ({
+  // A página regrada do app: o principal é o que sobra da lateral, e a coluna de até 1.040 px fica no centro dele, entre as duas células
+  // laterais, com o fio de 1 px de cada lado (a folha no vão). A barra secundária é a célula da direita: na arena, ao lado só do feed (as
+  // carteiras, de 380 px, na faixa de baixo); no explorar, ao lado de tudo (300 px). O chat fica no centro da coluna.
+  test('em 1440 px a coluna do app tem 1.040 px no centro do principal, a barra fica à direita e o chat no centro', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const measure = () =>
       page.evaluate(() => {
-        const box = (el: Element | null) => el!.getBoundingClientRect();
-        const main = box(document.querySelector('main'));
+        const box = (el: Element | null) => {
+          const b = el!.getBoundingClientRect();
+          return [b.x, b.width];
+        };
         const bar = document.querySelector('#carteiras, nav[aria-labelledby="explorar-titulo"]');
         return {
-          main: [main.x, main.width],
-          bar: bar ? [box(bar.parentElement).x, box(bar.parentElement).width] : null,
-          h1: box(document.querySelector('h1')).x,
+          main: box(document.querySelector('main')),
+          column: box(document.querySelector('.coluna-app')),
+          bar: bar ? box(bar.parentElement) : null,
+          h1: box(document.querySelector('h1'))[0],
         };
       });
+    // (1440 − 248 − 1040 − 2) ÷ 2 = 75: a célula lateral, e o fio de 1 px entre ela e a coluna
     await page.goto('/arena');
-    expect(await measure()).toEqual({ main: [80, 1360], bar: [80, 400], h1: 504 });
+    expect(await measure()).toEqual({
+      main: [248, 1192],
+      column: [324, 1040],
+      bar: [324 + 1040 - 380, 380],
+      h1: 348,
+    });
     await page.goto('/explorar');
-    expect(await measure()).toEqual({ main: [80, 1360], bar: [80, 300], h1: 404 });
+    expect(await measure()).toEqual({
+      main: [248, 1192],
+      column: [324, 1040],
+      bar: [324 + 1040 - 300, 300],
+      h1: 348,
+    });
     await page.goto('/chat');
     const chat = (await page.getByRole('group', { name: 'O chat, desligado' }).boundingBox())!;
-    expect(Math.abs(chat.x + chat.width / 2 - (80 + 1360 / 2))).toBeLessThanOrEqual(1);
+    expect(Math.abs(chat.x + chat.width / 2 - (324 + 1040 / 2))).toBeLessThanOrEqual(1);
   });
 
-  // A moldura do Rallies, medida na captura do Artur (a Arena logado numa janela de 1.917 px, .data/rallies-referencia/arena-1917-logado.png):
-  // com a janela mais larga que a coluna do app (1.550 px), a coluna fica no centro, com o fio de cada lado (o da esquerda é o do trilho, o da
-  // direita é o da coluna, como lá) e o fundo fora dela, e o trilho, a barra, o principal e o menu "Mais" andam juntos. Os fios entre as
-  // carteiras vão de uma borda da barra à outra, e os da faixa dos modelos, de uma borda do principal à outra (antes paravam no respiro). Em
-  // 1440 px a coluna enche a tela, sem os fios dos lados, como antes.
-  test('em 1920 px a coluna do app fica no centro, com o fio de cada lado, e os fios vão de borda a borda', async ({
+  // Mais largo, a coluna continua com 1.040 px no centro e as células laterais crescem; os fios entre as carteiras vão de uma borda da barra à
+  // outra, e o placar, de uma borda da coluna à outra. Abaixo de 1024 px as laterais somem e a coluna enche a tela.
+  test('em 1920 px a coluna do app fica no centro, com as células e o fio de cada lado, e os fios vão de borda a borda', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -331,51 +343,53 @@ test.describe('casca do app', () => {
           const b = el!.getBoundingClientRect();
           return [b.x, b.width];
         };
-        const app = document.querySelector('.app')!;
-        const rail = document.querySelector('.app-topo')!;
+        const main = document.querySelector('main')!;
+        const column = document.querySelector('.coluna-app')!;
         return {
-          app: box(app),
-          rail: box(rail),
-          main: box(document.querySelector('main')),
-          bar: box(document.querySelector('#carteiras')!.parentElement),
+          main: box(main),
+          column: box(column),
+          sides: [
+            getComputedStyle(main, '::before').display === 'none'
+              ? 0
+              : parseFloat(getComputedStyle(main, '::before').width),
+            getComputedStyle(main).columnGap,
+          ],
+          // o vão entre as células é a folha: o fundo do principal, diferente do da coluna
+          rule: getComputedStyle(main).backgroundColor !== getComputedStyle(column).backgroundColor,
           h1: box(document.querySelector('h1'))[0],
+          bar: box(document.querySelector('#carteiras')!.parentElement),
           faixa: box(document.querySelector('[role="region"][aria-label^="Modelos e Sorteio"]')),
           carteiras: [...document.querySelectorAll('[data-carteira]')].map(box),
-          sides: [getComputedStyle(rail).borderLeftWidth, getComputedStyle(app).borderRightWidth],
-          outside: [92, 1828].map((x) => document.elementFromPoint(x, 540)?.tagName),
         };
       });
     const wide = await measure();
-    // (1920 − 1550) ÷ 2 = 185: o trilho de 80 px, a barra de 400 e o principal até o fio da direita (1550 − 80 − 1)
-    expect(wide.app).toEqual([185, 1550]);
-    expect(wide.rail).toEqual([185, 80]);
-    expect(wide.main).toEqual([265, 1469]);
-    expect(wide.bar).toEqual([265, 400]);
-    expect(wide.h1).toBe(265 + 400 + 24);
-    expect(wide.sides).toEqual(['1px', '1px']);
-    expect(wide.outside).toEqual(['BODY', 'BODY']);
-    // a faixa vai do fio da barra ao fio da direita, e cada carteira enche a barra até o fio dela
-    expect(wide.faixa).toEqual([665, 1734 - 665]);
+    // (1920 − 248 − 1040 − 2) ÷ 2 = 315
+    expect(wide.main).toEqual([248, 1672]);
+    expect(wide.column).toEqual([564, 1040]);
+    expect(wide.sides).toEqual([315, '1px']);
+    expect(wide.rule).toBe(true);
+    expect(wide.h1).toBe(564 + 24);
+    expect(wide.bar).toEqual([564 + 1040 - 380, 380]);
+    expect(wide.faixa).toEqual([564, 1040]);
     expect(wide.carteiras.length).toBeGreaterThan(0);
-    for (const carteira of wide.carteiras) expect(carteira).toEqual([265, 399]);
-    // o menu "Mais" abre ao lado do trilho, onde quer que a coluna esteja
+    for (const carteira of wide.carteiras) expect(carteira).toEqual([564 + 1040 - 380, 380]);
+    // o menu "Mais" abre ao lado da lateral, onde quer que a coluna esteja
     await page.getByRole('button', { name: 'Mais', exact: true }).click();
     const menu = (await page.locator('#mais').boundingBox())!;
-    expect(menu.x).toBeGreaterThanOrEqual(265);
-    expect(menu.x).toBeLessThanOrEqual(281);
+    expect(menu.x).toBeGreaterThanOrEqual(248);
+    expect(menu.x).toBeLessThanOrEqual(264);
     await page.keyboard.press('Escape');
-    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.setViewportSize({ width: 390, height: 844 });
     const narrow = await measure();
-    expect(narrow.app).toEqual([0, 1440]);
-    expect(narrow.rail).toEqual([0, 80]);
-    expect(narrow.sides).toEqual(['0px', '0px']);
+    expect(narrow.main).toEqual([0, 390]);
+    expect(narrow.column).toEqual([0, 390]);
+    expect(narrow.sides[0]).toBe(0);
   });
 
-  // O fio contínuo embaixo da barra do topo, como o do Rallies (y = 44 na captura do Artur, embaixo de "Portfolios" e de "Arena / My Funds /
-  // Popular Funds"): a linha de abas do principal e o título da barra secundária têm 45 px (os 44 e o fio), e os dois fios ficam na mesma
-  // altura, cada um de uma borda à outra da sua coluna. Na tela sem barra (o modelo), o fio da linha de abas vai do trilho à borda; no
-  // Explorar o principal não tem linha de abas (como o Discover), e o fio é o do título da barra.
-  test('o fio embaixo da barra do topo fica na mesma altura na barra secundária e no principal', async ({
+  // A linha de abas é a primeira faixa da coluna: 56 px com o fio embaixo, de uma borda à outra dela (na arena e na página do modelo), ou do
+  // conteúdo, quando a barra fica ao lado de tudo (o ranking). O título da barra tem a mesma altura, e os dois fios ficam na mesma linha. No
+  // Explorar o principal não tem linha de abas, e o fio é o do título da barra.
+  test('a linha de abas tem 56 px e o fio embaixo, na mesma altura do título da barra secundária', async ({
     page,
   }) => {
     const lines = () =>
@@ -383,59 +397,51 @@ test.describe('casca do app', () => {
         const edges = (el: Element | null) => {
           if (!el) return null;
           const b = el.getBoundingClientRect();
-          return {
-            left: b.left,
-            right: b.right,
-            top: b.top,
-            bottom: b.bottom,
-            line: getComputedStyle(el).borderBottomWidth,
-          };
+          return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
         };
         return {
-          tabs: edges(nav.parentElement),
+          tabs: {
+            ...edges(nav.parentElement)!,
+            line: getComputedStyle(nav.parentElement!).borderBottomWidth,
+          },
           title: edges(document.querySelector('#carteiras-titulo')),
           bar: edges(document.querySelector('#carteiras')?.parentElement ?? null),
-          main: edges(document.querySelector('main')),
+          column: edges(document.querySelector('.coluna-app')),
         };
       });
     for (const width of [1440, 1920]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const route of ['/arena', '/ranking']) {
+      for (const route of ['/arena', `/modelos/${MODEL}`]) {
         await page.goto(route);
-        const { tabs, title, bar, main } = await lines();
-        const where = `${route} em ${width} px`;
-        expect({ top: tabs!.top, bottom: tabs!.bottom, line: tabs!.line }, where).toEqual({
+        const { tabs, column } = await lines();
+        expect(tabs, `${route} em ${width} px`).toEqual({
+          left: column!.left,
+          right: column!.right,
           top: 0,
-          bottom: 45,
+          bottom: 56,
           line: '1px',
         });
-        expect({ top: title!.top, bottom: title!.bottom, line: title!.line }, where).toEqual({
-          top: 0,
-          bottom: 45,
-          line: '1px',
-        });
-        // de uma borda à outra: o título, da borda da barra até o fio dela; a linha de abas, do fio da barra até a borda do principal
-        expect([title!.left, title!.right], where).toEqual([bar!.left, bar!.right - 1]);
-        expect([tabs!.left, tabs!.right], where).toEqual([bar!.right, main!.right]);
       }
-      await page.goto(`/modelos/${MODEL}`);
-      const modelo = await lines();
-      expect(modelo.title).toBeNull();
-      expect(modelo.tabs).toMatchObject({ top: 0, bottom: 45, line: '1px' });
-      expect([modelo.tabs!.left, modelo.tabs!.right]).toEqual([
-        modelo.main!.left,
-        modelo.main!.right,
-      ]);
+      await page.goto('/ranking');
+      const ranking = await lines();
+      expect(ranking.tabs).toEqual({
+        left: ranking.column!.left,
+        right: ranking.bar!.left - 1,
+        top: 0,
+        bottom: 56,
+        line: '1px',
+      });
+      expect(ranking.title).toEqual({ ...ranking.bar!, top: 0, bottom: 56 });
       await page.goto('/explorar');
       const explorar = (await page.locator('#explorar-titulo').boundingBox())!;
-      expect([explorar.y, explorar.y + explorar.height]).toEqual([0, 45]);
+      expect([explorar.y, explorar.y + explorar.height]).toEqual([0, 56]);
     }
   });
 
   // Nenhuma barra de rolagem à vista (o pedido do Artur): o macOS dele mostra as barras clássicas, e o Playwright sem janela as esconde (o
   // --hide-scrollbars que ele passa ao Chromium), então o teste lê o que o CSS manda: o `scrollbar-width` calculado é `none` na raiz (a
-  // página), na barra das carteiras e na faixa.
-  test('o scrollbar-width é none na página, na barra das carteiras e na faixa', async ({
+  // página), na barra das carteiras e no placar.
+  test('o scrollbar-width é none na página, na barra das carteiras e no placar', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -450,41 +456,28 @@ test.describe('casca do app', () => {
     expect(widths).toEqual(['none', 'none', 'none']);
   });
 
-  // Sem a barra, a rolagem continua: a roda rola a barra das carteiras (presa no topo, com a própria rolagem), e na faixa dos modelos o botão
-  // redondo "›" do Rallies (o `::scroll-button()` do Chromium, só CSS, a 8 px da borda e no meio da altura) e as setas do teclado, com o foco
-  // nela, rolam para o lado. O botão é do mouse (`pointer: fine`): os projetos de toque rolam com o dedo, e o WebKit não tem o botão. O foco
-  // que sai do "›" depois do fim da rolagem não pode derrubar a aba (com `display: none` no botão desabilitado, o Chromium 156 caía aqui).
-  test('sem a barra, a roda rola a barra das carteiras, e o "›" e o teclado rolam a faixa', async ({
+  // Sem a barra, a rolagem continua: onde o placar não cabe (o celular), ele rola para o lado dentro da própria caixa, pelo dedo e pelas setas
+  // do teclado, com o foco nele, e a borda da direita esmaece enquanto há mais células para lá (a pista de que ele continua).
+  test('em 390 px o placar rola para o lado pelo teclado, com a borda esmaecida enquanto há mais', async ({
     page,
   }, testInfo) => {
-    test.skip(
-      testInfo.project.name !== 'desktop',
-      'o botão e a roda são do mouse; o toque rola com o dedo',
-    );
-    await page.setViewportSize({ width: 1280, height: 720 });
+    test.skip(testInfo.project.name !== 'desktop', 'o teclado é o do desktop');
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/arena');
-    const bar = page.locator('#carteiras').locator('..');
-    const barBox = (await bar.boundingBox())!;
-    await page.mouse.move(barBox.x + barBox.width / 2, barBox.y + 300);
-    await page.mouse.wheel(0, 400);
-    await expect.poll(() => bar.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
-
     const faixa = page.getByRole('region', { name: 'Modelos e Sorteio, por retorno' });
     await faixa.scrollIntoViewIfNeeded();
-    const box = (await faixa.boundingBox())!;
+    expect(await faixa.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    expect(await faixa.evaluate((el) => getComputedStyle(el).maskImage)).toContain(
+      'linear-gradient',
+    );
     const scrolled = () => faixa.evaluate((el) => el.scrollLeft);
     expect(await scrolled()).toBe(0);
-    await page.mouse.click(box.x + box.width - 8 - 22, box.y + box.height / 2);
-    await expect.poll(scrolled).toBeGreaterThan(0);
     await faixa.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(scrolled).toBeGreaterThan(0);
     const end = await scrolled();
     await page.keyboard.press('ArrowLeft');
     await expect.poll(scrolled).toBeLessThan(end);
-    // o cartão focado pelo Tab para antes do "›": a rolagem que leva o foco à vista deixa a largura do botão livre na ponta (o QA do
-    // fechamento, achado 15: o anel do cartão da ponta ficava embaixo do botão)
-    expect(
-      await faixa.evaluate((el) => parseFloat(getComputedStyle(el).scrollPaddingInlineEnd)),
-    ).toBeGreaterThanOrEqual(52);
   });
 
   // Em 360 px a barra de abas fica no pé, com os seis alvos (Arena, Explorar, Carteira, Chat, Mais e Conta) de 60 × 56 px dentro da largura.
@@ -619,9 +612,9 @@ test.describe('casca do app', () => {
     expect(places.filter((place) => place === 'folha').length).toBeGreaterThanOrEqual(6);
   });
 
-  // No desktop o "Mais" é um menu curto ao lado do item do trilho, e a coluna do app segue à vista (antes, uma gaveta de 288 px e a coluna
-  // inteira apagada).
-  test('em 1280 px, o "Mais" é um menu curto ao lado do item do trilho, e a coluna do app segue à vista', async ({
+  // No desktop o "Mais" é um menu curto ao lado da lateral, na altura do item, e a coluna do app segue à vista (antes, uma gaveta de 288 px
+  // e a coluna inteira apagada).
+  test('em 1280 px, o "Mais" é um menu curto ao lado da lateral, e a coluna do app segue à vista', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -633,9 +626,9 @@ test.describe('casca do app', () => {
     await expect(menu.getByRole('link')).toHaveCount(5);
     const item = (await button.boundingBox())!;
     const box = (await menu.boundingBox())!;
-    // ao lado do trilho de 80 px, na altura do item "Mais"
-    expect(box.x).toBeGreaterThanOrEqual(80);
-    expect(box.x).toBeLessThanOrEqual(96);
+    // ao lado da lateral de 248 px, na altura do item "Mais"
+    expect(box.x).toBeGreaterThanOrEqual(248);
+    expect(box.x).toBeLessThanOrEqual(264);
     expect(Math.abs(box.y - item.y)).toBeLessThanOrEqual(1);
     expect(box.width).toBeLessThanOrEqual(260);
     expect(box.y + box.height).toBeLessThanOrEqual(720);
@@ -644,7 +637,7 @@ test.describe('casca do app', () => {
   });
 
   // Pelo teclado, no desktop, o Esc fecha o menu e devolve o foco ao "Mais" (a página não está coberta: o foco que sai do menu vai para o
-  // resto do trilho e para a coluna, que estão à vista).
+  // resto da lateral e para a coluna, que estão à vista).
   test('em 1280 px, pelo teclado, o Esc fecha o menu "Mais" e o foco volta ao "Mais"', async ({
     page,
   }, testInfo) => {
@@ -666,8 +659,8 @@ test.describe('casca do app', () => {
   });
 });
 
-// A casca do site (components/site-chrome.tsx; ADR 0035): a marca, os links no meio e a pílula "Entrar"; abaixo de 1024 px, a folha que
-// o botão "Menu" abre (o `popover` nativo, sem JavaScript).
+// A casca do site (components/site-chrome.tsx; ADR 0041): a marca e os links à esquerda, e o tema e o botão "Entrar" à direita; abaixo de
+// 1024 px, a folha que o botão "Menu" abre (o `popover` nativo, sem JavaScript).
 test.describe('casca do site', () => {
   test('a navegação lista as telas na ordem, com o endereço de cada uma', async ({ page }) => {
     await page.goto('/como-funciona');
@@ -732,7 +725,7 @@ test.describe('casca do site', () => {
     await abrirMenu(page);
     const nav = page.getByRole('navigation', { name: 'Principal' });
     // o alvo: um link da página que fica bem abaixo do último link da folha (sem a folha até o pé, o dedo cairia nele). A folha é fixa e o
-    // conteúdo é o de cada página (na landing, o topo só tem os CTAs e a pílula, cobertos pela folha): com a folha fechada, a página rola de
+    // conteúdo é o de cada página (na landing, o topo só tem os botões e a etiqueta da temporada, cobertos pela folha): com a folha fechada, a página rola de
     // 200 em 200 px, no máximo 10 vezes, até ter um link na faixa; só então a folha abre de novo, com a página onde parou.
     const sheetBottom = await page.evaluate(
       () => [...document.querySelectorAll('#menu a')].at(-1)!.getBoundingClientRect().bottom,
@@ -802,8 +795,8 @@ test.describe('casca do site', () => {
     expect(places.filter((place) => place === 'folha').length).toBeGreaterThanOrEqual(6);
   });
 
-  // A partir de 1024 px os links e a pílula ficam na tela, com a pílula visível de 32 px dentro da caixa de 44 px: o laço de ROUTES mede os
-  // alvos só em 360 px, onde eles não aparecem.
+  // A partir de 1024 px os links e o botão "Entrar" ficam na tela, cada um com o alvo de 44 px: o laço de ROUTES mede os alvos só em 360 px,
+  // onde eles não aparecem.
   test('em 1280 px os links aparecem sem o botão "Menu", e todo link do cabeçalho tem o alvo de 44 px', async ({
     page,
   }) => {
@@ -826,9 +819,9 @@ test.describe('casca do site', () => {
     }
   });
 
-  // O cabeçalho do site anda como o resto (o QA do fechamento, achado 13: os links e a pílula "Entrar" trocavam de cor na hora, e a pílula não
-  // encolhia no toque): a cor dos links em 150 ms, o fundo da pílula em 150 ms, e o toque a encolhe a 0,96, como o botão.
-  test('em 1280 px os links e a pílula "Entrar" do cabeçalho andam em 150 ms, e a pílula encolhe no toque', async ({
+  // O cabeçalho do site anda como o resto (o QA do fechamento, achado 13: os links e o "Entrar" trocavam de cor na hora, e o "Entrar" não
+  // encolhia no toque): a cor e o fundo dos links em 150 ms, o fundo do botão em 150 ms, e o toque o encolhe a 0,96.
+  test('em 1280 px os links e o botão "Entrar" do cabeçalho andam em 150 ms, e o botão encolhe no toque', async ({
     page,
   }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith('desktop'), 'o hover e o clique são do mouse');
@@ -836,22 +829,25 @@ test.describe('casca do site', () => {
     await page.goto('/como-funciona');
     const banner = page.getByRole('banner');
     const link = banner.getByRole('navigation', { name: 'Principal' }).getByRole('link').first();
-    const pill = banner.getByRole('link', { name: 'Entrar', exact: true });
+    const entrar = banner.getByRole('link', { name: 'Entrar', exact: true });
     expect(
       await link.evaluate((el) => {
         const style = getComputedStyle(el);
         return `${style.transitionProperty} ${style.transitionDuration}`;
       }),
-    ).toBe('color 0.15s');
-    expect(
-      await pill.evaluate((el) => getComputedStyle(el, '::before').transitionProperty),
-    ).toContain('background-color');
-    expect(await pill.evaluate((el) => getComputedStyle(el).transitionProperty)).toContain('scale');
-    const box = (await pill.boundingBox())!;
+    ).toBe('color, background-color 0.15s');
+    const entrarMotion = await entrar.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return `${style.transitionProperty} ${style.transitionDuration}`;
+    });
+    expect(entrarMotion).toContain('background-color');
+    expect(entrarMotion).toContain('scale');
+    expect(entrarMotion).toContain('0.15s');
+    const box = (await entrar.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
-    await expect.poll(() => pill.evaluate((el) => getComputedStyle(el).scale)).toBe('0.96');
-    // solta fora da pílula: não navega
+    await expect.poll(() => entrar.evaluate((el) => getComputedStyle(el).scale)).toBe('0.96');
+    // solta fora do botão: não navega
     await page.mouse.move(0, 0);
     await page.mouse.up();
   });

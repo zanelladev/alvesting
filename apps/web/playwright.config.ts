@@ -49,7 +49,7 @@ const remote = process.env.BASE_URL?.trim() || undefined;
 const CLEAN_CACHE = 'rm -rf .next/standalone/apps/web/.next/cache';
 
 // Mobile é gate de merge: todo e2e roda nos três projetos (Pixel 7, iPhone 15 e desktop), no tema claro (o padrão do Playwright e a base
-// dos tokens, ADR 0035). O tema escuro segue o sistema e vale igual: os três projetos `-escuro` são os mesmos aparelhos com
+// dos tokens, ADR 0041). O tema escuro segue o sistema e vale igual: os três projetos `-escuro` são os mesmos aparelhos com
 // `colorScheme: 'dark'` e rodam só os testes marcados `@tema`: os dos quatro specs de layout (360 px sem rolagem e alvos de 44 px, o axe
 // nos dois tamanhos e o tema que trocou de verdade) e os testes de tela que conferem o tema (a moldura e o cartão da landing, a moldura do
 // urso da 404), sem dobrar a suíte: os specs funcionais leem o mesmo dado nos dois temas.

@@ -26,8 +26,8 @@ import { withApiDown } from '../../../../../lib/with-api-down';
 // cabeçalho com o logo, o ticker, o nome, o último fechamento e a variação (a Regra do Glifo), a data do dado e o crédito; as velas no visual
 // do Candlestick Chart da beUI (components/velas.tsx), num painel que fica preso no topo enquanto a coluna do lado rola; e, ao lado no
 // desktop (abaixo no celular), quem tem a ação entre os modelos, o que eles decidiram sobre ela e as notícias dela. A barra "Explorar" fica
-// ao lado (ADR 0035). As colunas dependem do lugar que o principal tem (uma consulta de contêiner, e não da
-// janela: a partir de 1280 px a barra come 300 px dele).
+// embaixo do terminal em toda largura (ADR 0041: ao lado, na coluna do app, ela não deixaria lugar para as duas colunas). As colunas
+// dependem do lugar que a coluna tem (uma consulta de contêiner, e não da janela).
 //
 // As barras não vêm da API pública (ela não entrega cotação bruta; a licença da brapi proíbe): saem da rota interna, com o segredo do servidor
 // (src/lib/quotes.ts; docs/API.md, seção 6; ADR 0033), pelo mesmo cache de dados, DEPOIS da leitura da ação. Em sequência de propósito: o
@@ -66,7 +66,7 @@ export default withApiDown(async function StockPage({ params }: Props) {
   const comConfianca = stock.decisions.some((decision) => decision.confidence !== null);
 
   return (
-    <ComBarra largura={300} barra={<BarraExplorar rows={populares} />}>
+    <ComBarra largura={300} barra={<BarraExplorar rows={populares} />} embaixo>
       <NavegacaoDaArea label="Telas do explorar" area={EXPLORAR} trilha={ticker} telas={[]} />
       <header className="space-y-5 pb-6">
         <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
