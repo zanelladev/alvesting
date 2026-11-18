@@ -79,7 +79,7 @@ curl -sS -b "$J" "$SITE/api/v1/admin/costs"    # gasto do mês e teto (capMicroU
 
 Confira:
 1. **Jobs.** O `eod` do pregão de ontem é `SUCCEEDED` (ou `WAITING`, a espera do arquivo, que não é falha). O `settle` que ele publicou é `SUCCEEDED`. O `decide` de hoje existe. Se a última linha de `eod` é de outro dia, o agendador não rodou: `az containerapp job execution list -g $RG -n job-sched-eod -o table`, e a seção 3.
-2. **Falhas.** Cada item de `failures` tem explicação (seção 3). Sem explicação, vira pendência.
+2. **Falhas.** Cada item de `failures` tem explicação (seção 3). Sem explicação, vira pendência. Um `FAILED` que devia ter dado o e-mail do `job-falhou` (fora da `news`, ou da 3ª tentativa dela) e não deu é a regra de log quebrada (seção 3, "A regra de log não avisa quando ela mesma quebra").
 3. **DLQ.** As seis filas com zero mensagens. `"unavailable"` quer dizer que a api não conseguiu ler a fila agora (o `peek` depende do papel de Receiver): não é zero. Confira o log da api.
 4. **Custos.** O acumulado do mês contra o teto. Perto do teto, o ciclo com modelo pago é pulado (seção 2).
 5. **Diário.** O `retention` (10:00 de Brasília, todo dia) mais recente é `SUCCEEDED` e é de ontem, ou de hoje se a conferência é depois das 10:00. É ele que cumpre a promessa da política de privacidade (cadastro nunca confirmado apagado em até 7 dias depois de criado, sessão e pedido de uso único vencidos em até 1 dia depois de vencer): uma execução que falhou ou não rodou adia o prazo em um dia até alguém corrigir (seção 3; `docs/JOBS.md`, 8.1). A política diz isso (se uma limpeza falhar ou não rodar, o prazo cresce pelos dias sem limpeza). **Nenhum alerta vigia a ausência** da `retention` (agendador que não publica, worker que não acorda): um buraco de sábado ou de domingo só aparece aqui, na segunda-feira, e cada dia a mais é um dia além dos 7 prometidos (`docs/INFRA.md`, 5.3, limitações).
@@ -153,6 +153,11 @@ curl -sS -b "$J" -H "Origin: $SITE" -H 'Content-Type: application/json' -X POST 
 4. **Confira.** O `job_run` vai a `SUCCEEDED` (em `jobs`) e a DLQ volta a zero: `az servicebus queue show -g $RG --namespace-name sb-alvesting --name <fila> --query countDetails -o json`.
 
 **`news-seguranca`.** Não reenvie antes de ler o `reason`: o slot seguinte rebusca o feed, então uma `fetch` antiga não tem valor.
+
+**A regra de log não avisa quando ela mesma quebra.** Um `job_run` `FAILED` sem o e-mail do `job-falhou` em uns 10 minutos é a regra `alvesting-sinais-da-aplicacao` quebrada, e não a fila. Foi o que aconteceu de 09 a 18/11/2026: a consulta achava as linhas à mão e a regra nunca disparou (causa provável: o `union` e o `ago()` sem literal, que a regra de alerta não aceita; `docs/INFRA.md`, 5.3).
+1. **Veja a causa.** No portal: Monitor > Alertas > Regras de alerta > `alvesting-sinais-da-aplicacao` > Integridade do recurso. O histórico diz se a avaliação falha e por quê (erro semântico, erro de validação, sem permissão). Pelo `az` não dá: o `Microsoft.ResourceHealth` não está registrado na assinatura, e registrá-lo é decisão do Artur.
+2. **Corrija.** A consulta muda em `infra/modules/alerts.bicep` e no `infra/tests/check.mjs`, e o `check.mjs` reprova o que a regra não aceita. Colar a consulta no Log Analytics não prova nada, porque ela rodava ali.
+3. **Prove depois do deploy.** O passo 3 do `docs/INFRA.md`, 5.4: o e-mail do `job-falhou` em até 10 minutos.
 
 **Risco:** reenviar sem corrigir a causa devolve a mensagem à DLQ, depois do número de entregas da fila (`docs/JOBS.md`, seção 2).
 
