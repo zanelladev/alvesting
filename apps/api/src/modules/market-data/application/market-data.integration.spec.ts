@@ -49,6 +49,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('eod com a brapi (A1 a A5)'),
   let settled: IsoDate[][];
   let error: ReturnType<typeof vi.spyOn>;
   let warn: ReturnType<typeof vi.spyOn>;
+  let log: ReturnType<typeof vi.spyOn>;
 
   beforeAll(async () => {
     prisma = await openTestDatabase(testDatabaseUrl!);
@@ -68,7 +69,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('eod com a brapi (A1 a A5)'),
     scheduled = [];
     settled = [];
     vi.restoreAllMocks();
-    vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
   });
@@ -356,7 +357,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('eod com a brapi (A1 a A5)'),
 
       expect(await runAtDeadline(eod, w, D1)).toBe('closed_incomplete');
       expect(error).toHaveBeenCalledWith(
-        { date: D1, missing: 1, required: 5, first: ['VALE3'] },
+        { date: D1, missing: 1, required: 5, first: { VALE3: 'transient' } },
         ALERT_LOG.eodBarsMissing,
       );
       expect(await confirmedSource(D1)).toBe('BRAPI');
@@ -373,8 +374,9 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('eod com a brapi (A1 a A5)'),
       );
       await seed(w, { tickers, extras: false });
       const eod = handler(w);
-      expect(await run(eod, w, D1, '21:30')).toBe('rescheduled');
-      expect(await runAtDeadline(eod, w, D1)).toBe('closed_incomplete');
+      // a brapi respondeu o ACAO03 sem a barra do dia, com a do BOVA11 gravada: a falta é definitiva, e o dia fecha na primeira tentativa
+      expect(await run(eod, w, D1, '21:30')).toBe('closed_incomplete');
+      expect(scheduled).toEqual([]);
       expect(error).not.toHaveBeenCalled();
       expect(settled).toEqual([[D1]]);
       expect(await barsOn(D1)).toBe(10);
@@ -404,6 +406,93 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('eod com a brapi (A1 a A5)'),
       expect(await run(handler(fixed), fixed, D1, '21:40')).toBe('complete');
       expect(askedFor(fixed)).toEqual(['ITUB4', 'AMER3', 'WEGE3']);
       expect(await barsOn(D1)).toBe(6);
+    });
+  });
+
+  describe('a falta definitiva fecha o dia sem esperar o prazo (as noites de 16 e 17/11/2026)', () => {
+    // 30 ações e o BOVA11: até três faltando (9,7%) ficam abaixo do limite do alerta, como numa noite comum do universo de uns 300 papéis
+    const tickers = ['BOVA11', ...Array.from({ length: 30 }, (_, i) => `ACAO${i}3`)];
+    // a brapi responde o ACAO133 com a série de outro código (como o RAIZ4, que volta como RAIZ55) e o ACAO213 com 404; o ACAO53 não negocia
+    // em D1
+    const renamed = (url: URL): Response | undefined =>
+      url.searchParams.get('symbols') === 'ACAO133'
+        ? new Response(
+            JSON.stringify({
+              results: [
+                {
+                  requestedSymbol: 'ACAO133',
+                  symbol: 'ACAO553',
+                  changed: true,
+                  data: { historicalDataPrice: [] },
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        : undefined;
+    const noTrade = (ticker: string, date: IsoDate) => ticker === 'ACAO53' && date === D1;
+
+    it('o papel sem negócio, o 404 e o ticker trocado, com o BOVA11 gravado: fecha na primeira tentativa, liquida, e o log diz quem faltou e por quê', async () => {
+      const w = world(
+        {
+          intercept: (url) =>
+            renamed(url) ??
+            (url.searchParams.get('symbols') === 'ACAO213'
+              ? new Response('{"message":"Nenhum histórico encontrado"}', { status: 404 })
+              : undefined),
+        },
+        spec({ tickers, absent: noTrade }),
+      );
+      await seed(w, { tickers, extras: false });
+
+      expect(await run(handler(w), w, D1, '21:30')).toBe('closed_incomplete');
+      // um pedido por papel, nenhuma nova tentativa
+      expect(askedFor(w)).toEqual(tickers);
+      expect(scheduled).toEqual([]);
+      expect(await jobRow(D1)).toMatchObject({ status: 'SUCCEEDED' });
+      expect(await confirmedSource(D1)).toBe('BRAPI');
+      expect(settled).toEqual([[D1]]);
+      expect(await barsOn(D1)).toBe(28);
+      expect(error).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        {
+          date: D1,
+          missing: 3,
+          required: 31,
+          first: { ACAO53: 'no-bar', ACAO133: 'changed', ACAO213: 'not-found' },
+        },
+        'eod concluído sem esperar o prazo: toda falta do dia é definitiva',
+      );
+    });
+
+    it('uma falha passageira segura o pregão até a tentativa seguinte; quando só a definitiva sobra, ele fecha nela', async () => {
+      let flaky = true;
+      const w = world(
+        {
+          intercept: (url) =>
+            renamed(url) ??
+            (flaky && url.searchParams.get('symbols') === 'ACAO73' ? unavailable() : undefined),
+        },
+        spec({ tickers }),
+      );
+      await seed(w, { tickers, extras: false });
+      const eod = handler(w);
+
+      expect(await run(eod, w, D1, '21:30')).toBe('rescheduled');
+      expect(log).toHaveBeenCalledWith(
+        expect.objectContaining({ first: { ACAO73: 'transient', ACAO133: 'changed' } }),
+        'eod reagendado: falta papel do conjunto obrigatório',
+      );
+      expect(settled).toEqual([]);
+
+      flaky = false;
+      const before = askedFor(w).length;
+      expect(await run(eod, w, D1, '22:30')).toBe('closed_incomplete');
+      // a cópia pede só os dois que faltavam; o trocado continua trocado e não segura mais o pregão
+      expect(askedFor(w).slice(before)).toEqual(['ACAO73', 'ACAO133']);
+      expect(scheduled).toHaveLength(1);
+      expect(settled).toEqual([[D1]]);
+      expect(await barsOn(D1)).toBe(30);
     });
   });
 

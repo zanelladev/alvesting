@@ -249,22 +249,27 @@ describe('BrapiClient.fetchBars: a resposta', () => {
         : historical('VALE3', [price(OCT_30)]),
     );
     const { results } = await collect(client(fetchFn).brapi, papers('PETR4', 'VALE3'));
-    expect(results.map((r) => [r.ticker, r.status])).toEqual([
-      ['PETR4', 'failed'],
+    expect(results.map((r) => [r.ticker, r.status === 'ok' ? 'ok' : r.cause])).toEqual([
+      ['PETR4', 'malformed'],
       ['VALE3', 'ok'],
     ]);
     expect(warn).toHaveBeenCalledWith({ ticker: 'PETR4' }, expect.stringContaining('formato'));
   });
 
-  it('corpo que não é JSON e 404 também são falta do papel, sem repetir', async () => {
-    const fetchFn = fakeFetch((url) =>
-      url.searchParams.get('symbols') === 'PETR4'
-        ? new Response('<html>erro</html>', { status: 200 })
-        : json({ error: true, code: 'NOT_FOUND' }, 404),
-    );
-    const { results } = await collect(client(fetchFn).brapi, papers('PETR4', 'VALE3'));
-    expect(results.map((r) => r.status)).toEqual(['failed', 'failed']);
-    expect(fetchFn).toHaveBeenCalledTimes(2);
+  it('corpo que não é JSON, 404 e outro 4xx também são falta do papel, sem repetir, cada um com a causa', async () => {
+    const fetchFn = fakeFetch((url) => {
+      const symbol = url.searchParams.get('symbols');
+      if (symbol === 'PETR4') return new Response('<html>erro</html>', { status: 200 });
+      if (symbol === 'VALE3') return json({ error: true, code: 'NOT_FOUND' }, 404);
+      return json({ error: true, code: 'BAD_REQUEST' }, 400);
+    });
+    const { results } = await collect(client(fetchFn).brapi, papers('PETR4', 'VALE3', 'ITUB4'));
+    expect(results).toEqual([
+      { ticker: 'PETR4', status: 'failed', cause: 'malformed' },
+      { ticker: 'VALE3', status: 'failed', cause: 'not-found' },
+      { ticker: 'ITUB4', status: 'failed', cause: 'refused' },
+    ]);
+    expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -425,8 +430,8 @@ describe('BrapiClient.fetchBars: erros', () => {
         : historical('B1', [price(OCT_30)]),
     );
     const { results } = await collect(client(fetchFn).brapi, papers('A1', 'B1'));
-    expect(results.map((r) => [r.ticker, r.status])).toEqual([
-      ['A1', 'failed'],
+    expect(results.map((r) => [r.ticker, r.status === 'ok' ? 'ok' : r.cause])).toEqual([
+      ['A1', 'transient'],
       ['B1', 'ok'],
     ]);
     expect(fetchFn).toHaveBeenCalledTimes(5); // 1 + 3 repetições do A1, e o B1
@@ -478,9 +483,9 @@ describe('BrapiClient.fetchBars: erros', () => {
       return historical('C1', [price(OCT_30)]);
     });
     const { results } = await collect(client(fetchFn).brapi, papers('A1', 'B1', 'C1'));
-    expect(results.map((r) => [r.ticker, r.status])).toEqual([
-      ['A1', 'failed'],
-      ['B1', 'failed'],
+    expect(results.map((r) => [r.ticker, r.status === 'ok' ? 'ok' : r.cause])).toEqual([
+      ['A1', 'transient'],
+      ['B1', 'transient'],
       ['C1', 'ok'],
     ]);
     expect(fetchFn).toHaveBeenCalledTimes(5);
@@ -649,7 +654,7 @@ describe('BrapiClient.fetchBars: a data e a escala da barra', () => {
       historical('PETR4', [price(MIDNIGHT_UTC), price(MIDNIGHT_UTC - 86400)]),
     );
     const { results } = await collect(client(fetchFn).brapi, [window]);
-    expect(results).toEqual([{ ticker: 'PETR4', status: 'failed' }]);
+    expect(results).toEqual([{ ticker: 'PETR4', status: 'failed', cause: 'malformed' }]);
     expect(warn).toHaveBeenCalledWith(
       { ticker: 'PETR4', count: 2, timestamp: MIDNIGHT_UTC },
       expect.stringContaining('meia-noite de Brasília'),
@@ -661,7 +666,7 @@ describe('BrapiClient.fetchBars: a data e a escala da barra', () => {
       historical('PETR4', [price(OPEN_UTC), price(OPEN_UTC - 86400)]),
     );
     const { results } = await collect(client(fetchFn).brapi, [window]);
-    expect(results).toEqual([{ ticker: 'PETR4', status: 'failed' }]);
+    expect(results).toEqual([{ ticker: 'PETR4', status: 'failed', cause: 'malformed' }]);
     expect(warn).toHaveBeenCalledWith(
       { ticker: 'PETR4', count: 2, timestamp: OPEN_UTC },
       expect.stringContaining('meia-noite de Brasília'),
@@ -703,11 +708,35 @@ describe('BrapiClient.fetchBars: a data e a escala da barra', () => {
       json({ results: [{ ...result('ELET6', [price(OCT_30)]), symbol: 'AXIA6', changed: true }] }),
     );
     const { results } = await collect(client(fetchFn).brapi, [{ ...ask, ticker: 'ELET6' }]);
-    expect(results).toEqual([{ ticker: 'ELET6', status: 'failed' }]);
+    expect(results).toEqual([{ ticker: 'ELET6', status: 'failed', cause: 'changed' }]);
     expect(warn).toHaveBeenCalledWith(
       { ticker: 'ELET6', symbol: 'AXIA6' },
       expect.stringContaining('trocado'),
     );
+  });
+
+  it('o símbolo diferente do pedido também é ticker trocado, mesmo sem o changed (o RAIZ4 respondido como RAIZ55)', async () => {
+    const fetchFn = fakeFetch(() =>
+      json({ results: [{ ...result('RAIZ4', [price(OCT_30)]), symbol: 'RAIZ55' }] }),
+    );
+    const { results } = await collect(client(fetchFn).brapi, [{ ...ask, ticker: 'RAIZ4' }]);
+    expect(results).toEqual([{ ticker: 'RAIZ4', status: 'failed', cause: 'changed' }]);
+  });
+
+  it('a resposta boa sem a barra do período (lista vazia, ou o dia com preço nulo) é "ok" sem barras, e não uma falha', async () => {
+    const noTrade = { date: OCT_30, open: null, high: null, low: null, close: null, volume: null };
+    const fetchFn = fakeFetch((url) =>
+      historical(
+        url.searchParams.get('symbols')!,
+        url.searchParams.get('symbols') === 'MTSA4' ? [] : [noTrade],
+      ),
+    );
+    const { results, run } = await collect(client(fetchFn).brapi, papers('MTSA4', 'NORD3'));
+    expect(results).toEqual([
+      { ticker: 'MTSA4', status: 'ok', bars: [] },
+      { ticker: 'NORD3', status: 'ok', bars: [] },
+    ]);
+    expect(run.stopped).toBeNull();
   });
 
   it('conta, sem preço, as barras cujo fechamento difere do ajustado: é assim que a prova mede se a brapi serve o preço ajustado', async () => {
@@ -735,7 +764,7 @@ describe('BrapiClient: erros que não são resposta', () => {
     });
     const fetchFn = fakeFetch(() => new TypeError('fetch failed', { cause }));
     const { results } = await collect(client(fetchFn).brapi, papers('A1'));
-    expect(results).toEqual([{ ticker: 'A1', status: 'failed' }]);
+    expect(results).toEqual([{ ticker: 'A1', status: 'failed', cause: 'transient' }]);
     expect(warn).toHaveBeenCalledWith(
       { error: 'TypeError', code: 'ECONNRESET' },
       expect.stringContaining('sem resposta'),

@@ -212,14 +212,17 @@ que a migration `20261103100000_api_role` cria) e define a senha dele, lida da `
   o BOVA11 e os papéis em posição de temporada em andamento) e pede à brapi **só a falta**, um papel por vez, o BOVA11 primeiro. Cada
   papel é gravado assim que chega; a falha de um papel (429 com `Retry-After`, 5xx, timeout, JSON fora do formato) não refaz a lista: a
   nova tentativa pede só o que falta. Se a resposta do BOVA11 não traz a barra do dia, a brapi ainda não a publicou e a passada custa uma
-  requisição. Enquanto falta papel do obrigatório e o prazo não chegou, o worker publica a mesma `eod` com entrega agendada para daqui
-  a 60 min, deixa o `job_run` em `WAITING` com o texto "faltam N de M papéis do conjunto obrigatório em <data>; nova tentativa agendada
-  para <instante>" e **conclui** a mensagem original; a cópia agendada reassume a linha. Isso não é falha de verdade: não gasta entrega
-  (a cópia sai sem o contador `attempt`), e o alerta de job falho não o conta, porque olha só o `FAILED`. O último agendamento é
-  encaixado em 00:30 de Brasília do dia seguinte; a tentativa que cai a partir daí **conclui com o que tem**, registra a falta
-  (a contagem e os 20 primeiros) e dispara o `eod-barras-ausentes` se faltar o BOVA11 ou mais de 10% do obrigatório. O opcional (as
-  carteiras dos usuários) é pedido uma vez, na tentativa que conclui, e não segura a conclusão. A mensagem agendada conta como
-  "agendada", não "ativa": o KEDA só acorda o worker quando ela vira ativa.
+  requisição. Enquanto falta papel do obrigatório (salvo a falta definitiva, abaixo) e o prazo não chegou, o worker publica a mesma
+  `eod` com entrega agendada para daqui a 60 min, deixa o `job_run` em `WAITING` com o texto "faltam N de M papéis do conjunto
+  obrigatório em <data>; nova tentativa agendada para <instante>" e **conclui** a mensagem original; a cópia agendada reassume a linha.
+  Isso não é falha de verdade: não gasta entrega (a cópia sai sem o contador `attempt`), e o alerta de job falho não o conta, porque
+  olha só o `FAILED`. O último agendamento é encaixado em 00:30 de Brasília do dia seguinte; a tentativa que cai a partir daí
+  **conclui com o que tem**, registra a falta (a contagem e os 20 primeiros, com o motivo) e dispara o `eod-barras-ausentes` se faltar
+  o BOVA11 ou mais de 10% do obrigatório. **Antes do prazo**, a tentativa em que a falta é toda definitiva (a brapi respondeu sem a
+  barra, com 404 ou com o ticker trocado), com o BOVA11 gravado e no máximo 10% do obrigatório faltando, também conclui com o que tem,
+  sem reagendar: é a noite comum, com um ou outro papel sem negócio (`docs/DADOS.md`, seção 7, item 5). A falta que passa dos 10%
+  espera o prazo. O opcional (as carteiras dos usuários) é pedido uma vez, na tentativa que conclui, e não segura a conclusão. A
+  mensagem agendada conta como "agendada", não "ativa": o KEDA só acorda o worker quando ela vira ativa.
 - **O que falha de verdade no `eod`:** 401, 402 ou 403 da brapi (token ausente, recusado ou plano sem o recurso) encerra a busca, deixa o
   `job_run` em `FAILED` (alerta `job-falhou`) e segue a regra da fila (até 10 entregas, depois a DLQ), sem o corpo da resposta e sem
   refazer a lista; o que já foi gravado fica. Cota restante na reserva (`brapi-cota-baixa`), 5 papéis seguidos sem resposta ou o fim do

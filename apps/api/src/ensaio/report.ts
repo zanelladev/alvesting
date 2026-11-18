@@ -1,5 +1,6 @@
 import type { SeasonParams } from '@alvesting/contracts';
 import type { PrismaService } from '../infrastructure/database/prisma.service.js';
+import { missingTooMuch } from '../modules/market-data/domain/bar-plan.js';
 import { isoWeek, type IsoDate } from '../modules/market-data/domain/dates.js';
 import type { BusDeadLetter, BusDelivery } from './bus.js';
 import type { FakeBrapiRequest } from './fake-brapi.js';
@@ -67,9 +68,11 @@ const lpad = (text: string, width: number): string => text.padStart(width, ' ');
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 // Quantas requisições o plano prevê para cada pregão do ensaio (docs/ENSAIO.md): uma por papel do conjunto obrigatório (as ações do universo,
-// que no ensaio são todas, e o BOVA11) na primeira passada; o papel sem negócio no dia (ou suspenso) é pedido de novo nas novas tentativas
-// até o prazo das 00:30 (22:30, 23:30 e 00:30); no pregão atrasado a primeira passada é só a sonda do BOVA11, e as novas tentativas começam
-// às 22:30 com o conjunto inteiro. O teste do ensaio e a verificação do relatório falham se o número fugir daqui.
+// que no ensaio são todas, e o BOVA11). O papel sem negócio no dia (ou suspenso) a brapi falsa responde sem a barra: a falta é definitiva e,
+// dentro do limite do alerta (missingTooMuch: o BOVA11 gravado e até 10% do obrigatório), o eod conclui na mesma tentativa, sem pedi-lo de
+// novo (docs/DADOS.md, seção 7). Acima do limite ele espera o prazo, e o papel sem barra é pedido nas novas tentativas de 22:30, 23:30 e
+// 00:30. No pregão atrasado a primeira passada é só a sonda do BOVA11, e a de 22:30 pede o conjunto inteiro (as novas tentativas, se houver,
+// são as de 23:30 e 00:30). O teste do ensaio e a verificação do relatório falham se o número fugir daqui.
 export function plannedBrapiRequests(
   market: SyntheticMarket,
   lateDay?: IsoDate,
@@ -78,9 +81,10 @@ export function plannedBrapiRequests(
   const planned = new Map<IsoDate, number>();
   for (const day of market.sessionDays) {
     const traded = new Set((market.bars.get(day) ?? []).map((bar) => bar.ticker));
-    const stragglers = required.filter((ticker) => !traded.has(ticker)).length;
+    const stragglers = required.filter((ticker) => !traded.has(ticker));
     const late = day === lateDay;
-    planned.set(day, (late ? 1 : 0) + required.length + stragglers * (late ? 2 : 3));
+    const retries = missingTooMuch(stragglers, required.length) ? (late ? 2 : 3) : 0;
+    planned.set(day, (late ? 1 : 0) + required.length + stragglers.length * retries);
   }
   return planned;
 }
@@ -345,7 +349,7 @@ export async function buildReport(input: ReportInput): Promise<BuiltReport> {
     'eod-reagendado',
     'brapi atrasada: o eod vê o BOVA11 sem a barra do dia, se reagenda e completa na tentativa seguinte',
     eodRescheduled >= 1 && lateDeliveries >= 2,
-    `${plural(eodRescheduled, 'pregão', 'pregões')} reagendados; o atrasado (${input.lateDay ?? '-'}) teve ${lateDeliveries} entregas`,
+    `${plural(eodRescheduled, 'pregão reagendado', 'pregões reagendados')}; o atrasado (${input.lateDay ?? '-'}) teve ${lateDeliveries} entregas`,
   );
   const onPlan = sessions.every((day) => bySession.get(day) === planned.get(day));
   check(

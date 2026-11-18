@@ -151,7 +151,10 @@ describe('a cota de um mês sintético', () => {
   const SESSIONS = 21;
   const SUNDAYS = 4;
   const NO_TRADE_PERCENT = 3; // papéis sem negócio num dia comum
-  const STRAGGLER_RETRIES = 3; // 22:30, 23:30 e 00:30
+  // 22:30, 23:30 e 00:30. ponytail: a conta de antes de 18/11/2026, que pedia o papel sem negócio de novo até o prazo. Desde então a falta
+  // definitiva dentro do limite do alerta conclui na primeira tentativa (eod-plan.ts) e a noite comum não as faz: as 585 ficam como teto e
+  // folga para as noites que esperam o prazo (falha passageira, mais de 10% faltando). Trocar pela conta nova se a cota apertar.
+  const STRAGGLER_RETRIES = 3;
   const CEILING = BRAPI_PLAN.requestsPerWindow * 0.6;
 
   // 30 pregões de calendário sintético, só dias úteis
@@ -197,7 +200,7 @@ describe('a cota de um mês sintético', () => {
       const first = planRequests(required, window, store, d);
       for (const r of first) fetched(r.ticker, required.indexOf(r.ticker), r.from, r.to);
       nightly += first.length;
-      // novas tentativas: só quem continua sem a barra do dia (papel sem negócio)
+      // novas tentativas (o teto, ver STRAGGLER_RETRIES): só quem continua sem a barra do dia (papel sem negócio)
       for (let retry = 0; retry < retries; retry += 1) {
         const again = planRequests(required, window, store, d);
         for (const r of again) fetched(r.ticker, required.indexOf(r.ticker), r.from, r.to);
@@ -221,8 +224,8 @@ describe('a cota de um mês sintético', () => {
 
   it('o mês fica abaixo do teto de 60% da cota, e a conta é a que o DADOS.md publica', () => {
     const { nightly, weekly, total } = month();
-    // As noites: 21 x 310 = 6.510 do obrigatório, mais 585 das novas tentativas dos papéis sem negócio (3 x 195 papéis-noite, uns 9 por
-    // noite) e 420 das carteiras (21 x 20). Os domingos: 4 x (1 da lista + 100 candidatos).
+    // As noites: 21 x 310 = 6.510 do obrigatório, mais 585 de teto para as novas tentativas (3 x 195 papéis-noite, uns 9 por noite: a conta
+    // de antes de 18/11/2026, ver STRAGGLER_RETRIES) e 420 das carteiras (21 x 20). Os domingos: 4 x (1 da lista + 100 candidatos).
     expect(CEILING).toBe(9000);
     expect(total).toBeLessThan(CEILING);
     expect({ nightly, weekly, total }).toEqual({ nightly: 7_515, weekly: 404, total: 7_919 });

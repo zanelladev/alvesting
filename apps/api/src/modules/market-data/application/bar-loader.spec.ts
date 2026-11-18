@@ -50,9 +50,10 @@ afterEach(() => {
 
 describe('BarLoader', () => {
   it('grava cada papel que chega, soma o que entrou e leva a falha do papel para a lista de falhas', async () => {
-    const t = setup([ok('A1'), { ticker: 'B1', status: 'failed' }, ok('C1')], () => ({
-      inserted: 1,
-    }));
+    const t = setup(
+      [ok('A1'), { ticker: 'B1', status: 'failed', cause: 'transient' }, ok('C1')],
+      () => ({ inserted: 1 }),
+    );
     const report = await t.loader.load(asks('A1', 'B1', 'C1'));
     expect(t.insertBars).toHaveBeenCalledTimes(2); // o papel sem resposta não grava nada
     expect(report).toMatchObject({
@@ -65,6 +66,31 @@ describe('BarLoader', () => {
       divergent: [],
       unknown: [],
     });
+  });
+
+  it('anota o que cada papel alcançado deu (a resposta boa, com ou sem barra, ou a causa da falha); o que ficou depois da parada não aparece', async () => {
+    const t = setup(
+      [
+        ok('A1'),
+        { ticker: 'B1', status: 'ok', bars: [] }, // sem negócio no período
+        { ticker: 'C1', status: 'failed', cause: 'changed' },
+        { ticker: 'D1', status: 'failed', cause: 'not-found' },
+        ok('BOVA11'),
+        ok('E1'), // depois da parada: a passada não o alcança
+      ],
+      () => ({}),
+    );
+    const report = await t.loader.load(asks('A1', 'B1', 'C1', 'D1', 'BOVA11', 'E1'), {
+      stopAfter: (result) => result.ticker === 'BOVA11',
+    });
+    expect([...report.outcomes]).toEqual([
+      ['A1', 'ok'],
+      ['B1', 'ok'],
+      ['C1', 'changed'],
+      ['D1', 'not-found'],
+      ['BOVA11', 'ok'],
+    ]);
+    expect(report.failed).toEqual(['C1', 'D1']);
   });
 
   it('stopAfter encerra a passada depois de gravar o papel, e o orçamento vai ao cliente', async () => {

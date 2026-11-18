@@ -9,7 +9,7 @@ import type { SettlementPublisher } from '../../settlement/application/settlemen
 import { ALERT_LOG } from '../../../telemetry/alert-logs.js';
 import { missingTooMuch, planRequests, quoteTargets, windowOf } from '../domain/bar-plan.js';
 import { isoWeek, type IsoDate } from '../domain/dates.js';
-import { planMissingFile } from '../domain/eod-plan.js';
+import { planMissingFile, reasonOf, type MissingReason } from '../domain/eod-plan.js';
 import { REFERENCE_TICKER } from '../domain/instruments.js';
 import type { TradingCalendar } from '../domain/trading-calendar.js';
 import { FETCH_BUDGET_MS } from '../infrastructure/brapi.client.js';
@@ -19,16 +19,17 @@ import type { BarLoader } from './bar-loader.js';
 
 export type EodOutcome =
   | 'complete' // todo papel do conjunto obrigatório tem a barra do pregão
-  | 'closed_incomplete' // o prazo das 00:30 chegou: segue com o que tem
+  | 'closed_incomplete' // a falta é toda definitiva (e pequena), ou o prazo das 00:30 chegou: segue com o que tem
   | 'rescheduled' // falta papel: a mesma mensagem foi agendada para daqui a 60 minutos
   | 'already_done' // mensagem repetida: nada a fazer
   | 'not_trading_day';
 
 // A mensagem `eod {pregão}` (plano 5.5 e 7; docs/DADOS.md, seção 7): busca na brapi as barras que o banco não tem, grava cada papel assim
 // que ele chega, confirma o dia e pede a liquidação.
-//  - Conjunto obrigatório: o universo da semana ISO do pregão, o BOVA11 e os papéis em posição de temporada em andamento. O pregão só
-//    conclui com a barra de todos eles, ou no prazo das 00:30 de Brasília, quando segue com o que tem (planMissingFile). Um papel que a
-//    brapi não devolve (suspenso, sem negócio) mantém as novas tentativas até o prazo, e só ele é pedido de novo.
+//  - Conjunto obrigatório: o universo da semana ISO do pregão, o BOVA11 e os papéis em posição de temporada em andamento. O pregão
+//    conclui com a barra de todos eles; sem ela, na tentativa em que a falta é toda definitiva (a brapi respondeu bem e sem a barra, 404
+//    ou ticker trocado), com o BOVA11 gravado e dentro do limite do alerta, ou no prazo das 00:30 de Brasília, e segue com o que tem
+//    (planMissingFile). Falha passageira mantém as novas tentativas até o prazo, e só o que falta é pedido de novo.
 //  - Conjunto opcional: os papéis das carteiras dos usuários fora do obrigatório. Pedido uma vez, na tentativa que conclui, sem segurá-la.
 //  - A falta sai do banco (daily_bar): nova entrega ou nova tentativa pede só o que falta, e a segunda entrega de um pregão concluído não
 //    pede nada. A janela é de 5 pregões: a noite em que a brapi esteve fora é recuperada na seguinte, e os pregões anteriores da janela
@@ -124,7 +125,8 @@ export class EodHandler {
 
     const today = await this.market.barDates(required, date, date);
     const missing = required.filter((ticker) => !today.get(ticker)?.has(date));
-    const plan = planMissingFile(date, now);
+    const why = new Map(missing.map((ticker) => [ticker, reasonOf(report.outcomes.get(ticker))]));
+    const plan = planMissingFile(date, now, why, required.length);
     if (missing.length > 0 && plan.action === 'retry') {
       // Publica a cópia antes de liberar a linha: se o processo cair no meio, o pior é uma cópia a mais, que a chave única barra. Ao
       // contrário, a mensagem se perderia.
@@ -135,13 +137,13 @@ export class EodHandler {
         `faltam ${missing.length} de ${required.length} papéis do conjunto obrigatório em ${date}; nova tentativa agendada para ${plan.at.toISOString()}`,
       );
       this.logger.log(
-        { date, missing: missing.length, retryAt: plan.at },
+        { date, missing: missing.length, retryAt: plan.at, first: firstOf(why) },
         'eod reagendado: falta papel do conjunto obrigatório',
       );
       return 'rescheduled';
     }
 
-    // Conclui: completo, ou no prazo com o que tem.
+    // Conclui: completo, ou com o que tem (toda falta definitiva, ou o prazo).
     if (optional.length > 0) {
       // sem segurar a conclusão: o que não vier hoje a janela de amanhã pede. Divide o orçamento de tempo da trava da fila com o obrigatório.
       const left = Math.max(0, FETCH_BUDGET_MS - (Date.now() - startedAt));
@@ -150,7 +152,8 @@ export class EodHandler {
         budgetMs: left,
       });
     }
-    if (missing.length > 0) this.logMissing(date, missing, required.length);
+    if (missing.length > 0)
+      this.logMissing(date, why, required.length, plan.action === 'definitive');
 
     const confirmedBefore = await this.market.confirmedDays(sessions);
     const confirmed = await this.market.confirmTradingDays(
@@ -168,11 +171,26 @@ export class EodHandler {
     return missing.length === 0 ? 'complete' : 'closed_incomplete';
   }
 
-  // No prazo, com papel faltando: a contagem e os 20 primeiros vão ao log. Faltou o BOVA11, ou mais que MISSING_ALERT_PERCENT do obrigatório:
-  // é o alerta eod-barras-ausentes (docs/INFRA.md, seção 5); o resto é só registro, porque papel sem negócio no dia é o normal.
-  private logMissing(date: IsoDate, missing: string[], required: number): void {
-    const context = { date, missing: missing.length, required, first: missing.slice(0, 20) };
-    if (missingTooMuch(missing, required)) this.logger.error(context, ALERT_LOG.eodBarsMissing);
-    else this.logger.log(context, 'eod concluído no prazo com papéis sem a barra do dia');
+  // Concluiu com papel faltando: a contagem e os 20 primeiros, com o motivo de cada um, vão ao log. Faltou o BOVA11, ou mais que
+  // MISSING_ALERT_PERCENT do obrigatório: é o alerta eod-barras-ausentes (docs/INFRA.md, seção 5); o resto é só registro, porque papel sem
+  // negócio no dia é o normal.
+  private logMissing(
+    date: IsoDate,
+    why: ReadonlyMap<string, MissingReason>,
+    required: number,
+    definitive: boolean,
+  ): void {
+    const context = { date, missing: why.size, required, first: firstOf(why) };
+    if (missingTooMuch([...why.keys()], required)) {
+      this.logger.error(context, ALERT_LOG.eodBarsMissing);
+    } else if (definitive) {
+      this.logger.log(context, 'eod concluído sem esperar o prazo: toda falta do dia é definitiva');
+    } else {
+      this.logger.log(context, 'eod concluído no prazo com papéis sem a barra do dia');
+    }
   }
 }
+
+// os 20 primeiros papéis que faltam, cada um com o motivo ({ RAIZ4: 'changed', MTSA4: 'no-bar' })
+const firstOf = (why: ReadonlyMap<string, MissingReason>): Record<string, MissingReason> =>
+  Object.fromEntries([...why].slice(0, 20));

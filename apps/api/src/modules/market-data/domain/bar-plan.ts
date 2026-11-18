@@ -45,6 +45,12 @@ export interface BarRequest {
   to: IsoDate;
 }
 
+// Por que um papel pedido ficou sem resposta que sirva (o BrapiClient diz, papel a papel): `changed` (ticker trocado: a série é de outro
+// código), `not-found` (404: a brapi não tem histórico dele no período), `refused` (outro 4xx), `malformed` (200 com corpo que não é JSON,
+// fora do formato ou sem nenhuma data na forma) e `transient` (rede, timeout ou 5xx depois da repetição, 429 depois das 3). O eod separa
+// daqui a falta definitiva da passageira (eod-plan.ts).
+export type FailCause = 'changed' | 'not-found' | 'refused' | 'malformed' | 'transient';
+
 // O pedido de cada papel é um só, do pregão mais antigo que lhe falta até o fim da janela: pedir a janela inteira ou só o buraco custa a
 // mesma requisição, e pedir só o que falta evita trazer de volta barra que o banco já tem.
 //  - `require`: o pregão que tem de existir (a noite do eod pede D). O papel que já o tem não é pedido, mesmo com um buraco mais atrás: é

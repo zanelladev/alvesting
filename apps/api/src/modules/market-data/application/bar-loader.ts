@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { ALERT_LOG } from '../../../telemetry/alert-logs.js';
-import type { BarRequest } from '../domain/bar-plan.js';
+import type { BarRequest, FailCause } from '../domain/bar-plan.js';
 import type { BrapiClient, BrapiRun, PaperResult } from '../infrastructure/brapi.client.js';
 import type { BarDivergence, MarketRepository } from '../infrastructure/market.repository.js';
 
@@ -8,6 +8,9 @@ export interface LoadReport extends BrapiRun {
   asked: number;
   // papéis sem resposta que sirva: viram falta, e a próxima passada os pede de novo
   failed: string[];
+  // o que cada papel alcançado deu: `ok` (a brapi respondeu bem, com ou sem a barra) ou a causa da falha. O papel que ficou depois de uma
+  // parada (cota, tempo, queda, a sonda do eod) não está aqui. O eod separa daqui a falta definitiva (eod-plan.ts).
+  outcomes: Map<string, 'ok' | FailCause>;
   inserted: number;
   divergent: BarDivergence[];
   // papéis que a brapi respondeu e que não têm linha em instrument: a barra foi descartada
@@ -40,6 +43,7 @@ export class BarLoader {
       stopped: null,
       asked: requests.length,
       failed: [],
+      outcomes: new Map(),
       inserted: 0,
       divergent: [],
       unknown: [],
@@ -48,6 +52,7 @@ export class BarLoader {
       const run = await this.brapi.fetchBars(
         requests,
         async (result) => {
+          report.outcomes.set(result.ticker, result.status === 'ok' ? 'ok' : result.cause);
           if (result.status === 'failed') {
             report.failed.push(result.ticker);
             return;

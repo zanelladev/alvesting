@@ -41,7 +41,7 @@ describe('pct: pontos-base como porcentagem', () => {
 });
 
 // O plano das requisições do ensaio: a conta que o relatório e o teste do ensaio conferem contra o que a brapi falsa recebeu.
-describe('plannedBrapiRequests: uma por papel que falta, e só quem não veio é pedido de novo', () => {
+describe('plannedBrapiRequests: uma por papel que falta, e o papel sem negócio não é pedido de novo', () => {
   const calendar = loadTradingCalendar();
   const market = buildMarket({
     seed: 1,
@@ -53,34 +53,34 @@ describe('plannedBrapiRequests: uma por papel que falta, e só quem não veio é
   const [D1, D2, D3] = market.sessionDays as [string, string, string];
   const required = market.stocks.length + 1; // as ações e o BOVA11
 
-  it('o pregão em que todos negociam custa o conjunto obrigatório, uma requisição por papel', () => {
-    // uma ação de enchimento pode ficar sem negócio por sorteio: o plano soma as novas tentativas dela (22:30, 23:30 e 00:30)
-    const traded = new Set((market.bars.get(D1) ?? []).map((bar) => bar.ticker));
-    const stragglers = [...market.stocks.map((s) => s.ticker), 'BOVA11'].filter(
-      (t) => !traded.has(t),
-    ).length;
-    expect(plannedBrapiRequests(market).get(D1)).toBe(required + stragglers * 3);
-  });
-
-  it('o papel sem negócio (SECA3 no 2º pregão) e o suspenso (PAUS3 do 3º em diante) são pedidos de novo em cada nova tentativa até o prazo', () => {
+  it('cada pregão custa o conjunto obrigatório, uma requisição por papel, com ou sem papel sem negócio', () => {
     const stragglersOn = (day: string) => {
       const traded = new Set((market.bars.get(day) ?? []).map((bar) => bar.ticker));
       return [...market.stocks.map((s) => s.ticker), 'BOVA11'].filter((t) => !traded.has(t));
     };
+    // o SECA3 sem negócio no 2º pregão e o PAUS3 suspenso do 3º em diante: a brapi falsa os responde sem a barra, a falta é definitiva e o
+    // eod conclui na primeira tentativa, sem pedi-los de novo
     expect(stragglersOn(D2)).toContain('SECA3');
     expect(stragglersOn(D3)).toContain('PAUS3');
     const planned = plannedBrapiRequests(market);
-    expect(planned.get(D2)).toBe(required + stragglersOn(D2).length * 3);
-    expect(planned.get(D3)).toBe(required + stragglersOn(D3).length * 3);
+    expect([...planned.values()]).toEqual([required, required, required]);
   });
 
-  it('o pregão cuja barra sai atrasada começa por uma sonda de uma requisição, e as novas tentativas começam às 22:30', () => {
-    const traded = new Set((market.bars.get(D2) ?? []).map((bar) => bar.ticker));
-    const stragglers = [...market.stocks.map((s) => s.ticker), 'BOVA11'].filter(
-      (t) => !traded.has(t),
-    ).length;
-    expect(plannedBrapiRequests(market, D2).get(D2)).toBe(1 + required + stragglers * 2);
+  it('o pregão cuja barra sai atrasada começa por uma sonda de uma requisição, e a tentativa das 22:30 pede o conjunto', () => {
+    expect(plannedBrapiRequests(market, D2).get(D2)).toBe(1 + required);
     // o atraso de um pregão não muda a conta dos outros
     expect(plannedBrapiRequests(market, D2).get(D1)).toBe(plannedBrapiRequests(market).get(D1));
+    expect(plannedBrapiRequests(market, D2).get(D3)).toBe(required);
+  });
+
+  it('a falta acima do limite do alerta (10% do obrigatório) espera o prazo: cada papel sem barra é pedido nas três novas tentativas', () => {
+    // só 5 dos 13 papéis negociam em D1: 8 faltando
+    const sparse = {
+      ...market,
+      bars: new Map(market.bars).set(D1, market.bars.get(D1)!.slice(0, 5)),
+    };
+    expect(plannedBrapiRequests(sparse).get(D1)).toBe(required + 8 * 3);
+    // no pregão atrasado as novas tentativas são as de 23:30 e 00:30
+    expect(plannedBrapiRequests(sparse, D1).get(D1)).toBe(1 + required + 8 * 2);
   });
 });

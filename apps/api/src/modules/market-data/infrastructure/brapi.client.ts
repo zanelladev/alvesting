@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { ALERT_LOG } from '../../../telemetry/alert-logs.js';
-import { QUOTA_RESERVE, type BarRequest } from '../domain/bar-plan.js';
+import { QUOTA_RESERVE, type BarRequest, type FailCause } from '../domain/bar-plan.js';
 import { brasiliaDate, type IsoDate } from '../domain/dates.js';
 import type { Listing } from '../domain/instruments.js';
 
@@ -27,9 +27,11 @@ export interface BrapiBar {
 }
 
 // `ok`: a brapi respondeu e o formato serve (as barras podem ser nenhuma: papel sem negócio no período). `failed`: sem resposta que sirva
-// (5xx e timeout depois da repetição, formato torto, 4xx do papel): vira falta, e quem chama tenta de novo na próxima passada.
+// (ticker trocado, 4xx do papel, formato torto, 5xx e timeout depois da repetição): vira falta, e quem chama tenta de novo na próxima
+// passada. `cause` diz qual (FailCause, em domain/bar-plan.ts).
 export type PaperResult =
-  { ticker: string; status: 'ok'; bars: BrapiBar[] } | { ticker: string; status: 'failed' };
+  | { ticker: string; status: 'ok'; bars: BrapiBar[] }
+  | { ticker: string; status: 'failed'; cause: FailCause };
 
 // quota: a cota restante chegou à reserva (ou a espera pedida pelo 429 passa do teto); time: acabou o orçamento de tempo da trava da fila;
 // outage: papéis seguidos sem resposta, que é a brapi fora do ar e não um papel ruim.
@@ -156,14 +158,14 @@ type Raw =
   | { kind: 'ok'; body: unknown }
   | { kind: 'rate-limited'; retryAfterMs: number | undefined }
   | { kind: 'transient' }
-  | { kind: 'rejected' }
+  // a brapi respondeu 4xx (400, 404...) àquele papel
+  | { kind: 'rejected'; status: number }
   | { kind: 'malformed' }
   | { kind: 'time' };
 
-// `refused`: a brapi respondeu 4xx (400, 404...) àquele papel
 type Reply =
   | { kind: 'ok'; body: unknown }
-  | { kind: 'failed'; refused: boolean }
+  | { kind: 'failed'; cause: Exclude<FailCause, 'changed'> }
   | { kind: 'quota' }
   | { kind: 'time' };
 
@@ -253,10 +255,12 @@ export class BrapiClient {
       if (reply.kind === 'ok') run.responses += 1;
 
       const result = this.toResult(request, reply);
+      const refused =
+        result.status === 'failed' && (result.cause === 'refused' || result.cause === 'not-found');
       if (result.status === 'ok') {
         answered = true;
         failuresInARow = 0;
-      } else if (!(reply.kind === 'failed' && reply.refused && answered)) {
+      } else if (!(refused && answered)) {
         failuresInARow += 1;
       }
       if ((await onResult(result)) === 'stop') return this.finish(run, null);
@@ -349,13 +353,20 @@ export class BrapiClient {
     return url;
   }
 
-  private toResult(request: BarRequest, reply: Reply): PaperResult {
-    const failed: PaperResult = { ticker: request.ticker, status: 'failed' };
-    if (reply.kind !== 'ok') return failed;
+  private toResult(
+    request: BarRequest,
+    reply: Extract<Reply, { kind: 'ok' | 'failed' }>,
+  ): PaperResult {
+    const failed = (cause: FailCause): PaperResult => ({
+      ticker: request.ticker,
+      status: 'failed',
+      cause,
+    });
+    if (reply.kind === 'failed') return failed(reply.cause);
     const parsed = historicalSchema.safeParse(reply.body);
     if (!parsed.success) {
       this.logger.warn({ ticker: request.ticker }, 'brapi: a resposta não tem o formato esperado');
-      return failed;
+      return failed('malformed');
     }
     const byDate = new Map<IsoDate, BrapiBar>();
     const offForm: number[] = [];
@@ -369,7 +380,7 @@ export class BrapiClient {
           { ticker: request.ticker, symbol: result.symbol },
           'brapi: ticker trocado; a série é de outro código e não foi gravada',
         );
-        return failed;
+        return failed('changed');
       }
       for (const price of result.data.historicalDataPrice) {
         if (price.date % SECONDS_PER_DAY !== BRASILIA_MIDNIGHT_SECONDS) {
@@ -389,7 +400,7 @@ export class BrapiClient {
         'brapi: a data da barra não é a meia-noite de Brasília; as barras fora dessa forma foram descartadas',
       );
       // nenhuma barra na forma: a suposição sobre a data não vale para esta resposta, e a passada conta uma falha
-      if (inForm === 0) return failed;
+      if (inForm === 0) return failed('malformed');
     }
     // A doc diz que open/high/low/close diários "podem vir ajustados": o fechamento que difere do ajustado mostra que a barra não vem ajustada
     // por provento (prova controlada de 04/11/2026: 30 de 60 barras da WEGE3). Só a contagem vai ao log (papel e quantidade, nunca preço).
@@ -451,11 +462,11 @@ export class BrapiClient {
         case 'time':
           return raw;
         case 'malformed':
-          return { kind: 'failed', refused: false };
+          return { kind: 'failed', cause: 'malformed' };
         case 'rejected':
-          return { kind: 'failed', refused: true };
+          return { kind: 'failed', cause: raw.status === 404 ? 'not-found' : 'refused' };
         case 'transient':
-          if (retried) return { kind: 'failed', refused: false };
+          if (retried) return { kind: 'failed', cause: 'transient' };
           retried = true;
           if (this.clock() + TRANSIENT_PAUSE_MS >= deadline) return { kind: 'time' };
           await this.sleep(TRANSIENT_PAUSE_MS);
@@ -465,7 +476,7 @@ export class BrapiClient {
           const wait = raw.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS;
           if (wait > MAX_RETRY_AFTER_MS) return { kind: 'quota' };
           rateLimited += 1;
-          if (rateLimited > MAX_RATE_LIMIT_RETRIES) return { kind: 'failed', refused: false };
+          if (rateLimited > MAX_RATE_LIMIT_RETRIES) return { kind: 'failed', cause: 'transient' };
           if (this.clock() + wait >= deadline) return { kind: 'time' };
           await this.sleep(wait);
           break;
@@ -529,7 +540,7 @@ export class BrapiClient {
     }
     if (status === 429) return { kind: 'rate-limited', retryAfterMs: readRetryAfter(headers) };
     if (status >= 500) return { kind: 'transient' };
-    if (status !== 200) return { kind: 'rejected' };
+    if (status !== 200) return { kind: 'rejected', status };
     return body === undefined ? { kind: 'malformed' } : { kind: 'ok', body };
   }
 }
