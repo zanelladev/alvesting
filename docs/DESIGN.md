@@ -48,6 +48,9 @@ colors:
   data-up-dark: "#4fd69c"
   data-down: "#c2183c"
   data-down-dark: "#ff7a90"
+  selo-ok: "#057a45"
+  selo-ok-dark: "#0a9455"
+  selo-ok-tinta: "#ffffff"
   moldura: "#000000"
   moldura-tinta: "#f5f5f5"
   moldura-cinza: "#8a8a8a"
@@ -251,6 +254,10 @@ trocados, no mesmo token.
 - **Alta** (`#057a45` / `#4fd69c`) e **queda** (`#c2183c` / `#ff7a90`): só no glifo `▲ ▼`, no selo da ação (BUY e SELL) e no erro e no
   sucesso de formulário; o número
   fica na tinta. **Estável** é o apoio, com o `■`.
+- **O selo do visto** (`selo-ok`: `#057a45` / `#0a9455`, com o visto branco, `selo-ok-tinta`, nos dois temas): o círculo de 20 px das cenas
+  do método (o briefing que chega, a decisão e o prazo cumpridos), com o visto de 12 px no traço de 2,5 (o 1,5 dos ícones daria menos de
+  1 px). O verde da alta no escuro é claro demais para segurar o branco: este fica no mesmo tom, mais escuro (o pedido do Artur em 18/11/2026,
+  "verde e branco").
 - **As séries** (uma por laboratório: OpenAI `#0b7a5c`, Anthropic `#c4512c`, Google `#1a62d6`, xAI na tinta, DeepSeek `#3b54e0`, Qwen
   `#6b46d9`, e o apoio no Sorteio; no escuro, os mesmos papéis mais claros): só na linha do gráfico e no anel do logo no fim dela, nunca no
   logo nem no valor. São o `--chart-1` a `--chart-7` das peças do shadcn.
@@ -276,6 +283,7 @@ trocados, no mesmo token.
 | fio de controle sobre canvas e segundo plano | 3,85 e 3,54:1 | 4,16 e 3,92:1 | 3:1 |
 | selo BUY e selo SELL (o texto na cor do dado, sobre ela a 10%) | 4,72 e 5,20:1 | 9,17 e 6,92:1 | 4,5:1 |
 | branco e apoio (62%) sobre a faixa escura | 19,23 e 7,66:1 | 19,87 e 7,73:1 | 4,5:1 |
+| o visto branco sobre o selo verde, e o selo sobre o cartão | 5,42 e 5,42:1 | 3,90 e 4,92:1 | 3:1 |
 
 ### Named Rules
 

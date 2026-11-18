@@ -78,6 +78,10 @@
   /* sistema: erro e sucesso de formulário, as cores do dado. Não há cor de aviso: aviso é [!] em cinza */
   --color-semantic-success: var(--color-data-up);
   --color-semantic-error: var(--color-data-down);
+  /* o selo do visto (as cenas da landing): o círculo verde e o visto branco nos dois temas. O verde do dado no escuro (`#4fd69c`) é claro
+     demais para segurar o branco; este fica no mesmo tom, com 3:1 do branco sobre ele e dele sobre o cartão (tokens.spec.ts) */
+  --color-selo-ok: light-dark(#057a45, #0a9455);
+  --color-selo-ok-tinta: #ffffff;
   /* a moldura da arte, escura nos dois temas (a classe `.moldura`, abaixo) */
   --color-moldura: #000000;
   --color-moldura-tinta: #f5f5f5;
@@ -1319,10 +1323,12 @@ html[data-tema-revelar]::view-transition-new(root) {
     @apply size-4 shrink-0 text-muted;
   }
   .cena-ok {
-    @apply ml-auto grid size-5 shrink-0 place-items-center rounded-full bg-semantic-success text-canvas;
+    @apply ml-auto grid size-5 shrink-0 place-items-center rounded-full bg-selo-ok text-selo-ok-tinta;
   }
+  /* o visto com o traço de 2,5 no viewBox de 20: 1,5 px nos 12 px do selo (o 1,5 dos ícones da casca daria menos de 1 px) */
   .cena-ok > svg {
     @apply size-3;
+    stroke-width: 2.5;
   }
   .cena-linha:nth-child(2) .cena-ok {
     animation: cena-ok-1 8s var(--ease-out-quint) infinite;

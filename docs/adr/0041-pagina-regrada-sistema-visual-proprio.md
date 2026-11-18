@@ -32,7 +32,9 @@ arquivo, cor nem fonte.
    azul-noite (o canvas `#0b0d20`); a folha é `#e6e9f0` no claro e `#1e2142` no escuro. A faixa escura do fim do site (o convite e o rodapé)
    é escura nos dois temas (`escuro`, `#0b0c24` e `#070818`), com o texto branco (19:1) e o apoio a 62% (7,7:1). A primária continua o azul
    do logo, `#14144C` (o 300 da escala no escuro); a alta e a queda foram refeitas para o canvas novo (`#057a45` e `#c2183c`; `#4fd69c` e
-   `#ff7a90`). A cor da barra do navegador é o canvas de cada tema. Todo par passa o AA, conferido pelo `tokens.spec.ts` (a tabela está no
+   `#ff7a90`). O selo do visto das cenas é o círculo verde com o visto branco nos dois temas (`selo-ok`, `#057a45` e `#0a9455`, e
+   `selo-ok-tinta`, o branco; o pedido do Artur em 18/11/2026): o verde da alta no escuro é claro demais para o branco. A cor da barra do
+   navegador é o canvas de cada tema. Todo par passa o AA, conferido pelo `tokens.spec.ts` (a tabela está no
    `docs/DESIGN.md`).
 3. **O tipo.** A sans do sistema em tudo, com algarismos tabulares, e a Exo 2 só no nome da marca, como antes: nenhuma fonte baixada no
    caminho do LCP. Os títulos ganham **dois tons** na mesma frase (a tinta e o apoio, `.tom2`); o h1 do topo da landing e o título de cada

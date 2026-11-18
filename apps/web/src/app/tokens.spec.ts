@@ -95,7 +95,8 @@ const hex = (rgb: Rgb) =>
 const TEXT = 4.5;
 const UI = 3;
 // [frente, fundo, mínimo]: o texto e o texto secundário sobre o fundo e os cartões, o texto do botão primário sobre a primária (em
-// repouso e no hover), o link, e com 3:1 o anel de foco, o fio dos controles e a pílula escolhida do seletor de tema
+// repouso e no hover), o link, e com 3:1 o anel de foco, o fio dos controles, a pílula escolhida do seletor de tema e o selo do visto das
+// cenas da landing (o branco sobre o verde, e o verde sobre o cartão)
 const PAIRS: [string, string, number][] = [
   ['ink', 'canvas', TEXT],
   ['ink', 'surface-card', TEXT],
@@ -126,6 +127,8 @@ const PAIRS: [string, string, number][] = [
   ['serie-deepseek', 'canvas', UI],
   ['serie-qwen', 'canvas', UI],
   ['serie-neutra', 'canvas', UI],
+  ['selo-ok-tinta', 'selo-ok', UI],
+  ['selo-ok', 'canvas', UI],
 ];
 
 describe('o contraste dos tokens (WCAG 2.2 AA), nos dois temas', () => {
