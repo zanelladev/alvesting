@@ -11,9 +11,10 @@ sistema, contêiner, componente, e cada seta com o verbo do que passa por ela. U
 a documentação do Mermaid ainda marca como experimental e que embaralha diagramas com muitas caixas. **Cada caixa existe no Bicep e no
 código:** a tabela de cada nível diz o arquivo.
 
-**Estado (06/11/2026).** Tudo o que está aqui existe no código e foi testado sem a Azure (com os fakes, o Postgres e o Azurite locais e o
-emulador do Service Bus). **Nada foi implantado**: o primeiro deploy depende do repositório público e da assinatura de estudante
-([DEPLOY.md](DEPLOY.md), "Como implantar"). Até lá, o pipeline da Temporada 1 roda num Mac (seção 5), e essa parte **está em construção**.
+**Estado (18/11/2026).** Tudo o que está aqui existe no código e foi testado sem a Azure (com os fakes, o Postgres e o Azurite locais e o
+emulador do Service Bus). A produção roda na Azure, no perfil econômico, que não tem o Front Door (seção 2; ADR 0039), implantada pelo
+pipeline do GitHub Actions ([DEPLOY.md](DEPLOY.md)). A Temporada 1 começou num Mac, como retroativa, e está ao vivo na Azure desde
+16/11/2026 (seção 5).
 
 ---
 
@@ -74,8 +75,8 @@ flowchart TB
 
 ## 2. Nível 2: contêineres
 
-O que roda, e onde, no perfil padrão da Azure (`infra/main.prod.bicepparam`, `profile = 'padrao'`). O perfil econômico tira o Front Door e o
-ACR e põe cada app no próprio endereço ([INFRA.md](INFRA.md), 1.3).
+O que roda, e onde, no perfil padrão da Azure (`profile = 'padrao'`). A produção está no perfil econômico (`infra/main.prod.bicepparam`,
+ADR 0039), que tira o Front Door e o ACR: o site recebe tudo e repassa `/api/*` à api, que só tem ingress interno ([INFRA.md](INFRA.md), 1.3).
 
 ```mermaid
 flowchart TB
@@ -334,42 +335,45 @@ sequenceDiagram
 
 ---
 
-## 5. A variante de hoje: o operador local no Mac (em construção)
+## 5. O trecho retroativo: a Temporada 1 no Mac, até a Azure
 
-Até a Azure existir, a Temporada 1 roda num Mac, com os serviços reais e o mesmo motor da Azure. **Em construção pela tarefa T0 da onda de
-06/11/2026**; esta seção descreve o que ela vai entregar, e o relatório dela fica em `docs/temporada-1/relatorios/t0-temporada-real.md`.
+A Temporada 1 começou de verdade num Mac, com os serviços reais e o mesmo motor da Azure (ADR 0038; o relatório da tarefa T0 da onda de
+06/11/2026 está em `docs/temporada-1/relatorios/t0-temporada-real.md`). De 06 a 15/11/2026 o `arena:retroativo` rodou os 23 pregões de 13/10
+a 13/11/2026, cada um só com o que existia às 07:30 dele; em 15/11/2026 o banco e os arquivos da temporada foram para a Azure
+([RUNBOOK.md](RUNBOOK.md), 13.6), e desde 16/11/2026 o pregão é ao vivo, na Azure, pelo caminho das seções 2 a 4. O operador ao vivo do Mac
+(`arena:operar`), escrito para levar o ao vivo até a Azure existir, nunca foi instalado.
 
 ```mermaid
 flowchart LR
-  subgraph mac["Mac do Artur, até a Azure"]
-    retro["<b>arena:retroativo</b><br/>os pregões de 13/10/2026 até ontem,<br/>cada um só com o que existia às 07:30 dele"]
-    operar["<b>arena:operar</b><br/>o relógio real e a agenda de produção"]
+  subgraph mac["Mac do Artur, de 06 a 15/11/2026"]
+    retro["<b>arena:retroativo</b><br/>os 23 pregões de 13/10 a 13/11/2026,<br/>cada um só com o que existia às 07:30 dele"]
     bus["<b>barramento em processo</b><br/>no lugar do Service Bus"]
     handlers["<b>os mesmos handlers</b><br/>market-data, news, briefing,<br/>arena, settlement, maintenance"]
     pg[("<b>Postgres local</b><br/>alvesting_temporada")]
     azurite[("<b>Azurite</b><br/>no lugar do Blob")]
   end
-  fontes["<b>brapi · OpenRouter · CVM · BCB · RSS</b><br/>só esses hosts passam pela guarda de rede"]
-  azure["<b>Azure, depois</b><br/>pg_dump e restauração"]
+  fontes["<b>brapi · OpenRouter · CVM · BCB</b><br/>só esses hosts passam pela guarda de rede"]
+  azure["<b>Azure, em 15/11/2026</b><br/>o dump restaurado pelo job-migrate<br/>e os arquivos no Blob"]
 
   retro --> bus
-  operar --> bus
   bus --> handlers
   handlers --> pg
   handlers --> azurite
   handlers --> fontes
   pg -.-> azure
+  azurite -.-> azure
 ```
 
-- **O que já existe e é reaproveitado:** o ensaio da Temporada 0 (`apps/api/src/ensaio/`): `world.ts` liga os handlers de verdade a um
+- **O que já existia e foi reaproveitado:** o ensaio da Temporada 0 (`apps/api/src/ensaio/`): `world.ts` liga os handlers de verdade a um
   barramento em processo (`bus.ts`, com a paridade contra o Service Bus testada em `bus-parity.spec.ts`), e `driver.ts` monta a linha do
   tempo com os agendadores de produção (`runScheduler`, em `role.ts`). O retroativo e o operador são esse motor com as peças reais no lugar
   dos fakes.
 - **O que muda para quem lê o resultado:** cada ciclo grava o modo (`RETROATIVO` ou `AO_VIVO`) e a hora real em que rodou; o site marca os
-  pregões retroativos. Pregão com o Mac desligado não vira "ao vivo" atrasado: fica para o retroativo. As regras de visibilidade de cada
-  fonte e a honestidade do trecho retroativo ficam no `docs/METODOLOGIA.md` e no `docs/DADOS.md`.
-- **O que não existe nesta variante:** o site público, o Front Door, os alertas e a telemetria na Azure. O banco da temporada vai para a
-  Azure depois, pelo `pg_dump` e a restauração do [RUNBOOK.md](RUNBOOK.md).
+  pregões retroativos. Sem o operador, os pregões de 06 a 13/11/2026 também entraram como retroativos, e nenhum virou "ao vivo" atrasado.
+  As regras de visibilidade de cada fonte e a honestidade do trecho retroativo ficam no `docs/METODOLOGIA.md` e no `docs/DADOS.md`.
+- **A ida para a Azure (15/11/2026):** o dump só de dados e sem as tabelas pessoais, restaurado por uma execução do `job-migrate`
+  (ADR 0039), e os arquivos do Azurite enviados ao Blob com os mesmos nomes ([RUNBOOK.md](RUNBOOK.md), 13.6). A restauração só aceita banco
+  sem temporada, então rodou uma vez: desde então a temporada é a da Azure.
 
 ---
 

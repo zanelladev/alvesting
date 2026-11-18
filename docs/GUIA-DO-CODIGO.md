@@ -1,9 +1,8 @@
 # Guia do código
 
-Para quem vai contribuir com a Alvesting e para o Artur na prova de autoria (até 30/11/2026). É um mapa do código como ele está em
-06/11/2026, sobre o commit `c9ca348`. O que a onda "Temporada 1 real" está mudando agora (o modo retroativo e o operador local, da T0; a
-documentação do Playbook, a cobertura travada e o SonarCloud, da T2) vem marcado **em construção**, descrito pelo que foi pedido, e o
-fechamento da onda atualiza essas partes.
+Para quem vai contribuir com a Alvesting e para o Artur na prova de autoria (até 30/11/2026). É um mapa do código da `main` no commit
+`291a150` (17/11/2026), e a seção 7 diz o que rodou de verdade na produção até 18/11/2026. O que ainda não está na `main` não entra aqui:
+cada mudança acrescenta as próprias linhas quando entrar.
 
 **Como ler as referências.** Uma referência ao código é um trecho de código com o caminho e o símbolo separados por `#`, como
 `apps/api/src/main.ts#bootstrap`: o caminho a partir da raiz do repositório e o nome (função, classe, constante) ou um trecho de texto
@@ -37,9 +36,10 @@ agendadores.
 | `apps/api/src/infrastructure` | Prisma, o papel mínimo do Postgres, Blob e o `/health` | `apps/api/src/infrastructure/database/prisma.service.ts#PrismaService` |
 | `apps/api/src/telemetry` | OpenTelemetry para o Application Insights, por lista branca | `apps/api/src/telemetry/sanitize.ts#sanitizeSpan` |
 | `apps/api/src/ensaio` | A Temporada 0 na máquina: a arena inteira com fakes e relógio simulado, sem rede | `apps/api/src/ensaio/world.ts#createWorld` |
+| `apps/api/src/temporada` | A Temporada 1 fora da Azure: o retroativo, o operador local (nunca instalado) e o preparo do banco (ADR 0038) | `apps/api/src/temporada/retro.ts#runRetro` |
 | `apps/api/src/*-cli.ts` | Os comandos de linha (`market:backfill`, `season:create`, `account:promote`...), um script cada no `package.json` | `apps/api/package.json#"account:promote"` |
-| `apps/api/prisma` | O schema e as 22 migrations | `apps/api/prisma/schema.prisma#model Season` |
-| `apps/api/seasons` | O arquivo da temporada (elenco e parâmetros) | o rascunho de hoje; **em construção (T0)**: `temporada-1.json` |
+| `apps/api/prisma` | O schema e as 23 migrations | `apps/api/prisma/schema.prisma#model Season` |
+| `apps/api/seasons` | Os arquivos de temporada (elenco e parâmetros; o da Temporada 1 traz o primeiro pregão) | `apps/api/seasons/temporada-1.json#startDate` |
 | `apps/web` | Site em Next 16.4 (App Router), React 19.3 e Tailwind 4 | `apps/web/src/app/layout.tsx#RootLayout` e `apps/web/src/proxy.ts#proxy` |
 | `apps/web/src/app` | As telas, em grupos de rota que não mudam o endereço | a tabela das telas |
 | `apps/web/src/components` | As peças da tela; as copiadas da Arc, da beUI e da ReUI (MIT) ficam em pastas próprias, com o `LICENSE` | `apps/web/src/components/ui.tsx#BUTTON` |
@@ -48,7 +48,7 @@ agendadores.
 | `packages/contracts` | Zod 4: o contrato entre a api, o site e as filas | `packages/contracts/src/envelope.ts#envelopeSchema` |
 | `packages/config` | tsconfig, ESLint e Prettier compartilhados | `packages/config/prettier.mjs#printWidth` |
 | `infra` | A Azure em Bicep; o `check.mjs` confere tudo sem assinatura | `infra/main.bicep#module` e `infra/tests/check.mjs#NEVER_CACHED` |
-| `scripts` | `docs-check`, `guia-check`, o deploy blue/green, o Lighthouse e a sonda de SSE, cada um com teste | `scripts/deploy.mjs#export async function main` |
+| `scripts` | `docs-check`, `guia-check`, o deploy blue/green, a cobertura, a Wiki, a sonda de SSE (cada um com teste) e o Lighthouse | `scripts/deploy.mjs#export async function main` |
 | `.github` | CI, deploy e o template de PR | `.github/workflows/ci.yml#name: CI` |
 | `docs` | O plano, um documento por assunto e os ADRs (uma decisão por arquivo) | [PLANO.md](PLANO.md) e [adr/](adr/) |
 
@@ -67,7 +67,7 @@ agendadores.
 | `account` | Login (Better Auth), sessão, aceite dos termos, exportar e excluir a conta | api |
 | `admin` | As rotas do painel e a trilha de auditoria | api |
 | `portfolio` | A carteira do usuário | api |
-| `maintenance` | A limpeza diária dos dados pessoais e a conferência mensal do backup | worker |
+| `maintenance` | A limpeza diária dos dados pessoais, a conferência mensal do backup e a restauração da temporada na Azure (ADR 0039) | worker; a restauração, uma execução do `job-migrate` com o `restore-cli` |
 
 **As telas** (`apps/web/src/app`; os parênteses são grupos de rota e não aparecem no endereço):
 
@@ -77,7 +77,7 @@ agendadores.
 | `/como-funciona`, `/termos`, `/privacidade` | `(site)` | os textos legais da api |
 | `/arena`, `/ranking`, `/modelos/[slug]`, `/ciclos/[data]` | `(app)/(arena)` | a API pública (e a `/arena`, as barras do BOVA11, de rota interna) |
 | `/explorar`, `/acoes`, `/acoes/[ticker]`, `/noticias` | `(app)/(explorar)` | a API pública e as barras, de rota interna |
-| `/carteira` | `(app)/(carteira)` | `/api/v1/me/portfolio`, com o cookie da sessão |
+| `/carteira` | `(app)/(carteira)` | `/api/v1/me/portfolio`, com o cookie da sessão; a comparação com a arena, da API pública e das barras, de rota interna |
 | `/conta`, `/admin` | `(app)/(conta)` | `/api/v1/me` e `/api/v1/admin/*` |
 | `/chat` | `(app)/(chat)` | nada: desligado até o aval do orientador |
 | `/entrar`, `/cadastro`, `/esqueci-senha`, `/redefinir-senha`, `/verificar-email` | `(auth)`, na casca do app | o Better Auth (`/api/auth/*`) |
@@ -100,7 +100,8 @@ origem, sessão, aceite, validação, serviço, repositório, Prisma e Postgres.
 2. `apps/web/src/lib/wallet.ts#readPortfolio` chama `apps/web/src/lib/api.ts#apiGetFresh`: leitura sem o cache de dados do Next
    (`cache: 'no-store'`), porque é dado de uma pessoa.
 3. `apps/web/src/lib/api.ts#export async function call`: o `fetch` do servidor vai ao endereço interno da api (`API_INTERNAL_URL`), com o
-   `X-Azure-FDID` (a api tem a trava de origem) e o cookie, prazo de 10 s e `redirect: 'error'`. A resposta é validada pelo **mesmo schema**
+   cookie e, quando há o `FRONT_DOOR_ID` (o perfil padrão, em que a api tem a trava de origem), o `X-Azure-FDID`
+   (`apps/web/src/lib/api.ts#'x-azure-fdid': env.FRONT_DOOR_ID`); prazo de 10 s e `redirect: 'error'`. A resposta é validada pelo **mesmo schema**
    que a api usou para montá-la (`envelopeSchema(portfolioSchema)`); fora do contrato vira `ApiError` 502.
 4. Se a api respondeu 401, a página manda para a entrada; 403 `CONSENT_REQUIRED`, para a conta aceitar os termos novos; outro erro vira a
    tela "a arena não respondeu" (`apps/web/src/lib/with-api-down.tsx#withApiDown`). Ao navegador vai só o que a tela usa de cada
@@ -199,14 +200,15 @@ Os saltos, em ordem:
    `apps/api/src/modules/arena/application/decide.handler.ts#async execute(`. Os passos, todos no mesmo arquivo:
    - a linha de `job_run` barra a mensagem repetida (`apps/api/src/modules/messaging/infrastructure/job-run.store.ts#async claim(`);
    - depois das 09:30 o modelo não é chamado (HOLD `prazo`);
-   - o prompt tem de ser o fixado no ciclo, pela versão e pelo SHA-256
-     (`apps/api/src/modules/arena/infrastructure/arena.repository.ts#registerPromptSha256`), e ter a linha de canário
-     (`apps/api/src/modules/arena/domain/leak-filter.ts#hasCanary`); senão, HOLD `prompt_divergente`;
+   - o prompt tem de ter a linha de canário (`apps/api/src/modules/arena/domain/leak-filter.ts#hasCanary`): sem ela, ou sem o prompt, é
+     erro de configuração (`LlmConfigError`); e tem de ser o fixado no ciclo, pela versão e pelo SHA-256
+     (`apps/api/src/modules/arena/infrastructure/arena.repository.ts#registerPromptSha256`): senão, HOLD `prompt_divergente`;
    - o briefing lido do Blob tem de bater com o SHA-256 da linha;
    - a parte própria do modelo (caixa, posições e barras de 30 pregões delas):
      `apps/api/src/modules/arena/domain/own-part.ts#buildOwnPart`;
    - a chamada: `apps/api/src/modules/arena/infrastructure/llm-gateway.ts#buildRequestBody` (JSON Schema na resposta e, no OpenRouter,
-     só provedores que aceitam todos os parâmetros e não guardam os dados) e `LlmGateway`;
+     só provedores que aceitam todos os parâmetros e não guardam os dados, fora os da lista
+     `apps/api/src/modules/arena/infrastructure/llm-gateway.ts#IGNORED_OPENROUTER_PROVIDERS`) e `LlmGateway`;
    - a validação: `packages/contracts/src/llm-decision.ts#parseLlmDecision` (o formato) com **um reparo**
      (`apps/api/src/modules/arena/domain/llm-messages.ts#repairMessage`), depois as regras que dependem do universo e da carteira
      (`apps/api/src/modules/arena/domain/decision-validation.ts#validateSemantics`, por `buildDecisionItems`), item a item
@@ -214,7 +216,10 @@ Os saltos, em ordem:
    - o filtro de vazamento do prompt (`apps/api/src/modules/arena/domain/leak-filter.ts#createLeakFilter`), o IO bruto no Blob
      (`apps/api/src/modules/arena/infrastructure/llm-io.archive.ts#LlmIoArchive`) e a decisão no banco;
    - na última entrega, a falha vira HOLD `falha` registrado, e não DLQ
-     ([ADR 0021](adr/0021-dlq-vira-hold-pelo-handler-na-ultima-entrega.md)).
+     ([ADR 0021](adr/0021-dlq-vira-hold-pelo-handler-na-ultima-entrega.md)), fora o erro de configuração (o prompt sem canário, a chave do
+     OpenRouter recusada ou sem crédito: `apps/api/src/modules/arena/infrastructure/llm-gateway.ts#CONFIG_STATUS`), que não é decisão do
+     modelo: a mensagem vai para a DLQ, e a varredura do prazo grava HOLD `sem_resposta`
+     (`apps/api/src/modules/arena/application/decide.handler.ts#!(error instanceof LlmConfigError)`).
 5. **Barras.** Às 21:30, `apps/api/src/modules/market-data/application/eod.handler.ts#EodHandler` pede à brapi, um papel por vez
    (`apps/api/src/modules/market-data/infrastructure/brapi.client.ts#BrapiClient`), só as barras que o banco não tem, e publica o
    `settle` (`apps/api/src/modules/settlement/application/settlement-publisher.ts#afterEod`).
@@ -226,15 +231,20 @@ Os saltos, em ordem:
    (`apps/api/src/modules/settlement/domain/monte-carlo.ts#MONTE_CARLO_RUNS`) e as métricas
    (`apps/api/src/modules/settlement/domain/season-stats.ts#seasonStats`).
 7. **Mostrar.** Concluída a liquidação, `apps/api/src/modules/settlement/application/cache-refresher.ts#afterSettle` pede ao site a
-   revalidação (`apps/web/src/app/interno/revalidar/route.ts#POST`, com o segredo) e limpa o cache do Front Door. O site lê pela API
+   revalidação (`apps/web/src/app/interno/revalidar/route.ts#POST`, com o segredo) e, no perfil padrão, limpa o cache do Front Door (no
+   econômico, que não o tem, o passo é pulado). O site lê pela API
    pública (`apps/api/src/modules/public/presentation/public.controller.ts#PublicController`) com as tags de cache.
 
-**Em construção (T0): a variante de hoje, até a Azure.** A assinatura de estudante e o repositório público ainda não existem. A T0
-está construindo: o `cycle.mode` (`RETROATIVO` ou `AO_VIVO`) e o `cycle.executed_at` (a hora real em que o ciclo rodou); o
-`arena:retroativo`, que repete os pregões passados da Temporada 1 (de 13/10/2026) vendo só o que o pipeline ao vivo teria visto às 07:30
-de cada pregão; e o `arena:operar`, um operador local no Mac que roda a mesma agenda de produção com o relógio real e um barramento em
-processo, e que nunca abre um ciclo "ao vivo" atrasado. O ensaio já é o mesmo motor com fakes: `apps/api/src/ensaio/world.ts#createWorld`
-liga os handlers de verdade a um barramento em processo (`apps/api/src/ensaio/bus.ts`).
+**A Temporada 1: o retroativo no Mac e o ao vivo na Azure** (ADR 0038). O ciclo guarda o modo (`cycle.mode`, `RETROATIVO` ou
+`AO_VIVO`) e a hora real em que rodou (`cycle.executed_at`). De 06 a 15/11/2026, o `arena:retroativo` rodou no Mac os 23 pregões de 13/10
+a 13/11/2026: o `apps/api/src/temporada-cli.ts` monta o motor do ensaio com as peças reais (`apps/api/src/ensaio/world.ts#assembleWorld`,
+com o barramento em processo de `apps/api/src/ensaio/bus.ts`) e chama `apps/api/src/temporada/retro.ts#runRetro`, e cada pregão vê só o
+que o pipeline ao vivo teria visto às 07:30 dele (`apps/api/src/temporada/visibility.ts#retroBriefingReads`). No ensaio, o mesmo motor
+roda com fakes (`apps/api/src/ensaio/world.ts#createWorld`). Em 15/11/2026 a temporada foi para a Azure por uma execução do `job-migrate`
+(`apps/api/src/restore-cli.ts`, que chama `apps/api/src/modules/maintenance/application/season-restore.ts#restoreSeason`;
+`docs/RUNBOOK.md`, 13.6), e desde 16/11/2026 cada pregão segue os passos 1 a 7 acima, ao vivo. O `arena:operar`
+(`apps/api/src/temporada/operator.ts#runOperator`), o operador local que levaria o ao vivo no Mac até a Azure existir, está no código e
+testado, mas nunca foi instalado.
 
 ---
 
@@ -247,12 +257,14 @@ na mesma ordem. Cada uma tem a resposta curta, onde está no código e o que um 
 
 #### 1. Desenhe a arquitetura: quais componentes existem e por onde passa uma requisição?
 
-**Resposta.** Na Azure (o desenho; ainda não está no ar, seção 7): o **Front Door** na borda (TLS, WAF, cache, `/api/*` para a api e o
-resto para o site); no **Container Apps**, o site (`ca-web`), a api (`ca-api`), o worker das filas leves (`ca-worker-data`), o job de
+**Resposta.** Na Azure, a produção está no perfil econômico
+([ADR 0039](adr/0039-producao-no-perfil-economico-origem-unica-pelo-site.md)): o site recebe tudo, com o TLS do ingress do Container Apps, e
+repassa `/api/*` à api, que só tem ingress interno; no perfil padrão, o **Front Door** fica na borda (TLS, WAF, cache, `/api/*` para a api e
+o resto para o site). No **Container Apps**, o site (`ca-web`), a api (`ca-api`), o worker das filas leves (`ca-worker-data`), o job de
 decisões (`job-worker-decisions`, um por mensagem), os sete agendadores (`job-sched-*`) e o job das migrations (`job-migrate`); o
 **PostgreSQL Flexible** privado; o **Service Bus** com seis filas e DLQ; o **Blob** (briefings, IO bruto das LLMs, backups); o **Key
-Vault** com os segredos; e o **Application Insights**. Uma requisição do usuário: navegador → Front Door → site (SSR) → api → Postgres, e
-de volta (seção 2.1). O trabalho da arena: agendador → fila → worker → Postgres e Blob (seção 2.2).
+Vault** com os segredos; e o **Application Insights**. Uma requisição do usuário: navegador → site (SSR) → api → Postgres, e de volta (seção
+2.1; no padrão, o Front Door vem antes do site). O trabalho da arena: agendador → fila → worker → Postgres e Blob (seção 2.2).
 
 **No código.**
 - `infra/main.bicep#module` liga os módulos; `infra/modules/containerapps.bicep#'ca-worker-data'` cria os apps e os jobs;
@@ -264,7 +276,7 @@ de volta (seção 2.1). O trabalho da arena: agendador → fila → worker → P
   (`apps/api/src/role.ts#const MODULES`). Uma imagem a construir, testar e publicar.
 - *Por que dois workers, e não um por fila?* As filas leves cabem numa réplica; as decisões rodam em job por evento, para isolar cada
   modelo ([ADR 0006](adr/0006-dois-workers-nao-um-por-fila.md)).
-- O diagrama C4 (contexto, contêineres e módulos) e os diagramas de sequência: **em construção (T2)**, em `docs/ARQUITETURA.md`.
+- O diagrama C4 (contexto, contêineres e módulos) e os diagramas de sequência estão em [ARQUITETURA.md](ARQUITETURA.md).
 
 #### 2. Por que essa stack? Qual alternativa foi descartada e por quê?
 
@@ -307,7 +319,8 @@ Os outros papéis entram por `apps/api/src/worker.ts`, `decide.ts` e `schedule.t
 (`apps/api/src/roles.module.ts#DecideModule`, que é o único com o prompt e a chave do OpenRouter).
 
 No site: `apps/web/src/instrumentation.ts#register` roda uma vez na subida e confere o contrato da trava de origem
-(`apps/web/src/instrumentation-node.ts#checkOriginLockEnv`: `ORIGIN_LOCK=front-door` sem `FRONT_DOOR_ID` sai com código 1);
+(`apps/web/src/instrumentation-node.ts#checkOriginLockEnv`: `ORIGIN_LOCK=front-door` sem `FRONT_DOOR_ID` sai com código 1) e o do repasse
+de `/api/*` (`apps/web/src/instrumentation-node.ts#checkApiProxyEnv`: `API_PROXY=on` sem um `API_INTERNAL_URL` http(s) também sai);
 `apps/web/src/proxy.ts#proxy` roda em toda requisição; `apps/web/src/app/layout.tsx#RootLayout` é a raiz das páginas.
 
 **Por quê? E se…?** *Por que falhar na subida?* Uma configuração errada que deixasse o app de pé com tudo verde seria pior: um
@@ -382,14 +395,21 @@ carteira de alguém; a conferência é feita na escrita ([ADR 0031](adr/0031-car
 
 #### 8. Mostre a última migration e explique o que ela faz.
 
-**Resposta.** Hoje é a `20261105120000_instrument_logo`: cria a tabela `instrument_logo`, a cópia própria do SVG do logo de cada papel
-que a brapi serve, para o site mostrá-lo do próprio domínio ([ADR 0036](adr/0036-logos-das-acoes-copia-propria-da-brapi.md)). Três
-partes: o `CREATE TABLE` e a chave estrangeira em cascata, que saíram do `prisma migrate diff`; um `CHECK` escrito à mão
-(`apps/api/prisma/migrations/20261105120000_instrument_logo/migration.sql#instrument_logo_values_check`: de 1 byte a 200 KB, o tamanho
-batendo com o texto, o SHA-256 em hexadecimal); e o `GRANT SELECT` ao papel da api, porque nenhuma tabela nova nasce com privilégio para
-ela. É só aditiva: nada existente muda.
+**Resposta.** Hoje é a `20261106120000_retroactive_cycles`, a da Temporada 1
+([ADR 0038](adr/0038-temporada-1-retroativa-e-operador-local.md)). Do `prisma migrate diff` saíram o tipo `cycle_mode` (`RETROATIVO` ou
+`AO_VIVO`), as colunas `mode` (padrão `AO_VIVO`) e `executed_at` (a hora real em que o ciclo nasceu) no `cycle` e a `prompt_sha256` na
+`season` (`apps/api/prisma/migrations/20261106120000_retroactive_cycles/migration.sql#CREATE TYPE "cycle_mode"`). À mão, o que o Prisma
+não emite: o `executed_at` dos ciclos que já existiam igual ao `created_at` deles
+(`apps/api/prisma/migrations/20261106120000_retroactive_cycles/migration.sql#UPDATE "cycle" SET "executed_at" = "created_at"`), o `CHECK` do
+SHA-256, o `UPDATE` da api reduzido às quatro colunas do reprocesso
+(`apps/api/prisma/migrations/20261106120000_retroactive_cycles/migration.sql#GRANT UPDATE ("status", "skip_reason", "briefing_id", "prompt_version_id") ON "cycle"`)
+e o gatilho que obriga o ciclo criado pela api a ser `AO_VIVO`, com a hora do banco
+(`apps/api/prisma/migrations/20261106120000_retroactive_cycles/migration.sql#NEW.executed_at := now()`). É só aditiva: nada existente muda.
 
-**Em construção (T0):** a próxima migration acrescenta `cycle.mode` e `cycle.executed_at`, também aditiva e gerada pelo `migrate diff`.
+A anterior, a `20261105120000_instrument_logo`, cria a tabela da cópia própria do SVG do logo de cada papel
+([ADR 0036](adr/0036-logos-das-acoes-copia-propria-da-brapi.md)), com um `CHECK` escrito à mão
+(`apps/api/prisma/migrations/20261105120000_instrument_logo/migration.sql#instrument_logo_values_check`: de 1 byte a 200 KB, o tamanho
+batendo com o texto, o SHA-256 em hexadecimal) e o `GRANT SELECT` ao papel da api, porque nenhuma tabela nova nasce com privilégio para ela.
 
 **Por quê? E se…?** *Como se gera?* `prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script`, revisar e
 versionar; nunca `migrate dev` nem `db push` (CLAUDE.md, "Banco"). *E se precisasse apagar uma coluna?* Em duas migrations: primeiro
@@ -537,7 +557,7 @@ NUL)?* A regra do projeto é recusar na entrada, nunca dar 500 (CLAUDE.md, "Conv
   não respondeu" (`apps/web/src/lib/with-api-down.tsx#withApiDown`).
 
 **Em produção, onde eu veria:** no Application Insights (a requisição e a exceção) e no Log Analytics (a linha do log), e por e-mail, pelo
-alerta. **Nada disso rodou na Azure ainda** (seção 7); hoje o erro aparece no terminal e nos testes.
+alerta: o da DLQ chegou de verdade em 10, 13 e 15/11/2026 (seção 7). Em dev, no terminal e nos testes.
 
 ### Integrações
 
@@ -559,7 +579,7 @@ com um segredo (`apps/web/src/lib/quotes.ts#readTape`; [ADR 0033](adr/0033-api-p
 | Serviço | Onde | Se sair do ar |
 |---|---|---|
 | brapi (cotações) | `apps/api/src/modules/market-data/infrastructure/brapi.client.ts#BrapiClient` | O `eod` se reagenda de hora em hora até 00:30; sem as barras do dia, a liquidação espera; a cota tem reserva (`QUOTA_RESERVE`) |
-| OpenRouter (LLMs) | `apps/api/src/modules/arena/infrastructure/llm-gateway.ts#OPENROUTER_BASE_URL` | Novas tentativas agendadas (10 e 20 min) dentro do prazo; na última, HOLD `falha` registrado ([ADR 0021](adr/0021-dlq-vira-hold-pelo-handler-na-ultima-entrega.md)) |
+| OpenRouter (LLMs) | `apps/api/src/modules/arena/infrastructure/llm-gateway.ts#OPENROUTER_BASE_URL` | Novas tentativas agendadas (10 e 20 min) dentro do prazo; na última, HOLD `falha` registrado ([ADR 0021](adr/0021-dlq-vira-hold-pelo-handler-na-ultima-entrega.md)). A chave recusada ou sem crédito (HTTP 401 e 402) não vira HOLD: é erro de configuração, e a mensagem vai para a DLQ (seção 2.2, passo 4) |
 | CVM, BCB e portais (RSS) | `apps/api/src/modules/news/application/cvm-fetcher.ts#CvmFetcher`, `bcb-fetcher.ts`, `rss-fetcher.ts` | A `fetch` tenta 5 vezes e vai para a DLQ; o briefing das 07:30 sai com as notícias que já foram coletadas (o que o barra é a falta de barras: menos de 80% do universo); a liquidação rende o caixa pela última taxa do CDI publicada até o pregão (`apps/api/src/modules/settlement/domain/cdi.ts#rateOnOrBefore`). Sem briefing, o ciclo é pulado com o motivo `sem_briefing` |
 | E-mail (Azure Communication Services) | `apps/api/src/modules/account/infrastructure/email/acs-email-sender.ts#AcsEmailSender` | A falha vai ao log com a linha do alerta (`apps/api/src/modules/account/infrastructure/email/account-mailer.ts#ALERT_LOG.emailFailed`), e a resposta à pessoa não muda (o envio não é esperado, para o tempo não denunciar se o e-mail tem conta); em dev o e-mail cai numa pasta |
 | Google (login) | `apps/api/src/modules/account/infrastructure/auth.ts#socialProviders` | Só existe com as duas variáveis; sem ele, entra-se por e-mail e senha |
@@ -588,10 +608,11 @@ Um teste para explicar: `apps/api/src/modules/settlement/domain/portfolio.spec.t
 O modelo pediu primeiro "compre CCC3 com 25%" e depois "venda toda a BBB4", com só R$ 5,90 em caixa. O teste confere que a venda roda
 antes (o índice 1 sai primeiro), que a compra executa por inteiro com o dinheiro dela (39 ações) e o caixa final, centavo a centavo.
 
-**Cobertura.** A linha de base de 06/11/2026, sobre todo o `src` (sem o código gerado do Prisma): api 93,62% de linhas, site 69,63%,
-contratos 100% (o Playbook pede 75% no backend e 25% no frontend). O provedor `@vitest/coverage-v8` entrou no commit `c9ca348`. **Em
-construção (T2):** o `pnpm coverage`, que roda os três pacotes com os limites travados, e o `docs/QUALIDADE.md`, que explica como gerar
-o relatório e o que conta como backend e frontend.
+**Cobertura.** O `pnpm coverage` roda os três pacotes contra o mínimo do Playbook (75% no backend, 25% no frontend), travado em cada
+`vitest.config.ts` (`apps/api/vitest.config.ts#thresholds: { lines: 75, statements: 75 }`), e recusa rodar sem o `TEST_DATABASE_URL` e o
+`STORAGE_CONNECTION_STRING`, que ligam os testes de integração (`scripts/coverage.mjs#REQUIRED_ENV`); o job `coverage` do CI roda o mesmo.
+No `291a150`, sobre todo o `src` (sem o código gerado do Prisma): api 91,22% de linhas, site 67,64% e contratos 100%. Como gerar o
+relatório e o que conta como backend e frontend: [QUALIDADE.md](QUALIDADE.md).
 
 #### 19. Se eu mudar uma regra de negócio, qual teste deveria falhar? Faça a mudança e mostre.
 
@@ -627,30 +648,36 @@ O `ci.yml` roda em todo PR e em todo push na `main` (`.github/workflows/ci.yml#p
 
 #### 21. Quais etapas o pipeline roda, em que ordem, e o que acontece quando um teste ou a análise estática falha?
 
-**Resposta.** O `ci.yml` tem quatro jobs, que rodam **em paralelo** (nenhum `needs:`):
+**Resposta.** O `ci.yml` tem cinco jobs, que rodam **em paralelo** (nenhum `needs:`):
 1. `check`: sobe o Postgres, o Azurite e o emulador do Service Bus; lint (ESLint e Prettier), tipos, testes de unidade e de integração,
    `docs:check` e o check da infra (`.github/workflows/ci.yml#Testes de unidade e de integração`).
-2. `web`: build, Playwright e Lighthouse mobile.
-3. `images`: constrói as duas imagens e prova que a api sobe com `/health`, que **recusa subir** com a configuração errada (sem
+2. `coverage`: o `pnpm coverage` (pergunta 18), com o relatório como artefato, e o SonarCloud, que só roda com o segredo `SONAR_TOKEN`
+   (`.github/workflows/ci.yml#SonarCloud configurado?`): sem ele, o passo é pulado com um aviso.
+3. `web`: build, Playwright e Lighthouse mobile.
+4. `images`: constrói as duas imagens e prova que a api sobe com `/health`, que **recusa subir** com a configuração errada (sem
    `FRONT_DOOR_ID` com a trava ligada, sem a configuração da conta, com o login de administrador do banco), que não roda como root nem
    leva `.env`, e que os quatro papéis existem (`.github/workflows/ci.yml#A api recusa subir com o login administrador do banco`).
-4. `whatif`: o what-if da infra na Azure, só quando o repositório tem a variável `AZURE_CLIENT_ID`.
+5. `whatif`: o what-if da infra na Azure, só em PR do próprio repositório e com a variável `AZURE_CLIENT_ID`.
 
-Um passo que falha reprova o job, e o PR fica vermelho. **Em construção (T2):** um job de cobertura e o SonarCloud (só com o segredo
-`SONAR_TOKEN`).
+Um passo que falha reprova o job, e o PR fica vermelho. No CI, o Playwright tenta de novo o teste que falhou e reprova o que só passa na
+nova tentativa (`apps/web/playwright.config.ts#failOnFlakyTests`).
 
-O `deploy.yml`: `images` (constrói e publica no ACR com a tag do commit) e `deploy`, um blue/green por app, a api antes do site:
-fixar o tráfego, migrations, criar a revisão nova **sem tráfego** com o label `green`, smoke nela, Playwright mobile pelo endpoint green
-do Front Door, só então virar o tráfego; no fim, o smoke de produção e a desativação das antigas. Qualquer prova que falha dispara o
-`Desfazer` (`.github/workflows/deploy.yml#node scripts/deploy.mjs rollback`). A lógica está em
+O `deploy.yml`: `images` e `deploy`, um blue/green por app, a api antes do site: fixar o tráfego, migrations, criar a revisão nova **sem
+tráfego** com o label `green`, prová-la, só então virar o tráfego; no fim, o smoke de produção e a desativação das antigas. A prova
+depende do perfil (a variável `ALVESTING_PROFILE`): no econômico, o da produção, as imagens vão ao GHCR
+(`.github/workflows/deploy.yml#docker login ghcr.io`), a api verde é provada pelas sondas da plataforma
+(`.github/workflows/deploy.yml#node scripts/deploy.mjs probe-green api`) e o site verde pelo smoke e pelo Playwright mobile no endereço do
+label; no padrão, as imagens vão ao ACR, e o smoke e o Playwright mobile passam pelo endpoint green do Front Door. Qualquer prova que falha
+dispara o `Desfazer` (`.github/workflows/deploy.yml#node scripts/deploy.mjs rollback`). A lógica está em
 `scripts/deploy.mjs#export async function promote`, com teste que executa o `deploy.yml` de verdade contra um Container Apps falso
 (`scripts/deploy.test.mjs`).
 
 #### 22. Onde a aplicação está hospedada e como é feito o deploy? Como voltar à versão anterior?
 
-**Resposta.** **Hoje não está hospedada em lugar nenhum**: o repositório não tem remoto e o deploy nunca rodou (seção 7). O desenho é
-o Container Apps na Chile Central, no perfil econômico, sem o Front Door (ADRs 0039 e 0040), publicado pelo `deploy.yml` (pergunta 21;
-[ADR 0029](adr/0029-blue-green-com-label-green-e-endpoint-green-no-front-door.md)). Para voltar:
+**Resposta.** No Container Apps da Azure, na Chile Central, no perfil econômico, sem o Front Door (ADRs 0039 e 0040), com o site e a api
+sempre ligados, com uma réplica no mínimo (`infra/main.prod.bicepparam#alwaysOn`, desde 15/11/2026). Cada push na `main` é publicado pelo
+`deploy.yml` (pergunta 21; [ADR 0029](adr/0029-blue-green-com-label-green-e-endpoint-green-no-front-door.md)); o último foi o do `291a150`,
+em 17/11/2026. Para voltar:
 - **Durante o deploy**, a prova que falha devolve 100% à revisão antiga nos dois apps (o passo `Desfazer`, que chama o
   `scripts/deploy.mjs#export async function rollback`).
 - **Depois**, `node scripts/deploy.mjs revert` (`scripts/deploy.mjs#export async function revert`), passo a passo em [DEPLOY.md](DEPLOY.md),
@@ -658,13 +685,14 @@ o Container Apps na Chile Central, no perfil econômico, sem o Front Door (ADRs 
 - **E o banco?** As migrations são só aditivas, então a revisão antiga roda sobre o banco novo; a mudança incompatível em `/api/v1` vai
   em lançamentos separados (CLAUDE.md, "Banco").
 
-Até a Azure, **em construção (T0)**: um operador local no Mac (`arena:operar`) roda o pipeline nos horários de produção.
+A Temporada 1 está nesse mesmo deploy desde 15/11/2026: o trecho retroativo rodou no Mac e foi para a Azure por uma execução do
+`job-migrate` (seção 2.2, o último parágrafo); o operador local do Mac (`arena:operar`) nunca foi instalado.
 
 ### Processo e histórico
 
 #### 23. Escolha um commit e explique o que mudou e por quê. Qual foi o PR mais difícil?
 
-**Resposta.** Os seis commits estão na seção 8. Um bom para explicar é o `1330645` (04/11/2026):
+**Resposta.** Os commits estão na seção 8. Um bom para explicar é o `1330645` (04/11/2026):
 - a limpeza dos dados pessoais passou a rodar todo dia, e não mais aos domingos, porque a política de privacidade promete apagar o
   cadastro nunca confirmado em até 7 dias (`infra/modules/containerapps.bicep#{ name: 'retention', cron: '0 13 * * *' }`);
 - o legado do COTAHIST saiu do banco numa migration não aditiva, a única exceção autorizada, porque não havia produção nem dado legado; ela
@@ -672,11 +700,11 @@ Até a Azure, **em construção (T0)**: um operador local no Mac (`arena:operar`
   (`apps/api/prisma/migrations/20261104100000_drop_cotahist_legacy/migration.sql#EXCEÇÃO à regra "migration só aditiva"`);
 - o cliente da brapi passou a ler a cota pelo cabeçalho certo (o bug 6.1).
 
-**Pull request:** ainda **não houve nenhum**. O repositório não tem remoto; o trabalho foi feito em ondas de tarefas, cada uma com
-relatório, revisão de código e QA (os relatórios estão em `docs/redesign-*/relatorios/`), e o coordenador commitou cada tarefa conferida.
-O template que todo PR vai usar já existe, com a checklist obrigatória (`.github/pull_request_template.md#Migration segura`).
-Os PRs revisados pelo squad começam quando o repositório for público (seção 8). A resposta honesta à segunda parte, hoje, é contar uma
-revisão das ondas: por exemplo, a revisão que achou a fita da home pela metade (bug 6.4).
+**Pull request:** ainda **não houve nenhum**. O repositório é público no GitHub desde 09/11/2026, e os commits foram direto na `main`; o
+trabalho foi feito em ondas de tarefas, cada uma com relatório, revisão de código e QA (os relatórios estão em `docs/redesign-*/relatorios/`
+e `docs/temporada-1/relatorios/`), e o coordenador commitou cada tarefa conferida. O template que todo PR vai usar já existe, com a
+checklist obrigatória (`.github/pull_request_template.md#Migration segura`), e o modo de seguir está na seção 8. A resposta honesta à
+segunda parte, hoje, é contar uma revisão das ondas: por exemplo, a revisão que achou a fita da home pela metade (bug 6.4).
 
 #### 24. Qual foi o bug mais difícil? Como descobriu a causa e onde está a correção?
 
@@ -698,8 +726,9 @@ api, o contrato (`packages/contracts/src/portfolio.ts#lotBodySchema`), o reposit
 
 ## 4. Como rodar do zero
 
-Conferido em 06/11/2026 no checkout atual (Node 26.13.0, pnpm 12.16.1, Docker Desktop), sem copiar o repositório. A coluna "Conferido"
-diz o que foi rodado e o que só foi conferido no código, com o motivo.
+Conferido em 06/11/2026, no checkout de então (Node 26.13.0, pnpm 12.16.1, Docker Desktop), sem copiar o repositório; no `291a150` os
+comandos são os mesmos, com uma migration a mais (23). A coluna "Conferido" diz o que foi rodado e o que só foi conferido no código, com o
+motivo.
 
 | # | Comando | O que faz | Conferido |
 |---|---|---|---|
@@ -717,7 +746,7 @@ diz o que foi rodado e o que só foi conferido no código, com o motivo.
 **O que o README e o CLAUDE.md não dizem** (anotado também no relatório da T3):
 - **Ter dados na tela.** Depois do passo 5 o `alvesting_dev` está vazio: o site abre sem temporada. Os caminhos que existem são a carga da
   brapi (`market:backfill --confirmo-banco`, que pede o `BRAPI_TOKEN`) ou um banco sintético (`arena:ensaio`, que **apaga e recria**
-  o `alvesting_ensaio`, ou o `e2e:seed`); a demo do Artur roda a api sobre o `alvesting_ensaio`. Nenhum dos dois documentos diz como
+  o `alvesting_ensaio`, ou o `e2e:seed`); em 06/11/2026, a demo do Artur rodava a api sobre o `alvesting_ensaio`. Nenhum dos dois documentos diz como
   apontar o `pnpm dev` para um banco com dados.
 - **Rodar um arquivo de teste só** (o que se faz numa mudança ao vivo): o `pnpm test` gera o cliente do Prisma e constrói os contratos
   antes (o Turborepo faz), mas o `vitest run <arquivo>` direto, num clone novo, falha sem `pnpm --filter @alvesting/api generate` e
@@ -901,28 +930,40 @@ Contados a partir dos registros: os relatórios das ondas, os comentários do c�
 
 ## 7. O que ainda não rodou de verdade
 
-Dito sem enfeite, em 06/11/2026:
-- **O CI no GitHub nunca rodou.** O repositório é local e não tem remoto. O que o CI faz foi rodado na máquina (`pnpm check`, build, e2e,
-  Lighthouse, o check da infra e o ensaio, conferidos do zero nos commits).
-- **O deploy na Azure nunca rodou.** A assinatura de estudante ainda não existe; nada está hospedado. O blue/green foi provado só contra um
-  Container Apps falso (`scripts/deploy.test.mjs`); o [DEPLOY.md](DEPLOY.md), seção 7, lista o que não foi verificado na Azure.
-- **Os alertas nunca dispararam.** As consultas são conferidas localmente contra o texto esperado (`infra/tests/check.mjs#APP_SIGNALS_QUERY`).
-- **Os procedimentos do runbook** estão todos marcados como não ensaiados, até o Artur ensaiar.
-- **A Temporada 1 real ainda não começou.** Nenhum modelo de verdade foi chamado: os seis modelos da demo têm estratégias falsas com a
-  etiqueta "simulado" (commit `a40143a`), e o prompt da arena espera a aprovação do Artur. **Em construção (T0):** o retroativo, de
-  13/10/2026, e o operador local, até o último pregão de 2026.
-- **O e-mail e o login com o Google** nunca saíram da máquina: em dev o e-mail cai numa pasta (`EMAIL_OUTBOX_DIR`), e o Google precisa
-  da configuração do [CONTA.md](CONTA.md).
-- **O chat** não existe: começa depois do aval do orientador.
+Dito sem enfeite, em 18/11/2026. O que já roda: o repositório é público no GitHub desde 09/11/2026, e o CI e o deploy rodam no GitHub
+Actions a cada push na `main` (o `291a150` passou nos dois, com um teste do e2e instável na primeira execução do job do site); o deploy do
+pipeline passa desde 10/11/2026, e a produção está na Azure, no perfil econômico; a Temporada 1 está ao vivo lá desde 16/11/2026 (seção 2.2,
+o último parágrafo). O que ainda não rodou, ou rodou só em parte:
+- **O que só a Azure prova e ainda não foi conferido:** a lista do [DEPLOY.md](DEPLOY.md), seção 7, e a do [INFRA.md](INFRA.md), seção 11.
+- **Os alertas, em parte.** O da DLQ disparou de verdade em 10, 13 e 15/11/2026, e o da CPU do banco em 17/11/2026; a regra de log dos
+  sinais da aplicação (`infra/modules/alerts.bicep#appSignals`) não disparou até 18/11/2026, nem nas falhas de job que a consulta dela
+  conta como `job-falhou`. As consultas são conferidas localmente contra o texto esperado (`infra/tests/check.mjs#APP_SIGNALS_QUERY`).
+- **Os procedimentos do runbook** estão todos marcados como não ensaiados, até o Artur ensaiar; dois rodaram de verdade na Azure: o
+  primeiro admin, em 11/11/2026, e a ida da Temporada 1, em 15/11/2026 ([RUNBOOK.md](RUNBOOK.md), 13.6).
+- **O operador local do Mac** (`arena:operar`) nunca foi instalado: a temporada foi do retroativo direto para a Azure.
+- **O e-mail e o login com o Google** não têm teste que os chame de verdade (nenhum teste chama serviço externo): em dev o e-mail cai numa
+  pasta (`EMAIL_OUTBOX_DIR`), e na produção sai pela Azure Communication Services, com o domínio gerenciado, que aceita 5 e-mails por
+  minuto e 10 por hora para todos ([CONTA.md](CONTA.md), seção 8); o Google precisa da configuração do mesmo documento.
+- **O chat** não existe: a tela `/chat` é só o desenho, desligado, e fica assim por decisão do Artur em 17/11/2026.
 
 ---
 
 ## 8. O histórico e o processo
 
-Os commits que existem hoje (`git log`), do mais novo ao mais antigo:
+Os commits da `main` até o `291a150` (`git log`), do mais novo ao mais antigo:
 
 | Commit | Data | O que contém |
 |---|---|---|
+| `291a150` | 17/11/2026 | A comparação da carteira com a arena: quanto valeria o dinheiro de cada compra posto em cada competidor, em BigInt (`lib/comparacao.ts`), sem rota nova na api e sem LLM |
+| `5fa020e` | 17/11/2026 | O gráfico do patrimônio em R$ ou em % (o segmentado do `form-kit`) |
+| `d57d0dd` | 17/11/2026 | A nota do RAIZ4 cotado por lote na metodologia (o grupamento 100:1 registrado pelo painel em 15/11/2026) |
+| `6c35245` | 15/11/2026 | A leitura do gráfico do patrimônio em ordem de quem estava ganhando no pregão |
+| `1552e2d` | 15/11/2026 | O site e a api sempre ligados na produção (o `alwaysOn`, com uma réplica no mínimo; ADR 0039, nota de 15/11/2026) |
+| `2ac3860` | 15/11/2026 | A ida da Temporada 1 para a Azure registrada no runbook (13.6) e no INFRA.md |
+| `b4bdc81` | 11/11/2026 | O "Hoje" do calendário da carteira no dia de Brasília (o CI, que roda em UTC, achou o erro) |
+| `a39d77e` | 10/11/2026 | O endpoint de serviço do Storage declarado na sub-rede do Postgres (a Azure o liga, e a infra o apagava) |
+| `e605f56` | 09/11/2026 | Os consertos do primeiro CI no GitHub: o what-if só em PR, o EPIPE do `pg_restore` e o e2e do giro dos algarismos |
+| `ae1aa3a` | 09/11/2026 | A Temporada 1 de verdade (o retroativo e o operador local, ADR 0038), a produção no perfil econômico (ADR 0039) e na Chile Central (ADR 0040), o modal da carteira e a documentação do Playbook (requisitos, user stories, o C4, a cobertura travada, o SonarCloud pronto para ligar, a Wiki gerada e este guia) |
 | `c9ca348` | 06/11/2026 | O provedor de cobertura do Vitest (`@vitest/coverage-v8` 5.0.5) nos três pacotes, registrado no DEPENDENCIAS.md, e a linha de base da cobertura |
 | `43ce40c` | 06/11/2026 | Os logos das ações (copiados da brapi, guardados no banco e servidos pelo nosso domínio com CSP própria), a moldura de 1.550 px, o seletor de tema, as peças da Arc, da beUI e da ReUI (MIT) e as velas desenhadas no servidor |
 | `3c9db10` | 06/11/2026 | O design no estilo do Rallies AI: a landing, o app com trilho de ícones no desktop e barra de abas no celular, os dois temas e os logos dos laboratórios (LobeHub, MIT). Só o visual como referência: nenhum código, marca, ilustração ou texto deles |
@@ -930,13 +971,13 @@ Os commits que existem hoje (`git log`), do mais novo ao mais antigo:
 | `1330645` | 06/11/2026 | A limpeza diária dos dados pessoais, a política de privacidade 0.3, a saída do legado do COTAHIST e a leitura certa da cota da brapi |
 | `5a254da` | 04/11/2026 | As etapas 1 a 12 do TCC: o monorepo, a api e o site, a brapi, notícias e briefing, o motor de decisão, a liquidação e o Monte Carlo, a API pública, a conta com a LGPD, a carteira, a infra em Bicep, o CI/CD com blue/green, a observabilidade e o runbook |
 
-Os quatro do meio têm a data do registro no git (06/11, às 09:04); o trabalho é de 04 e 05/11, como dizem as mensagens ("Estado conferido
-do zero em 04/11/2026" e "em 05/11/2026").
+Os quatro de 06/11 às 09:04 (`1330645`, `a40143a`, `3c9db10` e `43ce40c`) têm a data do registro no git; o trabalho é de 04 e 05/11,
+como dizem as mensagens ("Estado conferido do zero em 04/11/2026" e "em 05/11/2026").
 
 **Como o trabalho foi feito.** Em ondas de tarefas, cada uma com uma especificação, um relatório (o que foi feito, os critérios de aceite
-com a evidência, os desvios), uma revisão de código e um QA mobile; os relatórios estão em `docs/redesign-*/relatorios/`. O código foi
-escrito com agentes (Claude Code), sob a direção do Artur, que decide e responde por cada decisão (os ADRs as registram). O texto oficial
-sobre o uso de IA fica no README (**em construção, T2**, para o Artur revisar).
+com a evidência, os desvios), uma revisão de código e um QA mobile; os relatórios estão em `docs/redesign-*/relatorios/` e
+`docs/temporada-1/relatorios/`. O código foi escrito com agentes (Claude Code), sob a direção do Artur, que decide e responde por cada
+decisão (os ADRs as registram). O texto oficial sobre o uso de IA está no README ("Uso de IA no desenvolvimento").
 
 **Como vai seguir, depois que o repositório for público.** Por pull request, nunca direto na `main`: uma branch por mudança, o template
 `.github/pull_request_template.md` com a checklist obrigatória (o `pnpm check` verde, o `DEPENDENCIAS.md` em dia, o e2e mobile, nenhum

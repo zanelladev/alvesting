@@ -2,7 +2,7 @@
 
 Como operar a Alvesting depois do deploy: o que fazer quando um alerta chega, como refazer uma ação de admin, como girar um segredo, como restaurar, como voltar uma revisão e como dar e tirar o papel de admin. Cobre o aceite da etapa 10: reprocessar o ciclo, reenviar a DLQ, girar o segredo, restaurar o backup e voltar a revisão.
 
-**Nada deste runbook rodou na Azure.** Cada procedimento traz **não ensaiado** até o Artur ensaiá-lo, um de cada vez, cronometrando até o e-mail do alerta (`docs/INFRA.md`, 5.4). Depois do ensaio, troque a marca por `ensaiado em AAAA-MM-DD` e anote o que mudou. Os comandos de `az` seguem os de `docs/INFRA.md` e `docs/DEPLOY.md`, e os novos foram conferidos no `--help` da CLI local (2.86.0). Nada foi conferido na assinatura: o que não foi conferido na documentação ou na assinatura está escrito como "não verificado".
+**Na Azure rodaram dois procedimentos deste runbook: o primeiro admin (seção 7), em 11/11/2026 (`docs/INFRA.md`, 8.6), e a ida da Temporada 1 para a Azure (13.6), em 15/11/2026.** Nenhum foi ensaiado: cada procedimento traz **não ensaiado** até o Artur ensaiá-lo, um de cada vez, cronometrando até o e-mail do alerta (`docs/INFRA.md`, 5.4). Depois do ensaio, troque a marca por `ensaiado em AAAA-MM-DD` e anote o que mudou. Os comandos de `az` seguem os de `docs/INFRA.md` e `docs/DEPLOY.md`, e os novos foram conferidos no `--help` da CLI local (2.86.0). Fora essas duas execuções, nada foi conferido na assinatura: o que não foi conferido na documentação ou na assinatura está escrito como "não verificado".
 
 ## Índice
 

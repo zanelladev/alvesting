@@ -327,7 +327,9 @@ trocar o elenco no meio quebraria "mesmas regras para todos".
 **Dois trechos.** Os pregões que já tinham passado quando a temporada começou de verdade (de 13/10 até a véspera da virada) entram como
 **retroativos**: rodados depois, pelo `arena:retroativo`, com o mesmo motor da arena (os mesmos agendadores, handlers, validação, filtro de
 vazamento e liquidação) e com o relógio do pregão simulado. A partir da virada, cada pregão é **ao vivo**: decidido na janela das 08:00 às 09:30
-do próprio pregão, pelo operador local (o Mac, até a Azure existir). Cada ciclo guarda o modo (`RETROATIVO` ou `AO_VIVO`) e a hora real em que
+do próprio pregão. O operador local do Mac, que levaria o ao vivo até a Azure existir, nunca foi instalado: a temporada rodou no Mac só como
+retroativa, até o pregão de 13/11/2026, foi para a Azure em 15/11/2026 (`docs/RUNBOOK.md`, 13.6) e está ao vivo lá desde 16/11/2026.
+Cada ciclo guarda o modo (`RETROATIVO` ou `AO_VIVO`) e a hora real em que
 rodou, e o site os mostra.
 
 **O que o pregão retroativo vê.** Só o que o pipeline ao vivo teria visto às 07:30 do pregão, fonte por fonte (`docs/DADOS.md`, seção 22): as
@@ -336,9 +338,9 @@ da entrega); cada valor do BCB só depois de público, pela regra mais conservad
 IPCA um mês mais velho); e a notícia de portal só se o operador a viu de verdade. O teste de visibilidade confere cada fonte.
 
 **O que o pregão retroativo não tem.** As notícias dos portais (InfoMoney, Money Times, Seu Dinheiro e Agência Brasil): o RSS só mostra os
-últimos itens e não guarda histórico, então o pregão retroativo fica sem elas até o operador local começar a coletá-las (o `--so-dados`, antes
-da virada). O fato relevante da CVM e o macro do BCB ele tem, pela regra acima. O modelo do pregão retroativo decide, portanto, com menos
-notícia que o do ao vivo: é uma diferença entre os dois trechos, igual para todos os modelos do mesmo pregão.
+últimos itens e não guarda histórico, então o pregão retroativo fica sem elas (o operador local, que as coletaria antes da virada com o
+`--so-dados`, nunca foi instalado). O fato relevante da CVM e o macro do BCB ele tem, pela regra acima. O modelo do pregão retroativo decide,
+portanto, com menos notícia que o do ao vivo: é uma diferença entre os dois trechos, igual para todos os modelos do mesmo pregão.
 
 **As datas reais.** Num ciclo retroativo, a hora da decisão, o prazo, o fechamento, a liquidação e a hora em que o documento da CVM foi "visto"
 seguem o relógio do pregão simulado. A hora real em que o ciclo rodou está em `executed_at` (a API pública a devolve como `executedAt`), e a de

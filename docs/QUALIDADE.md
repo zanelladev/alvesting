@@ -11,12 +11,12 @@ o TDD com exemplos de verdade, e como ligar o SonarCloud e publicar a Wiki.
 
 | Parte | Mínimo | Hoje (linhas) | Onde o mínimo está travado |
 |---|---|---|---|
-| Backend: `apps/api/src` (a API, os workers e os agendadores) | 75% | **91,68%** | `apps/api/vitest.config.ts` (`thresholds`) |
+| Backend: `apps/api/src` (a API, os workers e os agendadores) | 75% | **91,22%** | `apps/api/vitest.config.ts` (`thresholds`) |
 | Contratos: `packages/contracts/src` (os schemas Zod que a api e o site dividem) | 75% (o do backend) | **100%** | `packages/contracts/vitest.config.ts` |
-| Frontend: `apps/web/src` (as telas, os componentes e a `lib` do site) | 25% | **69,63%** | `apps/web/vitest.config.ts` |
+| Frontend: `apps/web/src` (as telas, os componentes e a `lib` do site) | 25% | **67,64%** | `apps/web/vitest.config.ts` |
 
 O mínimo vale para linhas e para instruções (statements): abaixo dele o próprio Vitest reprova, no `pnpm coverage` local e no job
-`coverage` do CI. Os números completos e a data da medida estão na seção 5.
+`coverage` do CI. "Hoje" é o job `coverage` do CI no commit `291a150` (17/11/2026); os números completos estão na seção 5.
 
 ## 2. Como gerar o relatório (a prova de autoria)
 
@@ -75,7 +75,7 @@ pnpm coverage
 Só isso. Duas coisas **ficam dentro**, e vale dizer:
 
 - **O código de apoio aos testes da api** (os `*.fixture.ts`, as pastas `testing/` e os fakes do ensaio, que o `arena:ensaio` e o e2e
-  usam) conta como backend. Ele roda nos testes, então puxa o número para cima: na rodada da seção 5, sem os fixtures e as pastas
+  usam) conta como backend. Ele roda nos testes, então puxa o número para cima: na rodada de 06/11/2026 (seção 5), sem os fixtures e as pastas
   `testing/`, a api fica em **91,24%** de linhas, e sem os quatro fakes de `apps/api/src/ensaio/` também (`fake-brapi.ts`, `feeds.ts`,
   `market.ts` e `synthetic-logos.ts`), em **90,99%**. A diferença é de menos de um ponto, e o mínimo de 75% fica longe nos dois casos.
 - **Os pontos de entrada ficam com 0%** e entram na conta assim: `main.ts`, `worker.ts`, `decide.ts`, `schedule.ts`, `app.module.ts` e os
@@ -85,6 +85,17 @@ Só isso. Duas coisas **ficam dentro**, e vale dizer:
   entra no número. A `lib/` do site está em 99,6%.
 
 ## 5. Os números de hoje
+
+No job `coverage` do CI, no commit `291a150` (17/11/2026), com todos os testes passando e o mesmo `pnpm coverage` (sem o emulador do
+Service Bus):
+
+| Pacote | Linhas | Instruções | Ramos | Funções | Testes |
+|---|---|---|---|---|---|
+| `apps/api` | 91,22% (6.878 de 7.540) | 90,72% | 83,59% | 92,25% | 3.221 em 164 arquivos (9 pulados, os mesmos da rodada de 06/11/2026) |
+| `packages/contracts` | 100% (333 de 333) | 100% | 99,31% | 100% | 504 em 13 arquivos |
+| `apps/web` | 67,64% (2.243 de 3.316) | 65,62% | 57,20% | 64,78% | 979 em 53 arquivos |
+
+A rodada local de 06/11/2026, a primeira com estas regras, com a linha de base e o que pesou em cada número:
 
 Medidos em 06/11/2026 (a rodada das 10:24), num Mac arm64, pelo `pnpm coverage` com o `TEST_DATABASE_URL` e o
 `STORAGE_CONNECTION_STRING` (sem o emulador do Service Bus, como o CI), com todos os testes passando. A linha de base do mesmo dia, medida
