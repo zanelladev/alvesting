@@ -1,5 +1,14 @@
 import { Logger } from '@nestjs/common';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from 'vitest';
 import { newId } from '../../../common/id.js';
 import type { PrismaService } from '../../../infrastructure/database/prisma.service.js';
 import {
@@ -48,7 +57,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('eod com a brapi (A1 a A5)'),
   let scheduled: Array<{ message: unknown; at: Date }>;
   let settled: IsoDate[][];
   let error: ReturnType<typeof vi.spyOn>;
-  let warn: ReturnType<typeof vi.spyOn>;
+  let warn: MockInstance<Logger['warn']>;
   let log: ReturnType<typeof vi.spyOn>;
 
   beforeAll(async () => {
@@ -629,6 +638,60 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('eod com a brapi (A1 a A5)'),
       await seed(w);
       expect(await run(handler(w), w, D1, '21:30')).toBe('rescheduled');
       expect(askedFor(w)).not.toContain('WEGE3');
+    });
+  });
+
+  describe('a abertura anômala', () => {
+    it('o papel que passa a ser cotado por lote sem evento registra abertura-anomala uma vez; o com evento e a queda pela metade, não', async () => {
+      // A partir de D1: o VALE3 é cotado por lote de 100 (o RAIZ4 de 03/11/2026), o ITUB4 desdobra 1:4 com o evento registrado e o PETR4
+      // abre pela metade (o circuit breaker de 26/10/2026). O histórico é o padrão do mercado sintético (marketOf).
+      const base = (ticker: string, date: IsoDate) =>
+        BigInt(3000 + 10 * ALL.indexOf(ticker) + Number(date.slice(8, 10)));
+      const close = (ticker: string, date: IsoDate) =>
+        date < D1
+          ? base(ticker, date)
+          : ticker === 'VALE3'
+            ? base(ticker, date) * 100n
+            : ticker === 'ITUB4'
+              ? base(ticker, date) / 4n
+              : ticker === 'PETR4'
+                ? base(ticker, date) / 2n
+                : base(ticker, date);
+      const w = world({}, spec({ close }));
+      await seed(w);
+      await prisma.corporateEvent.create({
+        data: {
+          id: newId(),
+          ticker: 'ITUB4',
+          exDate: day(D1),
+          kind: 'SPLIT',
+          ratioFrom: 1,
+          ratioTo: 4,
+        },
+      });
+      const signals = () =>
+        warn.mock.calls.filter(([, message]) => message === ALERT_LOG.openingAnomaly);
+      const eod = handler(w);
+
+      expect(await run(eod, w, D1, '21:30')).toBe('complete');
+      // a abertura do VALE3 em D1 (o lote: 302.300 - 5 centavos) contra o fechamento de D0 (3.050): 99,1 vezes; no log, só a razão
+      expect(signals()).toEqual([
+        [
+          { count: 1, first: [{ ticker: 'VALE3', date: D1, ratio: 99.1 }] },
+          ALERT_LOG.openingAnomaly,
+        ],
+      ]);
+      // a barra fica como veio (só inserção) e o pregão conclui e liquida como sempre
+      const vale3 = await prisma.dailyBar.findFirstOrThrow({
+        where: { date: day(D1), instrument: { ticker: 'VALE3' } },
+      });
+      expect(vale3.openCents).toBe(302_295n);
+      expect(settled).toEqual([[D1]]);
+
+      // a barra já gravada não é nova de novo: a segunda entrega e a noite seguinte não repetem o sinal
+      expect(await run(eod, w, D1, '21:31')).toBe('already_done');
+      expect(await run(eod, w, D2, '21:30')).toBe('complete');
+      expect(signals()).toHaveLength(1);
     });
   });
 });

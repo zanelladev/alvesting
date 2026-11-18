@@ -202,6 +202,7 @@ ContainerAppConsoleLogs_CL
     msg == "${ALERT_LOG.eodBarsMissing}", "${ALERT_SIGNAL.eodBarsMissing}",
     msg == "${ALERT_LOG.brapiQuotaLow}", "${ALERT_SIGNAL.brapiQuotaLow}",
     msg == "${ALERT_LOG.barsDiverged}", "${ALERT_SIGNAL.barsDiverged}",
+    msg == "${ALERT_LOG.openingAnomaly}", "${ALERT_SIGNAL.openingAnomaly}",
     msg == "${ALERT_LOG.cycleSkipped}", "${ALERT_SIGNAL.cycleSkipped}",
     "")
 | where sinal != ""
@@ -1909,6 +1910,7 @@ function signalOf(line) {
   if (msg === ALERT_LOG.eodBarsMissing) return ALERT_SIGNAL.eodBarsMissing;
   if (msg === ALERT_LOG.brapiQuotaLow) return ALERT_SIGNAL.brapiQuotaLow;
   if (msg === ALERT_LOG.barsDiverged) return ALERT_SIGNAL.barsDiverged;
+  if (msg === ALERT_LOG.openingAnomaly) return ALERT_SIGNAL.openingAnomaly;
   if (msg === ALERT_LOG.cycleSkipped) return ALERT_SIGNAL.cycleSkipped;
   return '';
 }
@@ -2063,6 +2065,17 @@ const APP_SIGNAL_CASES = [
       }),
     ],
     ['barras-divergentes'],
+  ],
+  [
+    'abertura anômala: a barra nova longe do fechamento anterior, sem evento corporativo na data',
+    [
+      pino(ALERT_LOG.openingAnomaly, {
+        Context: 'BarLoader',
+        count: 1,
+        first: [{ ticker: 'RAIZ4', date: '2026-11-03', ratio: 99.9 }],
+      }),
+    ],
+    ['abertura-anomala'],
   ],
   [
     'ciclo pulado por orçamento: alerta na primeira vez',

@@ -4,6 +4,7 @@ import { PrismaService } from '../../../infrastructure/database/prisma.service.j
 import type { Prisma } from '../../../generated/prisma/client.js';
 import type { IsoDate } from '../domain/dates.js';
 import type { InstrumentSeed } from '../domain/instruments.js';
+import type { Opening } from '../domain/opening-anomaly.js';
 import type { BrapiBar } from './brapi.client.js';
 
 // Instrumentos, barras diárias e calendário de pregões. A barra gravada nunca é sobrescrita, de nenhuma fonte (docs/DADOS.md, seção 6):
@@ -55,6 +56,8 @@ export interface InsertResult {
   divergent: BarDivergence[];
   // papéis sem linha em instrument: a barra deles não é gravada
   unknown: string[];
+  // as barras novas, com o fechamento anterior e o evento do dia (quem chama aplica a regra da abertura anômala)
+  openings: Opening[];
 }
 
 @Injectable()
@@ -114,9 +117,10 @@ export class MarketRepository {
   }
 
   // Grava as barras que faltam. Só INSERT: a que já existe fica como está, e a que chegou com valor diferente é devolvida em `divergent`
-  // (quem chama registra o sinal barras-divergentes). Um papel repetido no lote vale uma vez.
+  // (quem chama registra o sinal barras-divergentes). Um papel repetido no lote vale uma vez. A barra nova volta em `openings`, lida na
+  // mesma transação: a gravação e a conferência da abertura não se separam, e a barra que só entra uma vez é conferida uma vez.
   async insertBars(bars: readonly BrapiBar[]): Promise<InsertResult> {
-    if (bars.length === 0) return { inserted: 0, divergent: [], unknown: [] };
+    if (bars.length === 0) return { inserted: 0, divergent: [], unknown: [], openings: [] };
     const tickers = [...new Set(bars.map((bar) => bar.ticker))];
     return this.prisma.$transaction(async (tx) => {
       const ids = await this.instrumentIds(tx, tickers);
@@ -164,8 +168,38 @@ export class MarketRepository {
       );
       const inserted = await this.insertRows(tx, rows);
       await this.touchLastSeen(tx, rows);
-      return { inserted, divergent, unknown: tickers.filter((ticker) => !ids.has(ticker)) };
+      return {
+        inserted,
+        divergent,
+        unknown: tickers.filter((ticker) => !ids.has(ticker)),
+        openings: await this.openings(tx, rows),
+      };
     }, TRANSACTION);
+  }
+
+  // A abertura de cada barra nova, o fechamento da barra gravada antes dela (a do mesmo lote também: o INSERT já está na transação) e se há
+  // evento corporativo do papel com data ex no dia. Uma consulta: o LATERAL lê uma entrada do índice (instrument_id, date) por barra.
+  private async openings(
+    tx: Prisma.TransactionClient,
+    rows: Array<{ instrumentId: string; bar: BrapiBar }>,
+  ): Promise<Opening[]> {
+    if (rows.length === 0) return [];
+    const found = await tx.$queryRaw<Array<Omit<Opening, 'date'> & { date: Date }>>`
+      SELECT t.ticker, t.date, b.open_cents AS "openCents", prev.close_cents AS "previousCloseCents",
+        EXISTS (SELECT 1 FROM corporate_event e WHERE e.ticker = t.ticker AND e.ex_date = t.date) AS "exEvent"
+      FROM unnest(
+        ${rows.map((r) => r.instrumentId)}::text[],
+        ${rows.map((r) => r.bar.ticker)}::text[],
+        ${rows.map((r) => r.bar.date)}::date[]
+      ) AS t(instrument_id, ticker, date)
+      JOIN daily_bar b ON b.instrument_id = t.instrument_id AND b.date = t.date
+      LEFT JOIN LATERAL (
+        SELECT p.close_cents FROM daily_bar p
+        WHERE p.instrument_id = t.instrument_id AND p.date < t.date
+        ORDER BY p.date DESC LIMIT 1
+      ) prev ON true
+      ORDER BY t.ticker, t.date`;
+    return found.map((row) => ({ ...row, date: toIso(row.date) }));
   }
 
   private async instrumentIds(

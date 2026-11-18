@@ -216,6 +216,8 @@ resource metricRules 'Microsoft.Insights/metricAlerts@2018-03-01' = [
 //   eod-barras-ausentes EodHandler: o eod concluiu o pregão no prazo das 00:30 sem o BOVA11 ou sem mais de 10% do conjunto obrigatório
 //   brapi-cota-baixa    BrapiClient: a cota restante da brapi chegou à reserva (500 de 15 mil por 30 dias); a busca parou e o resto ficou como falta
 //   barras-divergentes  BarLoader: a brapi trouxe, para um papel e um pregão que já têm barra, valor diferente do gravado (a barra nunca muda)
+//   abertura-anomala    BarLoader: a barra nova abriu acima de 3 vezes ou abaixo de 1/3 do fechamento anterior, sem evento corporativo do
+//                       papel na data (desdobramento, grupamento ou troca de cotação sem registro, como o RAIZ4 de 03/11/2026)
 //   ciclo-pulado        CycleSchedulers: o ciclo do pregão foi pulado e nenhum modelo será chamado (teto mensal de LLM estourado ou sem
 //                       briefing). A arena parada sem aviso: o alerta de orçamento do Azure não vê o gasto do OpenRouter. Alerta na primeira vez
 // ponytail: o eod que nem chega a rodar (agendador fora, KEDA sem acordar o worker) não escreve linha nenhuma, e este alerta não o vê.
@@ -241,6 +243,7 @@ ContainerAppConsoleLogs_CL
     msg == "barras do pregão ausentes: o eod concluiu sem o BOVA11 ou sem parte do conjunto obrigatório", "eod-barras-ausentes",
     msg == "brapi: a cota restante chegou à reserva; a busca parou e o resto ficou como falta", "brapi-cota-baixa",
     msg == "barras divergentes: a brapi trouxe valor diferente do gravado e nada foi alterado", "barras-divergentes",
+    msg == "abertura anômala: a abertura da barra nova se afastou demais do fechamento anterior e não há evento corporativo na data", "abertura-anomala",
     msg == "sched-cycle: ciclo pulado, nenhum modelo será chamado", "ciclo-pulado",
     "")
 | where sinal != ""
@@ -268,7 +271,7 @@ resource appSignals 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
   kind: 'LogAlert'
   properties: {
     displayName: 'Alvesting: sinais da aplicação'
-    description: 'Uma linha de log que o código escreve num caso de atenção: 5xx acima de 1% nas requisições da api, job falho, falha de segurança da fila news, filtro de vazamento, HOLD por falha ou resposta inválida, e-mail da conta que falhou, aceite não gravado, barras do pregão ausentes, cota baixa da brapi, barras divergentes e ciclo pulado. Um alerta por sinal (dimensão sinal). O que fazer: docs/INFRA.md, seção 5.'
+    description: 'Uma linha de log que o código escreve num caso de atenção: 5xx acima de 1% nas requisições da api, job falho, falha de segurança da fila news, filtro de vazamento, HOLD por falha ou resposta inválida, e-mail da conta que falhou, aceite não gravado, barras do pregão ausentes, cota baixa da brapi, barras divergentes, abertura anômala e ciclo pulado. Um alerta por sinal (dimensão sinal). O que fazer: docs/INFRA.md, seção 5.'
     severity: 2
     enabled: true
     scopes: [workspaceId]
