@@ -9,5 +9,5 @@
     "useDefineForClassFields": false,
     "noEmit": true
   },
-  "include": ["src", "prisma.config.ts", "vitest.config.ts"]
+  "include": ["src", "analise", "prisma.config.ts", "vitest.config.ts"]
 }
