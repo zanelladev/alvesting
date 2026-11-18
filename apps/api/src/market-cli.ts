@@ -23,7 +23,8 @@ const USAGE = `Uso:
       Carga pela brapi: 3 meses de barras de todo papel da lista mais o BOVA11 (de uns 380 pedidos num banco novo a uns 440 no dev), só inserção e
       retomável. Sem --confirmo-banco NÃO usa a rede: mostra o banco de destino e quantas requisições faria.
       Com ele (o nome do banco que o modo sem rede mostrou), busca de verdade. --papeis e as datas recuperam um papel
-      ou uma janela. Não publica liquidação.
+      ou uma janela; o --ate é de antes de hoje (a barra do dia só fica pronta depois do fechamento), e sem ele a carga
+      vai até o pregão anterior. Não publica liquidação.
   market:universe <AAAA-Www>
       Monta e congela o universo da semana ISO (ex.: 2026-W45) sobre as barras do banco, sem rede.
   market:logos [--confirmo-banco <nome>]

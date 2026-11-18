@@ -382,7 +382,9 @@ ainda abaixo da cota.
 
 - **Carga inicial: `market:backfill`.** 3 meses de barras de todo papel da lista da brapi mais o BOVA11 (377 requisições num banco
   novo; a do dev, em 04/11/2026, fez 373), **só inserção e retomável** (só a falta). Não publica
-  `settle`. Aceita `--papeis`, `--de` e `--ate` (a prova controlada e a recuperação de um papel). **Modo sem rede** por padrão: mostra o
+  `settle`. Aceita `--papeis`, `--de` e `--ate` (a prova controlada e a recuperação de um papel); o `--ate` é de antes de hoje no fuso de
+  São Paulo, e o de hoje ou depois é recusado antes de qualquer pedido, porque a barra do pregão só fica pronta depois do fechamento e a
+  `daily_bar` é só inserção (o mesmo vale para o `--ate` do `arena:retroativo`). **Modo sem rede** por padrão: mostra o
   banco de destino (servidor e nome, sem credencial) e quantas requisições faria; só busca de verdade com `--confirmo-banco <nome do
   banco mostrado>`. No fim mostra as requisições feitas e a cota restante informada pela brapi (só o número). A janela padrão começa
   3 meses de calendário antes do **dia da execução** mais 3 dias (`historyStart`, 86 a 89 dias): a brapi só aceita **90 dias entre

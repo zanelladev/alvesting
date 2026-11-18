@@ -10,6 +10,7 @@ import { installNetworkGuard } from './ensaio/network-guard.js';
 import { assembleWorld } from './ensaio/world.js';
 import { PrismaService } from './infrastructure/database/prisma.service.js';
 import { formatUsd } from './modules/arena/domain/cost.js';
+import { assertBeforeToday } from './modules/market-data/application/backfill.js';
 import { brasiliaDate, isIsoDate } from './modules/market-data/domain/dates.js';
 import { loadTradingCalendar } from './modules/market-data/domain/trading-calendar.js';
 import { openRouterRemainingMicroUsd } from './temporada/credit.js';
@@ -35,7 +36,7 @@ import { planRetro, planText, runRetro } from './temporada/retro.js';
 const USAGE = `Uso:
   preparar                      cria o banco da temporada se faltar, aplica as migrations, roda o db:roles e copia o mercado do banco de dev
   retroativo [opções]           roda os pregões que já passaram, como RETROATIVO
-      --ate AAAA-MM-DD          o último pregão (padrão: o último com barras confirmadas antes de hoje)
+      --ate AAAA-MM-DD          o último pregão, de antes de hoje (padrão: o último com barras confirmadas antes de hoje)
       --teto-usd N              o teto de custo desta execução, em dólares (padrão 30)
       --dry-run                 só o plano: pregões, chamadas e custo estimado; nenhuma chamada e nenhuma escrita
       --arquivo <caminho>       o arquivo da temporada (padrão apps/api/seasons/temporada-1.json)
@@ -200,6 +201,8 @@ async function lastConfirmed(prisma: PrismaService): Promise<string | undefined>
 
 async function retro(args: Args, { prisma, calendar, dated, env }: Context): Promise<number> {
   const dir = path.join(repoRoot, '.data/temporada');
+  // o --ate de hoje ou depois sai aqui, no --dry-run também; o runRetro e a carga de barras recusam de novo
+  if (args.until) assertBeforeToday(args.until, brasiliaDate(new Date()));
   if (args.dryRun) {
     // o banco pode ainda não existir: o plano vale para a temporada inteira
     const reachable = await prisma.$queryRaw`SELECT 1`.then(
@@ -257,7 +260,6 @@ async function retro(args: Args, { prisma, calendar, dated, env }: Context): Pro
         mode: 'retroativo',
       }),
     );
-    const today = brasiliaDate(new Date());
     const fetchers = retroFetchers(world);
     log(
       `retroativo de ${dated.startDate} até ${until} (teto US$ ${args.capUsd}; prompt SHA-256 ${prompt.sha256})`,
@@ -271,7 +273,9 @@ async function retro(args: Args, { prisma, calendar, dated, env }: Context): Pro
       until,
       capUsd: args.capUsd,
       sources: {
-        bars: (from, to) => world.backfill.run({ from, to, today, fetch: true }),
+        // o hoje da hora de cada carga (a trava dela), para a meia-noite não recusar o que o runRetro já aceitou
+        bars: (from, to) =>
+          world.backfill.run({ from, to, today: brasiliaDate(new Date()), fetch: true }),
         bcb: fetchers.bcb,
         cvm: fetchers.cvm,
       },

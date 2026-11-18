@@ -16,6 +16,7 @@ export interface BackfillInput {
   tickers?: readonly string[];
   // o padrão é o histórico do plano gratuito: 3 meses antes de `today`
   from?: IsoDate;
+  // o último dia, de antes de `today` (assertBeforeToday)
   to: IsoDate;
   // o dia da execução, a base de `historyStart` (o pedido de 3 meses fica em 86 a 89 dias, abaixo dos 90 que a brapi aceita entre
   // startDate e endDate)
@@ -45,6 +46,18 @@ export interface BackfillSummary extends BackfillPlan {
   // a carga foi completa: foi ela que confirmou os pregões (veja `run`)
   complete: boolean;
   confirmedDays: number;
+}
+
+// A barra do pregão só fica pronta depois do fechamento (o eod a pede às 21:30), e a daily_bar é só inserção: a barra parcial de um pregão
+// ainda aberto, gravada por uma carga, fica no lugar do fechamento (o eod não pede o papel que já tem a barra do dia), e a busca que pedir o
+// dia de novo a vê diferente (o sinal barras-divergentes). Por isso o último dia que quem chama escolhe (o --ate do market:backfill e do
+// arena:retroativo) é de antes de hoje no calendário de Brasília, seja qual for a hora.
+export function assertBeforeToday(to: IsoDate, today: IsoDate): void {
+  if (to < today) return;
+  throw new RangeError(
+    `--ate ${to} recusado: o último dia tem de ser de antes de hoje (${today}, no fuso de São Paulo). A barra do pregão só fica pronta ` +
+      'depois do fechamento, e a daily_bar é só inserção: a barra parcial gravada agora não sairia mais. Nada foi buscado nem gravado.',
+  );
 }
 
 // A carga inicial e a recuperação à mão (market:backfill; docs/DADOS.md, seção 6): 3 meses de barras da brapi para todo papel da lista mais
@@ -96,6 +109,7 @@ export class BrapiBackfill {
 
   private async prepare(input: BackfillInput) {
     const to = input.to;
+    assertBeforeToday(to, input.today); // antes da lista da brapi e de qualquer leitura, no modo sem rede também
     const sessions = this.calendar.tradingDaysBetween(input.from ?? historyStart(input.today), to);
     if (sessions.length === 0) throw new RangeError('A janela não tem nenhum pregão');
 
