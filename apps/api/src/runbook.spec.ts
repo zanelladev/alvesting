@@ -34,7 +34,7 @@ describe('docs/RUNBOOK.md cobre os alertas, os sinais e as ações de auditoria'
 
   it('leu os alertas do Bicep, os sinais e as ações do código (a leitura não ficou vazia)', () => {
     expect(alertRules.length).toBeGreaterThanOrEqual(8);
-    expect(signals).toHaveLength(11);
+    expect(signals).toHaveLength(12);
     expect(actions.length).toBeGreaterThanOrEqual(11);
   });
 

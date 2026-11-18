@@ -14,7 +14,7 @@ Mapa: cada alerta, sinal, orçamento e ação de auditoria aponta para a seção
 |---|---|
 | `alvesting-dlq-qualquer-fila` | 3 |
 | `job-falhou`, `news-seguranca`, `alvesting-sinais-da-aplicacao` | 3 |
-| `eod-barras-ausentes`, `brapi-cota-baixa`, `barras-divergentes` | 12 |
+| `eod-barras-ausentes`, `brapi-cota-baixa`, `barras-divergentes`, `abertura-anomala` | 12 |
 | `alvesting-decisions-fila-parada`, `ciclo-pulado`, `hold-por-falha-ou-resposta-invalida` | 2 |
 | `filtro-de-vazamento` | 4 |
 | `alvesting-banco-cpu`, `alvesting-banco-disco` | 5 |
@@ -131,7 +131,7 @@ Se nenhuma execução acordou, `az containerapp job start -g $RG -n job-worker-d
 
 **Não ensaiado.** Cobre `admin.dlq.resubmit`, `alvesting-dlq-qualquer-fila`, a regra de log `alvesting-sinais-da-aplicacao` (um alerta por sinal), `job-falhou` e `news-seguranca`.
 
-Quando: o alerta da DLQ (uma mensagem em qualquer das seis filas), `job-falhou` (um `job_run` ficou `FAILED`) ou `news-seguranca` (a fila `news` falhou por motivo de segurança, já na primeira vez). O `eod-barras-ausentes`, o `brapi-cota-baixa` e o `barras-divergentes` têm a seção 12.
+Quando: o alerta da DLQ (uma mensagem em qualquer das seis filas), `job-falhou` (um `job_run` ficou `FAILED`) ou `news-seguranca` (a fila `news` falhou por motivo de segurança, já na primeira vez). O `eod-barras-ausentes`, o `brapi-cota-baixa`, o `barras-divergentes` e o `abertura-anomala` têm a seção 12.
 
 1. **Veja a causa.** `GET /admin/jobs`: `failures` (os 10 `FAILED` mais recentes, com o erro já sem dado pessoal e cortado em 300 caracteres) e `queues[].messages` (MessageId, entregas, motivo e hora; nunca o corpo).
 2. **Corrija antes de reenviar.** Por fila, o que manda a mensagem para a DLQ está em `docs/JOBS.md`, seção 5. Resumo:
@@ -542,9 +542,9 @@ O orçamento de US$ 100 (`budgetAmount = 100`, o crédito do Azure for Students)
 
 ---
 
-## 12. Cotações (brapi): barras ausentes, cota baixa, barras divergentes, brapi fora do ar, a carga inicial e os logos
+## 12. Cotações (brapi): barras ausentes, cota baixa, barras divergentes, abertura anômala, brapi fora do ar, a carga inicial e os logos
 
-**Não ensaiado.** Cobre `eod-barras-ausentes`, `brapi-cota-baixa` e `barras-divergentes`, mais a brapi fora do ar, a carga inicial e o calendário de feriados do ano. Só a carga inicial (seção 12.5, no banco descartável) e a leitura dos cabeçalhos de cota foram exercitadas contra a brapi de verdade, na prova controlada de 04/11/2026 (10 requisições; `docs/DADOS.md`, seção 9). Os alertas, o 429, o 5xx e a brapi fora do ar nunca foram vistos de verdade: os testes usam um `fetch` falso. A fonte é a brapi (ADR 0032); nada se baixa da B3.
+**Não ensaiado.** Cobre `eod-barras-ausentes`, `brapi-cota-baixa`, `barras-divergentes` e `abertura-anomala`, mais a brapi fora do ar, a carga inicial e o calendário de feriados do ano. Só a carga inicial (seção 12.5, no banco descartável) e a leitura dos cabeçalhos de cota foram exercitadas contra a brapi de verdade, na prova controlada de 04/11/2026 (10 requisições; `docs/DADOS.md`, seção 9). Os alertas, o 429, o 5xx e a brapi fora do ar nunca foram vistos de verdade: os testes usam um `fetch` falso. A fonte é a brapi (ADR 0032); nada se baixa da B3.
 
 ### 12.1 `eod-barras-ausentes`
 
@@ -657,6 +657,39 @@ pnpm --filter @alvesting/api market:logos --confirmo-banco <nome do banco>
 
 **Risco:** apontar para o banco errado grava logo onde não devia (por isso o nome do banco tem de ser repetido). Só apaga o logo que o
 validador de hoje recusa.
+
+### 12.8 `abertura-anomala`
+
+**Não ensaiado.** O sinal só foi visto nos testes, com a brapi falsa. O caso que o motivou, o RAIZ4 cotado por lote de 100 a partir de
+03/11/2026, foi achado à mão, numa varredura da abertura de cada ação contra o fechamento anterior, e corrigido em 15/11/2026
+(`docs/METODOLOGIA.md`, "O RAIZ4 cotado por lote").
+
+Quando: o `BarLoader` gravou a barra nova de um papel com a abertura **acima de 3 vezes ou abaixo de 1/3 do fechamento anterior** (o da
+barra gravada antes dela) e **não há evento corporativo** do papel com data ex naquele dia. A linha traz `count` e `first` (os 20
+primeiros), com o papel, a data e `ratio`, a razão abertura ÷ fechamento anterior com 3 algarismos (nenhum preço). Vale para o `eod`, para
+o `universe` de domingo (o histórico de um papel novo), no log do `ca-worker-data`, e para o `market:backfill`, no terminal de quem o roda.
+A barra fica como veio (só inserção), e o sinal sai uma
+vez só, quando ela é gravada. Sem o evento, a liquidação conta as ações de antes pelo preço de depois: um grupamento de 100 para 1
+multiplica por 100 o valor da posição de quem tem o papel (e o igual-peso tem todos os do universo).
+
+1. **Confira a ação.** O que aconteceu na data: grupamento, desdobramento ou troca do fator de cotação (o papel passou a ser cotado por
+   lote, ou deixou de ser). A fonte é o aviso aos acionistas ou o fato relevante da empresa (o site de RI ou a CVM). A série gravada mostra
+   o salto: `SELECT date, open_cents, close_cents FROM daily_bar WHERE instrument_id = (SELECT id FROM instrument WHERE ticker = '<TICKER>') AND date BETWEEN '<AAAA-MM-DD>'::date - 10 AND '<AAAA-MM-DD>'::date + 10 ORDER BY date;`
+2. **Grupamento, desdobramento ou troca de cotação: registre o evento no `/admin`** ("Evento corporativo", ou a rota da seção 9), com o
+   ticker e a data ex do aviso da empresa. Em geral é a data do sinal; se o papel ficou sem negócio no pregão da troca, o sinal sai no
+   primeiro pregão com barra depois dela. O fator vem do aviso; a razão do sinal só o confirma, porque inclui a variação do dia: `ratio`
+   perto de 100 é grupamento `100:1`, perto de 0,25 é desdobramento `1:4`. A troca para a cotação por lote de N ações entra como
+   grupamento `N:1` (foi o RAIZ4), e a volta para a unidade, como desdobramento `1:N`. A reliquidação das temporadas que já passaram da
+   data ex é enfileirada sozinha (seção 9).
+3. **Variação de verdade, sem evento na empresa** (um papel ilíquido, uma notícia): nada a fazer. A barra é a que a brapi serviu, e o sinal
+   não volta.
+4. **Data antes do início da temporada** (o histórico de um papel novo, no `universe` ou no `market:backfill`): o evento só muda o
+   resultado de quem tem a ação na data ex, então hoje não muda nada, e registrá-lo não faz mal.
+
+**Confira:** depois do registro, o `settle` em `SUCCEEDED` (`/admin/jobs`) e o igual-peso no `/ranking` sem o salto.
+
+**Risco:** um evento com o fator errado muda o resultado de todo competidor que tem a ação (para corrigir, seção 9, caso 1). O evento de
+uma série que a brapi já ajustou seria aplicado duas vezes (seção 12.3); aqui não é o caso, porque o salto está na série gravada.
 
 ## 13. Operador local: a Temporada 1 no Mac, até a Azure
 

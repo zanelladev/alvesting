@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { ALERT_LOG } from '../../../telemetry/alert-logs.js';
 import type { BarRequest } from '../domain/bar-plan.js';
+import { anomalousOpenings, type AnomalousOpening } from '../domain/opening-anomaly.js';
 import type { BrapiClient, BrapiRun, PaperResult } from '../infrastructure/brapi.client.js';
 import type { BarDivergence, MarketRepository } from '../infrastructure/market.repository.js';
 
@@ -23,8 +24,10 @@ export interface LoadOptions {
 // Pede à brapi, um papel por vez, as barras que o banco não tem e grava cada papel assim que ele chega: o que já veio não se perde se um 401
 // ou o fim do orçamento interromper a passada, e a nova tentativa pede só a falta. É o caminho comum do eod, da atualização semanal e da
 // carga inicial. A barra que o banco já tem nunca muda; se chegou com valor diferente, o sinal barras-divergentes sai no log (papel, data e
-// campos, os 20 primeiros). O papel sem linha em instrument (o BOVA11 antes da carga inicial, por exemplo) tem a barra descartada: sem o aviso
-// o eod gastaria uma requisição por noite com ele sem ninguém ver o motivo.
+// campos, os 20 primeiros). A barra nova que abre acima de 3 vezes ou abaixo de 1/3 do fechamento anterior, sem evento corporativo na data
+// (domain/opening-anomaly.ts), é o sinal abertura-anomala (papel, data e razão, os 20 primeiros; nenhum preço). O papel sem linha em
+// instrument (o BOVA11 antes da carga inicial, por exemplo) tem a barra descartada: sem o aviso o eod gastaria uma requisição por noite com
+// ele sem ninguém ver o motivo.
 export class BarLoader {
   private readonly logger = new Logger(BarLoader.name);
 
@@ -44,6 +47,7 @@ export class BarLoader {
       divergent: [],
       unknown: [],
     };
+    const anomalous: AnomalousOpening[] = [];
     try {
       const run = await this.brapi.fetchBars(
         requests,
@@ -56,6 +60,7 @@ export class BarLoader {
           report.inserted += saved.inserted;
           report.divergent.push(...saved.divergent);
           report.unknown.push(...saved.unknown);
+          anomalous.push(...anomalousOpenings(saved.openings));
           return options.stopAfter?.(result) ? 'stop' : undefined;
         },
         options.budgetMs,
@@ -67,6 +72,13 @@ export class BarLoader {
         this.logger.warn(
           { count: report.divergent.length, first: report.divergent.slice(0, 20) },
           ALERT_LOG.barsDiverged,
+        );
+      }
+      // a barra só é nova uma vez: o aviso que não sair aqui não sai mais
+      if (anomalous.length > 0) {
+        this.logger.warn(
+          { count: anomalous.length, first: anomalous.slice(0, 20) },
+          ALERT_LOG.openingAnomaly,
         );
       }
       if (report.unknown.length > 0) {

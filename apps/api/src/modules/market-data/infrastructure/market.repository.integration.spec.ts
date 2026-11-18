@@ -51,6 +51,7 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
     await prisma.dailyBar.deleteMany();
     await prisma.instrument.deleteMany();
     await prisma.tradingDay.deleteMany();
+    await prisma.corporateEvent.deleteMany();
   });
 
   afterAll(async () => {
@@ -126,7 +127,20 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
 
     it('grava a barra em centavos (bigint), de origem BRAPI, e avança o last_seen do papel', async () => {
       const result = await repo.insertBars([bar()]);
-      expect(result).toEqual({ inserted: 1, divergent: [], unknown: [] });
+      expect(result).toEqual({
+        inserted: 1,
+        divergent: [],
+        unknown: [],
+        openings: [
+          {
+            ticker: 'PETR4',
+            date: '2026-10-30',
+            openCents: 5245n,
+            previousCloseCents: null,
+            exEvent: false,
+          },
+        ],
+      });
       // o volume passa de 2^53 sem perder o último dígito (vai como texto e volta a bigint no SQL)
       await repo.insertBars([bar({ date: '2026-10-29', volumeCents: 2n ** 60n + 1n })]);
       expect(
@@ -162,7 +176,8 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
         Array<{ xmin: string }>
       >`SELECT xmin::text FROM daily_bar`;
       const again = await repo.insertBars([bar()]);
-      expect(again).toEqual({ inserted: 0, divergent: [], unknown: [] });
+      // e a barra que não é nova não volta a ser conferida (o sinal abertura-anomala sai uma vez só)
+      expect(again).toEqual({ inserted: 0, divergent: [], unknown: [], openings: [] });
       const after = await prisma.$queryRaw<
         Array<{ xmin: string }>
       >`SELECT xmin::text FROM daily_bar`;
@@ -240,7 +255,78 @@ describe.skipIf(!testDatabaseUrl)(integrationTitle('MarketRepository'), () => {
     });
 
     it('lista vazia não faz nada', async () => {
-      expect(await repo.insertBars([])).toEqual({ inserted: 0, divergent: [], unknown: [] });
+      expect(await repo.insertBars([])).toEqual({
+        inserted: 0,
+        divergent: [],
+        unknown: [],
+        openings: [],
+      });
+    });
+
+    // A regra da abertura anômala é do domínio (opening-anomaly.spec.ts); daqui saem os fatos de cada barra nova.
+    it('as barras novas voltam com o fechamento anterior (o gravado ou o do mesmo lote) e o evento corporativo do dia', async () => {
+      await repo.insertBars([bar({ date: '2026-10-29', closeCents: 5200n })]);
+      // PETR4 grupado de 100 para 1 com data ex 03/11; o evento do VALE3 é de outro dia e não vale para a barra de 03/11
+      await prisma.corporateEvent.createMany({
+        data: [
+          {
+            id: newId(),
+            ticker: 'PETR4',
+            exDate: day('2026-11-03'),
+            kind: 'REVERSE_SPLIT',
+            ratioFrom: 100,
+            ratioTo: 1,
+          },
+          {
+            id: newId(),
+            ticker: 'VALE3',
+            exDate: day('2026-11-04'),
+            kind: 'SPLIT',
+            ratioFrom: 1,
+            ratioTo: 2,
+          },
+        ],
+      });
+      const result = await repo.insertBars([
+        // já gravada: não é nova
+        bar({ date: '2026-10-29', closeCents: 5200n }),
+        // o fechamento anterior é o de 29/10, que já estava no banco
+        bar({ date: '2026-10-30', closeCents: 5300n }),
+        // o de 30/10, que entra neste mesmo lote
+        bar({
+          date: '2026-11-03',
+          openCents: 527_100n,
+          highCents: 530_000n,
+          lowCents: 520_000n,
+          closeCents: 525_000n,
+        }),
+        // a primeira barra do VALE3: sem fechamento anterior
+        bar({ ticker: 'VALE3', date: '2026-11-03' }),
+      ]);
+      expect(result.inserted).toBe(3);
+      expect(result.openings).toEqual([
+        {
+          ticker: 'PETR4',
+          date: '2026-10-30',
+          openCents: 5245n,
+          previousCloseCents: 5200n,
+          exEvent: false,
+        },
+        {
+          ticker: 'PETR4',
+          date: '2026-11-03',
+          openCents: 527_100n,
+          previousCloseCents: 5300n,
+          exEvent: true,
+        },
+        {
+          ticker: 'VALE3',
+          date: '2026-11-03',
+          openCents: 5245n,
+          previousCloseCents: null,
+          exEvent: false,
+        },
+      ]);
     });
 
     it('o banco recusa o que o cliente já filtra: máxima abaixo da mínima derruba o lote inteiro (CHECK)', async () => {

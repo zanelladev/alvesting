@@ -27,6 +27,10 @@ export const ALERT_LOG = {
     'brapi: a cota restante chegou à reserva; a busca parou e o resto ficou como falta',
   // BarLoader: a brapi trouxe, para um papel e um pregão que já têm barra, valor diferente do gravado (a barra existente nunca muda).
   barsDiverged: 'barras divergentes: a brapi trouxe valor diferente do gravado e nada foi alterado',
+  // BarLoader: a barra nova abriu acima de 3 vezes ou abaixo de 1/3 do fechamento anterior (domain/opening-anomaly.ts) e o papel não tem
+  // evento corporativo com data ex no dia: desdobramento, grupamento ou troca do fator de cotação sem registro (o RAIZ4 de 03/11/2026).
+  openingAnomaly:
+    'abertura anômala: a abertura da barra nova se afastou demais do fechamento anterior e não há evento corporativo na data',
   // CycleSchedulers: o ciclo do pregão foi PULADO e nenhum modelo será chamado (motivo `orcamento`, quando o teto mensal de LLM estoura, ou
   // `sem_briefing`). Era a arena parada sem aviso: o alerta de orçamento do Azure não vê o gasto do OpenRouter (docs/INFRA.md, 5.3).
   cycleSkipped: 'sched-cycle: ciclo pulado, nenhum modelo será chamado',
@@ -44,6 +48,7 @@ export const ALERT_SIGNAL = {
   eodBarsMissing: 'eod-barras-ausentes',
   brapiQuotaLow: 'brapi-cota-baixa',
   barsDiverged: 'barras-divergentes',
+  openingAnomaly: 'abertura-anomala',
   cycleSkipped: 'ciclo-pulado',
   newsSecurity: 'news-seguranca',
   api5xx: 'api-5xx',

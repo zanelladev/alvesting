@@ -308,7 +308,9 @@ passada não toma a trava consultiva da brapi: o host é outro e estático).
   quantidade na data ex) aplicaria o fator duas vezes. O RUNBOOK diz para conferir a série antes de registrar o evento de um papel
   assim.
 - **Sem papel por lote.** O arquivo da B3 cotava GOLL54 e AZUL53 por lote (de 1.000 e 1.000.000 ações) e o código os filtrava por um fator
-  de cota. Os dois saíram com o dev recriado (seção 1), a brapi não lista papel por lote, e o filtro saiu do código e do schema.
+  de cota. Os dois saíram com o dev recriado (seção 1), a brapi não lista papel por lote, e o filtro saiu do código e do schema. Exceção
+  vista depois: o RAIZ4 passou a ser cotado por lote de 100 em 03/11/2026, e a brapi seguiu com o mesmo ticker e o preço do lote
+  (`docs/METODOLOGIA.md`); o sinal `abertura-anomala` (seção 6) é o que pega esse caso.
 
 ### 5. Calendário de pregões (`trading_day`)
 
@@ -350,6 +352,15 @@ e o plano gratuito (15 mil por mês) só dá conta assim. As regras:
   não vê a linha da vencedora: o dado não duplica nem se perde (medido: 200 pares simultâneos, 200 linhas, nenhum erro), mas a
   divergência pode passar sem o sinal. O `eod` repetido é serializado pelo `job_run` e as requisições, pela trava, então só a carga manual
   durante a noite abre essa janela; o RUNBOOK diz para não rodar a carga manual entre 21:30 e 00:30.
+- **Abertura anômala.** A barra nova que abre **acima de 3 vezes ou abaixo de 1/3 do fechamento anterior** (o da barra gravada antes
+  dela), sem evento corporativo do papel com data ex no dia, vira o sinal **`abertura-anomala`** (papel, data e a razão abertura ÷
+  fechamento anterior com 3 algarismos, os 20 primeiros; **nenhum preço**). É o desdobramento, o grupamento ou a troca do fator de
+  cotação que ninguém registrou: em 03/11/2026 o RAIZ4 passou a ser cotado por lote de 100, e sem o evento o igual-peso ficou uns
+  R$ 17 mil acima do certo até 15/11 (`docs/METODOLOGIA.md`). Queda de mercado não chega lá: no circuit breaker de 26/10/2026 as aberturas
+  ficaram perto da metade. A regra é `domain/opening-anomaly.ts` (limites estritos, só inteiros); os fatos (o fechamento anterior,
+  inclusive o de uma barra do mesmo lote, e o evento) saem do `insertBars`, na mesma transação da gravação, então cada barra é conferida
+  uma vez, quando entra, no `eod`, no `universe` e no `market:backfill`, e o sinal não se repete. A barra fica como veio; o que fazer
+  está no RUNBOOK, seção 12.8.
 - **Papel sem linha em `instrument` não tem a barra gravada.** O BOVA11 só nasce em `instrument` pela carga inicial; antes dela o `eod`
   o pede toda noite e descarta a resposta. O `BarLoader` registra o aviso (`barras de papel sem linha em instrument foram descartadas`,
   os 20 primeiros) para a causa não ficar invisível.
