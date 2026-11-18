@@ -155,13 +155,35 @@ export const direction = (value: number) => (value > 0 ? 'up' : value < 0 ? 'dow
 // verdade, tudo some sozinho. A etiqueta é a pílula cinza sem borda, de 20 px; o espaço antes dela vai junto (o texto lê "Nome simulado").
 export const isSimulated = (competitor: Pick<PublicCompetitor, 'type' | 'provider'>): boolean =>
   competitor.type === 'MODEL' && competitor.provider === 'fake';
+const ETIQUETA =
+  'inline-flex h-5 shrink-0 items-center rounded-full bg-surface-strong px-2 align-middle text-xs leading-none font-medium whitespace-nowrap text-muted';
 export const SimulatedTag = () => (
   <>
     {' '}
-    <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-surface-strong px-2 align-middle text-xs leading-none font-medium whitespace-nowrap text-muted">
-      simulado
-    </span>
+    <span className={ETIQUETA}>simulado</span>
   </>
+);
+
+// O pregão retroativo (ADR 0038; lib/retroativo.ts): rodado depois, e não ao vivo. A marca é a do "simulado" (docs/DESIGN.md: visível,
+// discreta e uma vez por contexto), na mesma pílula: a etiqueta junto da data do pregão (o item do feed, a página do ciclo, a decisão sobre a
+// ação, o último ciclo) e a nota, com a frase, uma vez na página que mostra o resultado da temporada (a arena, o ranking, o modelo). Nunca
+// num nome: o modo é do pregão, não do competidor.
+export const RetroativoTag = () => (
+  <>
+    {' '}
+    <span className={ETIQUETA}>retroativo</span>
+  </>
+);
+export const NotaRetroativa = ({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) => (
+  <p className={className ? `nota-retroativa ${className}` : 'nota-retroativa'}>
+    <RetroativoTag /> {children}
+  </p>
 );
 
 // Quem a nota cobre: todos os modelos (a arena de hoje) ou os nomes dos simulados (uma temporada mista), para a nota nunca dizer que um modelo

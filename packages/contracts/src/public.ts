@@ -174,6 +174,11 @@ export const equitySchema = z
   .strictObject({
     season: seasonSummarySchema,
     dates: z.array(isoDate),
+    // o modo do ciclo de cada data (cycle.ts, CYCLE_MODES), alinhado com `dates`: o site marca o trecho retroativo no gráfico (ADR 0038).
+    // Nulo no pregão liquidado sem ciclo, que a liquidação conta como HOLD de todos e o `cyclesByMode` do ranking deixa de fora. Opcional
+    // pela ordem do deploy (docs/API.md, "Limites conhecidos", e): o site passou a aceitá-lo antes de a api mandá-lo, e sem ele só não marca
+    // o trecho; a api sempre o manda (o teste de integração confere)
+    modes: z.array(cycleModeSchema.nullable()).optional(),
     series: z.array(
       z.strictObject({ competitor: publicCompetitorSchema, equityCents: z.array(cents) }),
     ),
@@ -181,6 +186,10 @@ export const equitySchema = z
   .refine((equity) => equity.series.every((s) => s.equityCents.length === equity.dates.length), {
     path: ['series'],
     message: 'cada série tem um valor por data',
+  })
+  .refine((equity) => equity.modes === undefined || equity.modes.length === equity.dates.length, {
+    path: ['modes'],
+    message: 'um modo por data',
   });
 export type Equity = z.infer<typeof equitySchema>;
 

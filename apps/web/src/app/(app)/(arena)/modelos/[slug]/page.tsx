@@ -10,6 +10,7 @@ import {
   Empty,
   Fact,
   Facts,
+  NotaRetroativa,
   PageHead,
   Section,
   SimulatedTag,
@@ -28,13 +29,16 @@ import {
 } from '../../../../../lib/format';
 import { versoesDosLogos } from '../../../../../lib/logos';
 import { orNotFound } from '../../../../../lib/page';
+import { fraseDaSerie, type Modo } from '../../../../../lib/retroativo';
 import { withApiDown } from '../../../../../lib/with-api-down';
 
 // A página de um competidor (plano §3; ADR 0041): o cabeçalho com o logo do laboratório, o
 // nome inteiro (com o sufixo de versão, que os lugares apertados tiram) e a etiqueta "simulado" junto do título (uma vez, docs/DESIGN.md), o
 // modelo com o provedor e o ID fixados na criação da temporada, o resultado, a carteira do último pregão liquidado (com o logo de cada ação),
 // a série de patrimônio (o Line Chart da beUI: uma linha, com o rótulo no fim e a faixa do Monte Carlo) e as decisões, em itens de feed. O Sorteio e as referências também têm página, mas não
-// decidem nem mostram a composição da carteira (só o patrimônio: NO_HOLDINGS).
+// decidem nem mostram a composição da carteira (só o patrimônio: NO_HOLDINGS). O trecho retroativo da temporada (ADR 0038) vai uma vez, na nota
+// do cabeçalho (o resultado, a carteira e a série incluem os pregões dele), com o fundo hachurado no gráfico e a etiqueta na decisão do pregão
+// retroativo. O modo de cada pregão vem da série da temporada (`equity`, pelo mesmo cache de dados da arena), pela data.
 export const dynamic = 'force-dynamic';
 
 const KIND: Record<CompetitorType, string> = {
@@ -123,12 +127,19 @@ export default withApiDown(async function CompetitorPage({ params }: Props) {
   const { slug } = await params;
   const detail = await orNotFound(api.competitor(slug));
   const { competitor, stat, portfolio, series, decisions, season } = detail;
-  // a faixa do Monte Carlo, o último ciclo (o segmentado da área) e os logos das ações não dependem um do outro
-  const [baseline, { lastCycle }, logos] = await Promise.all([
+  // a faixa do Monte Carlo, o modo de cada pregão, o último ciclo (o segmentado da área) e os logos das ações não dependem um do outro
+  const [baseline, equity, { lastCycle }, logos] = await Promise.all([
     series.dates.length > 0 ? api.randomBaseline(season.slug) : null,
+    series.dates.length > 0 ? api.equity(season.slug) : null,
     api.arenaCurrent(),
     versoesDosLogos(),
   ]);
+  // pela data, e não pela posição: uma liquidação entre as duas leituras deixaria uma data a mais numa delas
+  const modoDe = new Map(
+    (equity?.dates ?? []).map((date, i): [string, Modo] => [date, equity?.modes?.[i] ?? null]),
+  );
+  const modes = series.dates.map((date) => modoDe.get(date) ?? null);
+  const retroativos = fraseDaSerie({ dates: series.dates, modes });
   // a arena simulada: o ID do provedor fake é a estratégia que decide no lugar do modelo (ui.tsx, SimulatedTag)
   const simulated = isSimulated(competitor);
 
@@ -178,6 +189,7 @@ export default withApiDown(async function CompetitorPage({ params }: Props) {
             </span>
           </p>
         ) : null}
+        {retroativos ? <NotaRetroativa>{retroativos}</NotaRetroativa> : null}
       </PageHead>
 
       <Section id="resultado" title="Resultado">
@@ -237,6 +249,7 @@ export default withApiDown(async function CompetitorPage({ params }: Props) {
             series={[{ competitor, cents: series.equityCents }]}
             band={baseline ? alignBand(series.dates, baseline.rows) : null}
             capitalCents={season.params.capitalCents}
+            modes={modes}
           />
         ) : (
           <Empty>{NO_RESULT}</Empty>

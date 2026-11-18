@@ -1660,8 +1660,9 @@ html[data-tema-revelar]::view-transition-new(root) {
    tokens; o movimento é de 150 ms, nomeia o que muda e a regra global do movimento reduzido o zera. */
 @layer components {
   /* a nota "simulado" (ui.tsx, NotaSimulada): a etiqueta cinza sem borda e uma frase curta, numa linha discreta (a honestidade é obrigatória,
-     o peso não; docs/DESIGN.md) */
-  .nota-simulada {
+     o peso não; docs/DESIGN.md). A do trecho retroativo (NotaRetroativa; ADR 0038) é a mesma linha. */
+  .nota-simulada,
+  .nota-retroativa {
     @apply flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-pretty text-muted;
   }
   /* As vistas da arena abaixo de 1280 px (o QA do fechamento, achado 7: as abas "Decisões | Carteiras" eram âncoras que pareciam abas): a
@@ -1696,6 +1697,15 @@ html[data-tema-revelar]::view-transition-new(root) {
   .mc-amostra {
     @apply inline-block h-2.5 w-5 shrink-0 rounded-sm border border-hairline-strong;
     background: color-mix(in oklab, var(--color-ink) 3%, transparent);
+  }
+  /* o trecho retroativo do gráfico do patrimônio (line-chart.tsx; ADR 0038): o fundo hachurado no fio forte, atrás das linhas, e a amostra
+     dele na legenda. A hachura não é o cinza liso da faixa do Monte Carlo: as duas se distinguem pelo desenho, sem cor nova */
+  .trecho-retroativo {
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--color-hairline-strong) 0 1px,
+      transparent 1px 8px
+    );
   }
   /* O "i" que explica a faixa do Monte Carlo (line-chart.tsx; o pedido do Artur em 06/11/2026): abre a explicação no clique, no toque e pelo
      teclado, e o Esc e o toque fora fecham. É o popover nativo, como o menu "Mais", sem JavaScript: o tooltip da Arc (o `Termo` da carteira)

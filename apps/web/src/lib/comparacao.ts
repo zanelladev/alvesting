@@ -1,6 +1,7 @@
 import type { InternalBar, PublicCompetitor } from '@alvesting/contracts';
 import { PORTFOLIO_LIMITS } from '@alvesting/contracts/portfolio-rules';
 import { variationBps } from './format';
+import { contagemDosModos, periodoDosTrechos, trechosRetroativos, type Modo } from './retroativo';
 
 // A comparação da carteira com a arena (o pedido do Artur em 17/11/2026; docs/TELAS.md, seção 9): o mesmo dinheiro, nas mesmas datas, em cada
 // competidor. Cada compra com data entra, com o mesmo custo, na carteira de cada competidor antes da abertura do dia da compra (pelo fechamento
@@ -35,6 +36,9 @@ export interface Comparacao {
   voce: Resultado | null;
   // do maior valor para o menor
   competidores: Array<Resultado & { competitor: PublicCompetitor }>;
+  // os pregões retroativos da arena que a comparação cobre (do primeiro em que uma compra entra ao último liquidado; ADR 0038), quantos e
+  // quando; nulo sem nenhum, e sem compra que entre
+  retroativos: { pregoes: number; periodo: string } | null;
 }
 
 // A compra cai no período da série: do primeiro pregão ao último liquidado.
@@ -60,13 +64,16 @@ const resultado = (valor: bigint, investido: bigint): Resultado => ({
 export function compararCarteira({
   lots,
   dates,
+  modes,
   capitalCents,
   series,
   closes,
 }: {
   lots: readonly Compra[];
-  // as datas da série do patrimônio, da mais antiga à mais nova (a última é o último pregão liquidado)
+  // as datas da série do patrimônio, da mais antiga à mais nova (a última é o último pregão liquidado), e o modo do ciclo de cada uma (sem
+  // ele, a api de antes do campo, a comparação não diz o trecho retroativo)
   dates: readonly string[];
+  modes?: readonly Modo[] | undefined;
   capitalCents: number;
   series: readonly { competitor: PublicCompetitor; equityCents: readonly number[] }[];
   // o fechamento de cada ação no último pregão liquidado (fechamentoAte); a que falta fica de fora, "sem cotação"
@@ -85,7 +92,7 @@ export function compararCarteira({
   }
   const investido = dentro.reduce((sum, lot) => sum + BigInt(lot.costCents), 0n);
   const base = { inicio, ate, compras: dentro.length, investidoCents: Number(investido), fora };
-  if (dentro.length === 0) return { ...base, voce: null, competidores: [] };
+  if (dentro.length === 0) return { ...base, voce: null, competidores: [], retroativos: null };
 
   const voce = dentro.reduce(
     (sum, lot) => sum + BigInt(lot.quantity) * BigInt(closes.get(lot.ticker)!),
@@ -108,5 +115,13 @@ export function compararCarteira({
       return { competitor: s.competitor, ...resultado(valor, investido) };
     })
     .sort((a, b) => b.valorCents - a.valorCents);
-  return { ...base, voce: resultado(voce, investido), competidores };
+  // o primeiro pregão que a comparação cobre é o da compra mais antiga: os retroativos dali até o último liquidado
+  const desde = Math.min(...entrada) + 1;
+  const cobertos = modes?.slice(desde) ?? [];
+  const pregoes = contagemDosModos(cobertos).RETROATIVO;
+  const retroativos =
+    pregoes > 0
+      ? { pregoes, periodo: periodoDosTrechos(dates.slice(desde), trechosRetroativos(cobertos)) }
+      : null;
+  return { ...base, voce: resultado(voce, investido), competidores, retroativos };
 }

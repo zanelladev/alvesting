@@ -22,7 +22,9 @@ import {
   Facts,
   LINK,
   NavLink,
+  NotaRetroativa,
   PageHead,
+  RetroativoTag,
   Segmentado,
   direction,
   isSimulated,
@@ -43,6 +45,7 @@ import {
 import { versoesDosLogos } from '../../../../lib/logos';
 import { actionOf, cursorOf, first, orNotFound, type SearchParams } from '../../../../lib/page';
 import { REFERENCE_TICKER, readBars } from '../../../../lib/quotes';
+import { fraseDaSerie } from '../../../../lib/retroativo';
 import { withApiDown } from '../../../../lib/with-api-down';
 
 // A arena (ADR 0041; o conteúdo é o da home de antes, que virou a landing): o placar dos modelos no topo da coluna, a barra "Carteiras"
@@ -50,7 +53,9 @@ import { withApiDown } from '../../../../lib/with-api-down';
 // da beUI, com o rótulo no fim de cada linha), as cotações e o macro com a data de cada valor, os ciclos, o feed de decisões com o filtro por
 // BUY, SELL e HOLD e por modelo, e a temporada. O e2e acha as regiões pelo nome ("Ranking", "Patrimônio", "Cotações e macro", "Ciclos",
 // "Decisões", "Temporada" e "Carteiras"), não pela ordem. O "simulado" vai uma vez (docs/DESIGN.md): o aviso discreto no topo cobre a página
-// inteira, e as peças tiram a nota delas (`avisoNaPagina`).
+// inteira, e as peças tiram a nota delas (`avisoNaPagina`). O trecho retroativo da temporada (ADR 0038) também: a nota uma vez, embaixo do
+// aviso (o resultado da faixa, do gráfico e das carteiras inclui os pregões dele), o fundo hachurado no gráfico e a etiqueta no item do feed
+// e no último ciclo, que são de um pregão.
 // A página lê a api pelo cache de dados do site (src/lib/api.ts) e é dinâmica: o `next build` da imagem não tem api para chamar. O BOVA11
 // da faixa de cotações não vem da API pública (ela não entrega cotação bruta): sai da rota interna, com o segredo do servidor
 // (src/lib/quotes.ts; docs/API.md, seção 6), lido em paralelo com as outras e pelo mesmo cache de dados.
@@ -367,6 +372,8 @@ export default withApiDown(async function ArenaPage({
     ? ranking.rows.map((row) => row.competitor)
     : feed.rows.map((row) => row.competitor);
   const parcial = !ranking?.rows.length && Boolean(action || modelo || cursor);
+  // quantos dos pregões liquidados foram retroativos, e quando (lib/retroativo.ts): nenhum, nada
+  const retroativos = equity ? fraseDaSerie(equity) : null;
 
   return (
     <ComBarra
@@ -403,6 +410,7 @@ export default withApiDown(async function ArenaPage({
         </p>
       </PageHead>
       <AvisoSimulado competitors={elenco} parcial={parcial} />
+      {retroativos ? <NotaRetroativa className="mt-2">{retroativos}</NotaRetroativa> : null}
       {/* No celular e no tablet, uma vista por vez: as decisões (o conteúdo da arena) ou as carteiras, pelo segmentado.
           São links do servidor (a URL guarda a escolha), no desenho do segmentado, com a escolhida marcada; a partir de 1280 px as duas
           aparecem e as abas somem. */}
@@ -480,6 +488,7 @@ export default withApiDown(async function ArenaPage({
               band={baseline ? alignBand(equity.dates, baseline.rows) : null}
               capitalCents={equity.season.params.capitalCents}
               defaultHidden={referencias}
+              modes={equity.modes}
             />
           ) : (
             <Empty>{NO_RESULT}</Empty>
@@ -508,6 +517,7 @@ export default withApiDown(async function ArenaPage({
                           {formatDate(lastCycle.date)}
                         </NavLink>{' '}
                         <span className="text-sm text-body">{CYCLE_STATUS[lastCycle.status]}</span>
+                        {lastCycle.mode === 'RETROATIVO' ? <RetroativoTag /> : null}
                       </>
                     ) : (
                       'Ainda não houve ciclo nesta temporada.'

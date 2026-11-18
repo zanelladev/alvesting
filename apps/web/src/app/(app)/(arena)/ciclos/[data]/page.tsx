@@ -8,9 +8,14 @@ import {
   telasDaArena,
 } from '../../../../../components/arena/pagina';
 import { DecisionCard } from '../../../../../components/decisions';
-import { Empty, Fact, Facts, PageHead, Section } from '../../../../../components/ui';
+import { Empty, Fact, Facts, PageHead, RetroativoTag, Section } from '../../../../../components/ui';
 import { api } from '../../../../../lib/api';
-import { formatDate, formatTime, formatWeekdayDate } from '../../../../../lib/format';
+import {
+  formatDate,
+  formatDateTime,
+  formatTime,
+  formatWeekdayDate,
+} from '../../../../../lib/format';
 import { versoesDosLogos } from '../../../../../lib/logos';
 import { orNotFound } from '../../../../../lib/page';
 import { withApiDown } from '../../../../../lib/with-api-down';
@@ -18,7 +23,9 @@ import { withApiDown } from '../../../../../lib/with-api-down';
 // O ciclo de um pregão (plano §3 e §10; ADR 0041: as decisões em itens de feed, numa
 // coluna): os horários, a versão e o SHA-256 do prompt (o texto nunca, nem em bloco de código), o SHA-256 do briefing (a mono, a única desta
 // tela), as decisões de cada modelo, com o logo de cada ação à esquerda do ticker, e os itens descartados com o motivo. O "simulado" vai uma
-// vez, no aviso discreto do topo, e os itens tiram a etiqueta deles. `:data` é AAAA-MM-DD; o ULID do ciclo também vale (a api aceita os dois).
+// vez, no aviso discreto do topo, e os itens tiram a etiqueta deles. O pregão retroativo (ADR 0038) também vai uma vez: a etiqueta junto da
+// situação, e em "Horários" a hora em que o ciclo rodou de verdade, com a frase que diz que os outros horários são os do relógio do pregão (os
+// itens não a repetem). `:data` é AAAA-MM-DD; o ULID do ciclo também vale (a api aceita os dois).
 export const dynamic = 'force-dynamic';
 
 const SKIP_REASON = {
@@ -73,6 +80,7 @@ export default withApiDown(async function CyclePage({ params }: Props) {
   ]);
   const flag = FLAG[cycle.status];
   const last = lastCycle?.date ?? null;
+  const retroativo = cycle.mode === 'RETROATIVO';
 
   return (
     <>
@@ -91,6 +99,7 @@ export default withApiDown(async function CyclePage({ params }: Props) {
           <span className="inline-flex h-6 items-center rounded-full bg-surface-strong px-2.5 align-middle text-xs leading-none font-medium whitespace-nowrap text-ink">
             {flag}
           </span>
+          {retroativo ? <RetroativoTag /> : null}
           <span>{formatWeekdayDate(cycle.date)}</span>
         </p>
       </PageHead>
@@ -111,9 +120,14 @@ export default withApiDown(async function CyclePage({ params }: Props) {
           <Fact term="Fechamento">
             {cycle.closedAt ? formatTime(cycle.closedAt, true) : 'ainda aberto'}
           </Fact>
+          {retroativo ? (
+            <Fact term="Rodado de verdade">{formatDateTime(cycle.executedAt)}</Fact>
+          ) : null}
         </Facts>
-        <p className="muted">
-          Horários de Brasília. Sem resposta até o prazo, o modelo fica em HOLD.
+        <p className="max-w-prose muted">
+          {retroativo
+            ? 'Horários de Brasília. O pregão é retroativo: a decisão, o prazo e o fechamento seguem o relógio do pregão, e o ciclo rodou de verdade depois, vendo só o que o pipeline ao vivo teria visto às 07:30 do pregão. Sem resposta até o prazo, o modelo fica em HOLD.'
+            : 'Horários de Brasília. Sem resposta até o prazo, o modelo fica em HOLD.'}
         </p>
       </Section>
 

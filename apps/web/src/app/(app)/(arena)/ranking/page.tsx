@@ -9,19 +9,21 @@ import {
 } from '../../../../components/arena/pagina';
 import { BumpChart } from '../../../../components/beui/bump-chart';
 import { LeaderboardTable } from '../../../../components/tables';
-import { Empty, PageHead, Section } from '../../../../components/ui';
+import { Empty, NotaRetroativa, PageHead, Section } from '../../../../components/ui';
 import { api } from '../../../../lib/api';
 import { rankByDay } from '../../../../lib/chart';
 import { formatDate } from '../../../../lib/format';
 import { versoesDosLogos } from '../../../../lib/logos';
 import { orNotFound } from '../../../../lib/page';
+import { fraseDaSerie } from '../../../../lib/retroativo';
 import { withApiDown } from '../../../../lib/with-api-down';
 
 // O ranking completo (plano §3; ADR 0041): a aba "Ranking" da área da arena, com a posição
 // de cada competidor em cada pregão (o Bump Chart da beUI, pela mesma regra do ranking: lib/chart.ts, rankByDay), os modelos, o Sorteio e as
 // referências em tabelas separadas, com todas as métricas da liquidação e a tendência do patrimônio (a sparkline da beUI), e o que cada
 // coluna quer dizer. A barra "Carteiras" fica ao lado, como na arena. O "simulado" vai uma vez em cada contexto: na nota da tabela dos
-// modelos e na do título da barra.
+// modelos e na do título da barra. O trecho retroativo da temporada (ADR 0038), uma vez na página: a nota no cabeçalho, que vale para o gráfico
+// e para as três tabelas (o resultado de todos inclui os mesmos pregões).
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Ranking' };
 
@@ -52,6 +54,8 @@ export default withApiDown(async function RankingPage() {
         )
       : null;
   const tendencias = new Map(equity?.series.map((s) => [s.competitor.slug, s.equityCents]));
+  // quantos dos pregões liquidados foram retroativos, e quando (lib/retroativo.ts): nenhum, nada
+  const retroativos = equity ? fraseDaSerie(equity) : null;
 
   return (
     <ComBarra
@@ -80,6 +84,7 @@ export default withApiDown(async function RankingPage() {
             ? `${season.name} · liquidado até ${season.settledThrough ? formatDate(season.settledThrough) : 'ainda não'}`
             : 'Nenhuma temporada em andamento ou encerrada ainda.'}
         </p>
+        {retroativos ? <NotaRetroativa>{retroativos}</NotaRetroativa> : null}
       </PageHead>
 
       {ranking && ranking.rows.length > 0 ? (

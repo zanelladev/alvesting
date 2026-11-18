@@ -108,7 +108,9 @@ origem, sessão, aceite, validação, serviço, repositório, Prisma e Postgres.
    lançamento (`apps/web/src/app/(app)/(carteira)/carteira/page.tsx#lotView`). Junto com os logos,
    `apps/web/src/app/(app)/(carteira)/carteira/page.tsx#lerComparacao` lê a comparação com a arena (a temporada e a série do patrimônio
    pelas leituras públicas, o fechamento de cada ação pela rota interna das barras), e a conta é de
-   `apps/web/src/lib/comparacao.ts#compararCarteira`, em BigInt; a leitura que falha deixa só a comparação "indisponível agora".
+   `apps/web/src/lib/comparacao.ts#compararCarteira`, em BigInt; a leitura que falha deixa só a comparação "indisponível agora". A conta
+   também diz os pregões retroativos da arena que o período cobre (o `modes` da série, pelos trechos de
+   `apps/web/src/lib/retroativo.ts#trechosRetroativos`, o mesmo módulo das notas e do fundo hachurado do gráfico; ADR 0038).
 
 **O toque em "Lançar compra".**
 

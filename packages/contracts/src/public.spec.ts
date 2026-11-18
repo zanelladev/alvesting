@@ -323,11 +323,26 @@ describe('as respostas são estritas: o que não está no contrato não sai', ()
     const ok = {
       season,
       dates: ['2026-11-03', '2026-11-04'],
+      modes: ['RETROATIVO', 'AO_VIVO'],
       series: [{ competitor, equityCents: [10_000_000, 10_010_000] }],
     };
     expect(equitySchema.safeParse(ok).success).toBe(true);
     const misaligned = { ...ok, series: [{ competitor, equityCents: [10_000_000] }] };
     expect(equitySchema.safeParse(misaligned).success).toBe(false);
+    // um modo por data: o pregão sem ciclo é nulo, e o que falta, sobra ou não é um modo derruba a resposta
+    expect(equitySchema.safeParse({ ...ok, modes: ['RETROATIVO', null] }).success).toBe(true);
+    expect(equitySchema.safeParse({ ...ok, modes: ['RETROATIVO'] }).success).toBe(false);
+    expect(
+      equitySchema.safeParse({ ...ok, modes: ['RETROATIVO', 'AO_VIVO', 'AO_VIVO'] }).success,
+    ).toBe(false);
+    expect(equitySchema.safeParse({ ...ok, modes: ['RETROATIVO', 'ATRASADO'] }).success).toBe(
+      false,
+    );
+    // sem o campo também vale: ele é opcional pela ordem do deploy (o site o aceitou antes de a api mandá-lo; docs/API.md, "Limites
+    // conhecidos", e)
+    expect(equitySchema.safeParse({ season, dates: ok.dates, series: ok.series }).success).toBe(
+      true,
+    );
   });
 
   it('a busca de ações devolve no máximo 20 resultados', () => {

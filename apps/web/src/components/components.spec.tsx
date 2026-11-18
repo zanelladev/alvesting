@@ -11,7 +11,7 @@ import { Countdown } from './countdown';
 import { DecisionCard, type DecisionCardData } from './decisions';
 import { NewsList } from './news-list';
 import { LeaderboardTable, PositionsTable } from './tables';
-import { Aviso, NotaSimulada, SearchForm, isSimulated, quemSimula } from './ui';
+import { Aviso, NotaRetroativa, NotaSimulada, SearchForm, isSimulated, quemSimula } from './ui';
 import { UltimoFechamento, Velas, layoutVelas } from './velas';
 import { formatPrice } from '../lib/format';
 
@@ -296,6 +296,39 @@ describe('DecisionCard', () => {
       html(<DecisionCard by="model" decision={both} />).match(/data-logo="monograma"/g),
     ).toHaveLength(2);
     expect(out).not.toContain('font-mono');
+  });
+
+  // O pregão retroativo (ADR 0038): a etiqueta "retroativo" logo depois da data, fora do link dela (o modo é do pregão, não do modelo). No feed
+  // a data está na linha de baixo do cabeçalho; na página do modelo ela é o título, e a etiqueta vem logo depois do h3. O ao vivo não leva
+  // nada, e a decisão do ciclo (sem o modo: a página do ciclo o diz uma vez) também não.
+  it('o pregão retroativo leva a etiqueta logo depois da data, fora do link; o ao vivo e o do ciclo, não', () => {
+    const tag = '<span class="[^"]*bg-surface-strong[^"]*">retroativo</span>';
+    const feed = html(
+      <DecisionCard by="model" date="2026-11-03" decision={decision({ mode: 'RETROATIVO' })} />,
+    );
+    expect(feed).toMatch(
+      new RegExp(
+        `<p[^>]*><a[^>]*href="/ciclos/2026-11-03">03/11/2026</a> ${tag}<span>visão neutra`,
+      ),
+    );
+    const byDate = html(
+      <DecisionCard by="date" date="2026-11-03" decision={decision({ mode: 'RETROATIVO' })} />,
+    );
+    expect(byDate).toMatch(new RegExp(`03/11/2026</a></h3> ${tag}`));
+    expect(
+      html(<DecisionCard by="model" date="2026-11-04" decision={decision({ mode: 'AO_VIVO' })} />),
+    ).not.toContain('retroativo');
+    expect(html(<DecisionCard by="model" decision={decision()} />)).not.toContain('retroativo');
+  });
+});
+
+// A nota do trecho retroativo (ADR 0038), uma vez na página que mostra o resultado da temporada: a mesma linha discreta da nota "simulado", com
+// a etiqueta "retroativo" e a frase de lib/retroativo.ts.
+describe('NotaRetroativa', () => {
+  it('a etiqueta "retroativo" e a frase, na linha da nota "simulado"', () => {
+    expect(html(<NotaRetroativa className="mt-2">2 dos 5 pregões.</NotaRetroativa>)).toMatch(
+      /^<p class="nota-retroativa mt-2"> <span class="[^"]*bg-surface-strong[^"]*">retroativo<\/span> 2 dos 5 pregões\.<\/p>$/,
+    );
   });
 });
 
@@ -686,6 +719,32 @@ describe('gráfico do patrimônio (o Line Chart da beUI)', () => {
       'aria-valuetext="04/11/2026. Modelo A (0902) R$\u00a0101.000,00. Sorteio R$\u00a099.000,00"',
     );
     expect(out).toMatch(/<input type="range"[^>]*min="0" max="1" step="1"[^>]*value="1"\/>/);
+  });
+
+  // O trecho retroativo (ADR 0038): o fundo hachurado atrás das linhas, de meio passo antes do primeiro pregão dele a meio passo depois do
+  // último (aqui, 0% a 50% de 2 datas), a amostra na legenda, e a palavra junto da data na descrição, na tabela e no controle. Sem o modo, ou
+  // sem pregão retroativo, nada disso.
+  it('o trecho retroativo tem o fundo hachurado e a amostra na legenda, e é dito na descrição, na tabela e no controle', () => {
+    const out = html(<LineChart {...props} modes={['RETROATIVO', 'AO_VIVO']} />);
+    expect(out).toMatch(
+      /<span aria-hidden="true" data-retroativo="true" class="trecho-retroativo absolute inset-y-0" style="left:0%;width:50%"><\/span><svg/,
+    );
+    expect(out).toContain('Pregões retroativos, rodados depois e não ao vivo: em 03/11.</desc>');
+    expect(out).toContain('<th scope="row">03/11/2026, retroativo</th>');
+    expect(out).toContain('<th scope="row">04/11/2026</th>');
+    const legend = /<figcaption.*<\/figcaption>/s.exec(out)![0];
+    expect(legend).toMatch(/class="trecho-retroativo [^"]*"><\/span>Pregões retroativos<\/li>/);
+    // o controle começa no último pregão, ao vivo: a palavra vai só no pregão retroativo
+    expect(out).toContain('aria-valuetext="04/11/2026. Modelo A (0902)');
+    const ultimoRetroativo = html(<LineChart {...props} modes={['AO_VIVO', 'RETROATIVO']} />);
+    expect(ultimoRetroativo).toContain('aria-valuetext="04/11/2026, retroativo. Modelo A (0902)');
+    expect(ultimoRetroativo).toContain('style="left:50%;width:50%"');
+    for (const semTrecho of [
+      html(<LineChart {...props} />),
+      html(<LineChart {...props} modes={['AO_VIVO', null]} />),
+    ]) {
+      expect(semTrecho).not.toContain('retroativo');
+    }
   });
 
   // O "simulado" mora na página e nas peças que mostram os nomes (a nota uma vez por contexto, docs/DESIGN.md): a legenda do gráfico não o

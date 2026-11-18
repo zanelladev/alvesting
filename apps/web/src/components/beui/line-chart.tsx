@@ -16,9 +16,10 @@
 // o dedo parece atraso), e o dinheiro é o de lib/format.ts; a série que volta se desenha por um recorte do CSS (globals.css, `.linha-desenha`);
 // no celular, o toque fora da figura e a rolagem fecham a leitura (não há Esc); a leitura (o painel e o leitor de tela) lista as séries do
 // maior patrimônio do pregão para o menor, e não na ordem das séries (15/11/2026); o segmentado "R$ | %" (o RadioField do form-kit) troca os
-// valores do patrimônio pelo rendimento sobre o capital inicial, sem mexer no desenho (17/11/2026); saíram o estado de carregamento, a área, o esmaecer das
-// pontas, o eixo de valores, o `cn` (clsx e tailwind-merge) e o NumberTicker da beUI; os textos em português. Com movimento reduzido, nada
-// anda: a escala, a linha e o cursor trocam na hora.
+// valores do patrimônio pelo rendimento sobre o capital inicial, sem mexer no desenho (17/11/2026); o trecho retroativo da temporada (ADR
+// 0038) ganhou o fundo hachurado atrás das linhas, a amostra na legenda e o modo na descrição, na tabela, no controle e no painel
+// (18/11/2026); saíram o estado de carregamento, a área, o esmaecer das pontas, o eixo de valores, o `cn` (clsx e tailwind-merge) e o
+// NumberTicker da beUI; os textos em português. Com movimento reduzido, nada anda: a escala, a linha e o cursor trocam na hora.
 'use client';
 
 import {
@@ -42,6 +43,12 @@ import type { PublicCompetitor } from '@alvesting/contracts';
 import { layoutEquity, rotuloCoberto, serieDe, spreadLabels } from '../../lib/chart';
 import { formatBRL, formatBps, formatDate, variationBps } from '../../lib/format';
 import { MOTION } from '../../lib/motion';
+import {
+  faixasRetroativas,
+  periodoDosTrechos,
+  trechosRetroativos,
+  type Modo,
+} from '../../lib/retroativo';
 import { RadioField, useHydrated } from '../form-kit';
 import { IconeInfo } from '../icones';
 import { AnimatedCounter } from '../arc/animated-counter/animated-counter';
@@ -66,6 +73,9 @@ export interface LineChartProps {
   capitalCents: number;
   // as séries que começam escondidas (as referências da arena): a legenda as mostra, e a linha se desenha
   defaultHidden?: readonly string[];
+  // o modo do ciclo de cada data (a série do patrimônio, `modes`): o trecho retroativo ganha o fundo hachurado e é dito na descrição, na tabela,
+  // no controle e no painel (lib/retroativo.ts; ADR 0038). Sem ele, nada é marcado
+  modes?: readonly Modo[];
 }
 
 // As escalas dos valores: o patrimônio em reais e o rendimento sobre o capital inicial.
@@ -164,6 +174,7 @@ export function LineChart({
   band,
   capitalCents,
   defaultHidden = [],
+  modes,
 }: LineChartProps) {
   const reduce = useReducedMotion() ?? false;
   const canHover = useHoverCapable();
@@ -207,6 +218,11 @@ export function LineChart({
       window.removeEventListener('scroll', scroll, { capture: true });
     };
   }, [open, via]);
+
+  // o trecho retroativo: o pregão retroativo é dito junto da data (a tabela, o controle e o painel), e o fundo hachurado o mostra no desenho
+  const trechos = modes ? trechosRetroativos(modes) : [];
+  const retroativo = (i: number) => modes?.[i] === 'RETROATIVO';
+  const dataDe = (i: number) => `${formatDate(dates[i]!)}${retroativo(i) ? ', retroativo' : ''}`;
 
   const keys = series.map((s) => s.competitor.slug);
   const layout = layoutEquity(
@@ -268,7 +284,10 @@ export function LineChart({
       .map((l) => `${l.competitor.name} termina em ${valor(lastValue(l.cents)!)}`)
       .join('; ') +
     '.' +
-    (band ? ' A faixa vai do percentil 5 ao 95 das carteiras aleatórias do Monte Carlo.' : '');
+    (band ? ' A faixa vai do percentil 5 ao 95 das carteiras aleatórias do Monte Carlo.' : '') +
+    (trechos.length > 0
+      ? ` Pregões retroativos, rodados depois e não ao vivo: ${periodoDosTrechos(dates, trechos)}.`
+      : '');
   // Quem estava ganhando primeiro (o pedido do Artur em 15/11/2026): as séries à vista do maior patrimônio do pregão para o menor, o "sem
   // dado" no fim. O painel e o leitor de tela leem a mesma ordem; no empate (o primeiro pregão, todos com o capital inicial), a das séries
   // (o sort é estável, e dois "sem dado" dão NaN, que o `|| 0` faz empate).
@@ -276,7 +295,7 @@ export function LineChart({
     [...visible].sort((a, b) => (b.cents[i] ?? -Infinity) - (a.cents[i] ?? -Infinity) || 0);
   const valueText = (i: number) =>
     [
-      formatDate(dates[i]!),
+      dataDe(i),
       ...rankedAt(i).map((l) => {
         const cents = l.cents[i];
         return `${l.competitor.name} ${cents === null || cents === undefined ? 'sem dado' : valor(cents)}`;
@@ -316,6 +335,17 @@ export function LineChart({
           className="relative rounded-sm outline-offset-4 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-ring"
           style={{ height: VIEW.height }}
         >
+          {/* o trecho retroativo, atrás das linhas: o fundo hachurado do pregão de cada trecho (de meio passo antes a meio passo depois), em
+              HTML, porque a hachura no SVG esticado entortaria; decorativo para o leitor de tela, que tem o modo na descrição e na tabela */}
+          {faixasRetroativas(layout.xs, trechos, VIEW.width).map((faixa) => (
+            <span
+              key={faixa.x}
+              aria-hidden="true"
+              data-retroativo
+              className="trecho-retroativo absolute inset-y-0"
+              style={{ left: pct(faixa.x), width: pct(faixa.largura) }}
+            />
+          ))}
           <svg
             viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
             preserveAspectRatio="none"
@@ -466,6 +496,7 @@ export function LineChart({
             <Leitura
               id={tooltipId}
               date={dates[act]!}
+              retroativo={retroativo(act)}
               rows={rankedAt(act).map((l) => {
                 const cents = l.cents[act] ?? null;
                 return {
@@ -560,7 +591,7 @@ export function LineChart({
           <tbody>
             {dates.map((date, i) => (
               <tr key={date}>
-                <th scope="row">{formatDate(date)}</th>
+                <th scope="row">{dataDe(i)}</th>
                 {lines.map((l) => {
                   const cents = l.cents[i];
                   return (
@@ -635,6 +666,16 @@ export function LineChart({
               <div id="faixa-explicada" popover="auto" className="info-balao">
                 {FAIXA_EXPLICADA}
               </div>
+            </li>
+          ) : null}
+          {/* o fundo hachurado do desenho: a amostra no desenho da do Monte Carlo, com a hachura no lugar do cinza liso */}
+          {trechos.length > 0 ? (
+            <li className="legenda-serie">
+              <span
+                aria-hidden="true"
+                className="trecho-retroativo inline-block h-2.5 w-5 shrink-0 rounded-sm border border-hairline-strong"
+              />
+              Pregões retroativos
             </li>
           ) : null}
         </ul>
@@ -770,6 +811,7 @@ function Faixa({
 function Leitura({
   id,
   date,
+  retroativo,
   rows,
   x,
   width,
@@ -779,6 +821,8 @@ function Leitura({
 }: {
   id: string;
   date: string;
+  // o pregão retroativo leva a palavra junto da data (ADR 0038)
+  retroativo: boolean;
   rows: Array<{
     key: string;
     curto: string;
@@ -824,7 +868,10 @@ function Leitura({
       animate={{ x: left, y: top, opacity: 1 }}
       transition={{ x: glide, y: glide, opacity: fade }}
     >
-      <p className="mb-1.5 text-xs font-medium text-muted">{formatDate(date)}</p>
+      <p className="mb-1.5 text-xs font-medium text-muted">
+        {formatDate(date)}
+        {retroativo ? ' · retroativo' : ''}
+      </p>
       <ul className="grid gap-1">
         {rows.map((row) => (
           <li key={row.key} className="flex items-center gap-2 text-xs">
