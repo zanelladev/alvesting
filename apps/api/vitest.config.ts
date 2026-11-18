@@ -3,7 +3,8 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['src/**/*.spec.ts'],
+    // analise/: os scripts de análise do TCC (fora do build e da imagem), com os testes deles
+    include: ['src/**/*.spec.ts', 'analise/**/*.spec.ts'],
     // Os testes de integração dividem o mesmo banco alvesting_test e limpam as tabelas que usam: arquivos em
     // paralelo se atropelariam. Cada arquivo roda por vez; dentro do arquivo os testes já são em sequência.
     fileParallelism: false,
