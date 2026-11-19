@@ -8,8 +8,8 @@ import { Logo } from '../competidor';
 // decorativo (`aria-hidden`): o mesmo dado está em texto ao lado (a tabela do placar). A cor de cada linha é a do laboratório (`serieDe`,
 // por var(): segue o tema); o Sorteio é tracejado. O desenho estica na largura da caixa (`preserveAspectRatio="none"`, com o traço que não
 // estica: `vector-effect` no globals.css) e tem a altura dada em px. `rotulos`: o logo e o patrimônio final no fim de cada linha, na calha
-// da direita (quem usa dá a calha), sem se encavalar. `desenha`: a linha se desenha em laço (a cena das referências; parada com movimento
-// reduzido).
+// da direita (quem usa dá a calha), sem se encavalar. `desenha`: as linhas se desenham em laço, cada uma 70 ms depois da anterior, como no
+// desenho (a cena das referências; paradas com movimento reduzido).
 export interface SerieMini {
   competitor: Pick<PublicCompetitor, 'slug' | 'name' | 'type' | 'provider' | 'modelId'>;
   cents: readonly number[];
@@ -50,7 +50,7 @@ export function GraficoMini({
         {[0.25, 0.5, 0.75].map((f) => (
           <path key={f} className="grade" d={`M0 ${altura * f} H${LARGURA}`} />
         ))}
-        {series.map((s) => {
+        {series.map((s, i) => {
           const { cor, traco } = serieDe(s.competitor);
           return (
             <path
@@ -58,7 +58,7 @@ export function GraficoMini({
               d={caminho(s.cents)}
               pathLength={desenha ? 1 : undefined}
               className={traco && !desenha ? 'tracejada' : undefined}
-              style={{ stroke: cor }}
+              style={{ stroke: cor, animationDelay: desenha ? `${120 + i * 70}ms` : undefined }}
             />
           );
         })}

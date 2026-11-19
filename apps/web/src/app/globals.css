@@ -1278,8 +1278,9 @@ html[data-tema-revelar]::view-transition-new(root) {
   }
 
   /* As cenas do método: três células por linha a partir de 1024 px (uma no celular), cada uma com a cena em cima (o segundo plano, 300 px) e
-     o texto embaixo. A cena é decorativa (`aria-hidden`; o texto diz o mesmo) e está sempre inteira à vista: só os detalhes se mexem (o ✓
-     que aparece, o tracejado que corre, a barra que enche, a linha que acende), em laços de 8 s, e com movimento reduzido nada anda. */
+     o texto embaixo. A cena é decorativa (`aria-hidden`; o texto diz o mesmo) e conta o passo num laço de 8 s, com o movimento do desenho
+     (ADR 0041): o que chega sobe 8 px, de desfocado a nítido, uma peça de cada vez, e no fim do laço tudo some e recomeça. O estilo de base
+     é a cena inteira: com movimento reduzido nada anda e nada falta. */
   .metodo {
     @apply grid gap-px bg-folha lg:grid-cols-3;
   }
@@ -1288,7 +1289,6 @@ html[data-tema-revelar]::view-transition-new(root) {
   }
   .cena {
     @apply relative h-[18.75rem] overflow-hidden border-b border-hairline bg-surface-card;
-    container-type: inline-size;
   }
   .cena-texto {
     @apply flex flex-col gap-2 px-5 pt-6 pb-8 lg:px-7;
@@ -1322,6 +1322,24 @@ html[data-tema-revelar]::view-transition-new(root) {
   .cena-linha:nth-child(4) .cena-ok {
     animation: cena-ok-3 8s var(--ease-out-quint) infinite;
   }
+  /* a entrada de cada peça (as linhas do briefing, as ordens, os logos da régua): a 1ª aos 0,6 s do laço, as outras a cada 1,1 a 1,3 s, e
+     todas saem juntas aos 7 s */
+  .cena-entra-1 {
+    animation: cena-entra-1 8s var(--ease-out-quint) infinite;
+  }
+  .cena-entra-2 {
+    animation: cena-entra-2 8s var(--ease-out-quint) infinite;
+  }
+  .cena-entra-3 {
+    animation: cena-entra-3 8s var(--ease-out-quint) infinite;
+  }
+  .cena-entra-4 {
+    animation: cena-entra-4 8s var(--ease-out-quint) infinite;
+  }
+  /* o SHA-256 do briefing, que se digita um caractere por passo */
+  .cena-digita {
+    animation: cena-digita 8s steps(24, end) infinite;
+  }
   /* o tracejado que leva cada laboratório ao prompt: corre para dentro, 8 px por volta */
   .cena-traco {
     @apply absolute h-px;
@@ -1332,19 +1350,13 @@ html[data-tema-revelar]::view-transition-new(root) {
   .cena-traco[data-lado='d'] {
     animation-direction: reverse;
   }
-  /* a ordem que acende, uma de cada vez */
+  /* uma ordem da decisão: cada uma entra com o `.cena-entra-*` dela, depois que o "decidindo" sai */
   .cena-ordem {
     @apply flex min-h-10 items-center gap-2 border-b border-hairline px-3.5 text-13 text-body last:border-b-0;
-    animation: cena-acende 8s var(--ease-out-quart) infinite;
-  }
-  .cena-ordem:nth-child(3) {
-    animation-delay: 1.2s;
-  }
-  .cena-ordem:nth-child(4) {
-    animation-delay: 2.4s;
   }
   .cena-pensando {
     @apply inline-flex h-6 items-center gap-1.5 rounded-full bg-surface-card px-2.5 text-xs font-normal text-muted;
+    animation: cena-pensando 8s linear infinite;
   }
   .cena-pensando > i {
     @apply size-1 rounded-full bg-muted;
@@ -1364,6 +1376,10 @@ html[data-tema-revelar]::view-transition-new(root) {
     @apply block h-full origin-left rounded-full bg-ink;
     animation: cena-enche 8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
   }
+  /* "Executada no preço de abertura", quando a barra chega à abertura */
+  .cena-executa {
+    animation: cena-executa 8s var(--ease-out-quint) infinite;
+  }
   /* a régua do percentil: de 0 a 100, com a mediana no meio e um logo por competidor, empilhado onde se encontram */
   .cena-regua {
     @apply absolute inset-x-5 bottom-24 h-px bg-hairline-strong;
@@ -1371,9 +1387,7 @@ html[data-tema-revelar]::view-transition-new(root) {
   .cena-marcador {
     @apply absolute -translate-x-1/2;
   }
-  .cena-marcador > .logo {
-    animation: cena-marcador 8s var(--ease-out-quint) infinite;
-  }
+  /* as linhas das referências, que se desenham uma depois da outra (o atraso de cada uma vem do GraficoMini) e somem no fim do laço */
   .cena-grafico path:not(.grade) {
     fill: none;
     stroke-width: 1.75;
@@ -1381,7 +1395,7 @@ html[data-tema-revelar]::view-transition-new(root) {
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-dasharray: 1;
-    animation: cena-desenha 8s var(--ease-out-quint) infinite;
+    animation: cena-desenha 8s var(--ease-out-quint) infinite both;
   }
   @media (prefers-reduced-motion: reduce) {
     .cena *,
@@ -1557,34 +1571,151 @@ html[data-tema-revelar]::view-transition-new(root) {
     translate: 0 0.75rem;
   }
 }
+/* as cenas do método: os laços de 8 s do desenho (ADR 0041), com as mesmas paradas e curvas. A opacidade 1 vai também no trecho em que a
+   peça fica parada (a barra cheia, o SHA-256 digitado, a linha desenhada): definida só no último quadro, ela cairia ao longo do laço
+   inteiro, e não só no fim (o desenho tem esse tropeço) */
 @keyframes cena-ok-1 {
   0%,
-  10% {
-    scale: 0.4;
+  14% {
+    opacity: 0;
+    transform: scale(0.6);
   }
-  18%,
+  20%,
+  90% {
+    opacity: 1;
+    transform: none;
+  }
+  97%,
   100% {
-    scale: 1;
+    opacity: 0;
   }
 }
 @keyframes cena-ok-2 {
   0%,
-  24% {
-    scale: 0.4;
+  28% {
+    opacity: 0;
+    transform: scale(0.6);
   }
-  32%,
+  34%,
+  90% {
+    opacity: 1;
+    transform: none;
+  }
+  97%,
   100% {
-    scale: 1;
+    opacity: 0;
   }
 }
 @keyframes cena-ok-3 {
   0%,
-  38% {
-    scale: 0.4;
+  42% {
+    opacity: 0;
+    transform: scale(0.6);
   }
-  46%,
+  48%,
+  90% {
+    opacity: 1;
+    transform: none;
+  }
+  97%,
   100% {
-    scale: 1;
+    opacity: 0;
+  }
+}
+@keyframes cena-entra-1 {
+  0%,
+  8% {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(3px);
+  }
+  16%,
+  88% {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+  96%,
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+    filter: blur(2px);
+  }
+}
+@keyframes cena-entra-2 {
+  0%,
+  22% {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(3px);
+  }
+  30%,
+  88% {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+  96%,
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+    filter: blur(2px);
+  }
+}
+@keyframes cena-entra-3 {
+  0%,
+  36% {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(3px);
+  }
+  44%,
+  88% {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+  96%,
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+    filter: blur(2px);
+  }
+}
+@keyframes cena-entra-4 {
+  0%,
+  52% {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(3px);
+  }
+  60%,
+  88% {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+  96%,
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+    filter: blur(2px);
+  }
+}
+@keyframes cena-digita {
+  0%,
+  50% {
+    clip-path: inset(0 100% 0 0);
+  }
+  70%,
+  90% {
+    clip-path: inset(0);
+    opacity: 1;
+  }
+  97%,
+  100% {
+    clip-path: inset(0);
+    opacity: 0;
   }
 }
 @keyframes cena-traco {
@@ -1592,54 +1723,71 @@ html[data-tema-revelar]::view-transition-new(root) {
     background-position: 16px 0;
   }
 }
-@keyframes cena-acende {
+@keyframes cena-pensando {
   0%,
-  6%,
-  30%,
-  100% {
-    background-color: transparent;
+  30% {
+    opacity: 1;
   }
-  12%,
-  22% {
-    background-color: var(--color-surface-card);
+  36%,
+  100% {
+    opacity: 0;
   }
 }
 @keyframes cena-pontos {
   0%,
   80%,
   100% {
-    opacity: 0.3;
+    opacity: 0.25;
+    transform: none;
   }
   40% {
     opacity: 1;
+    transform: translateY(-2px);
   }
 }
 @keyframes cena-enche {
   0%,
-  20% {
+  30% {
     scale: 0 1;
   }
-  64%,
+  62%,
+  92% {
+    scale: 1 1;
+    opacity: 1;
+  }
   100% {
     scale: 1 1;
+    opacity: 0;
   }
 }
-@keyframes cena-marcador {
-  0% {
-    translate: var(--de, 0) 0;
+@keyframes cena-executa {
+  0%,
+  62% {
+    opacity: 0;
+    transform: translateY(4px);
   }
-  30%,
+  68%,
+  92% {
+    opacity: 1;
+    transform: none;
+  }
   100% {
-    translate: 0 0;
+    opacity: 0;
   }
 }
 @keyframes cena-desenha {
-  0% {
+  0%,
+  6% {
     stroke-dashoffset: 1;
   }
-  45%,
+  50%,
+  90% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
   100% {
     stroke-dashoffset: 0;
+    opacity: 0;
   }
 }
 /* fim do bloco landing */

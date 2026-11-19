@@ -497,9 +497,10 @@ adaptada do Theme Toggle da beUI); o teclado e o movimento reduzido trocam na ho
 Os tokens moram no `globals.css` e, para o Motion, em `apps/web/src/lib/motion.ts` (o `motion.spec.ts` prende os dois): 150 ms no que se
 repete (o toque, o hover, a cor), 200 ms no que muda de lugar (a escolha do seletor), 250 ms no que muda a tela (a troca de tema); as curvas
 `--ease-out-quart` (`cubic-bezier(0.25, 1, 0.5, 1)`), `--ease-out-quint` (`cubic-bezier(0.22, 1, 0.36, 1)`) e `--ease-out-expo`
-(`cubic-bezier(0.16, 1, 0.3, 1)`); as molas do Motion sem quique (`bounce: 0`). Na landing, só CSS: as cenas do método em laço de 8 s (o
-briefing que chega, o tracejado que leva cada laboratório ao prompt, a ordem que acende, a barra do pregão que enche, os logos que correm
-para o percentil, a linha das referências que se desenha), o ponto da temporada em andamento que pulsa a cada 2,6 s, o serrilhado dos números que anda
+(`cubic-bezier(0.16, 1, 0.3, 1)`); as molas do Motion sem quique (`bounce: 0`). Na landing, só CSS: as cenas do método em laço de 8 s, com o
+movimento do desenho (as linhas do briefing que entram uma a uma, de desfocadas a nítidas, com o visto e o SHA-256 que se digita; o
+tracejado que leva cada laboratório ao prompt; o "decidindo" que dá lugar às ordens; a barra do pregão que enche até a ordem executar; os
+logos que chegam à régua do percentil; as linhas das referências que se desenham; e, no fim do laço, tudo some e recomeça), o ponto da temporada em andamento que pulsa a cada 2,6 s, o serrilhado dos números que anda
 um dente a cada 30 s, a seta que anda 2 px e o "+" do FAQ que gira em 250 ms. Com `prefers-reduced-motion`, nada se desloca: a regra global zera animação e transição, e cada peça
 fica no quadro de partida. A série que a legenda mostra de novo se desenha da esquerda para a direita, num recorte que cresce em 250 ms
 (`.linha-desenha`). O esmaecer da borda das tabelas e do placar que rolam é uma animação ligada à rolagem, e não ao tempo.

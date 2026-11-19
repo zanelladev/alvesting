@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { FeedDecision, LastCycle, LeaderboardRow, SeasonSummary } from '@alvesting/contracts';
 import { serieDe } from '../../lib/chart';
 import { formatConfidence, formatDate, formatReais } from '../../lib/format';
@@ -161,7 +161,8 @@ export function Metodo({
   const aExecutar = decision?.items.find((item) => item.action !== 'HOLD') ?? null;
   const modelos = cast.slice(0, 6);
 
-  // a régua do percentil: cada competidor na posição dele, de 0 a 100; quem fica a menos de 9 pontos de outro sobe uma fila
+  // a régua do percentil: cada competidor na posição dele, de 0 a 100; quem fica a menos de 9 pontos de outro sobe uma fila. Os logos
+  // entram do maior percentil ao menor, com as quatro entradas em rodízio, como no desenho
   const filas: number[][] = [];
   const marcadores = ranked
     .filter((row) => row.percentileBps !== null)
@@ -201,21 +202,21 @@ export function Metodo({
                     </span>
                     <span className="badge font-medium">{hora}</span>
                   </div>
-                  <div className="cena-linha">
+                  <div className="cena-linha cena-entra-1">
                     <IconeBriefing />
                     Notícias do dia
                     <span className="cena-ok">
                       <IconeCheck />
                     </span>
                   </div>
-                  <div className="cena-linha">
+                  <div className="cena-linha cena-entra-2">
                     <IconeGrafico />
                     {universo > 0 ? `Cotações dos ${universo} papéis` : 'Cotações do universo'}
                     <span className="cena-ok">
                       <IconeCheck />
                     </span>
                   </div>
-                  <div className="cena-linha">
+                  <div className="cena-linha cena-entra-3">
                     <IconeMoeda />
                     CDI, Selic, IPCA e dólar
                     <span className="cena-ok">
@@ -223,9 +224,11 @@ export function Metodo({
                     </span>
                   </div>
                   {lastCycle?.briefingSha256 ? (
-                    <div className="flex flex-col gap-0.5 px-3.5 py-2.5 text-xs text-muted">
+                    <div className="cena-entra-4 flex flex-col gap-0.5 px-3.5 py-2.5 text-xs text-muted">
                       SHA-256 do briefing
-                      <span className="hash">{lastCycle.briefingSha256.slice(0, 24)}…</span>
+                      <span className="hash cena-digita">
+                        {lastCycle.briefingSha256.slice(0, 24)}…
+                      </span>
                     </div>
                   ) : null}
                 </div>
@@ -304,11 +307,15 @@ export function Metodo({
                     </span>
                   </div>
                   {ordens.length > 0 ? (
-                    ordens.map((item) => (
-                      <Ordem key={item.ticker} item={item} className="cena-ordem" />
+                    ordens.map((item, i) => (
+                      <Ordem
+                        key={item.ticker}
+                        item={item}
+                        className={`cena-ordem cena-entra-${i + 2}`}
+                      />
                     ))
                   ) : (
-                    <div className="cena-ordem">
+                    <div className="cena-ordem cena-entra-2">
                       <span data-action="BUY" className="badge">
                         BUY
                       </span>
@@ -360,7 +367,7 @@ export function Metodo({
                   <div className="cena-barra">
                     <span />
                   </div>
-                  <span className="badge self-start font-medium">
+                  <span className="badge cena-executa self-start font-medium">
                     Executada no preço de abertura
                   </span>
                 </div>
@@ -377,19 +384,19 @@ export function Metodo({
               <div aria-hidden="true" className="cena">
                 <div className="cena-regua" />
                 <div className="absolute bottom-[5.5rem] left-1/2 h-9 w-px bg-muted" />
-                {marcadores.map(({ row, p, fila }) => (
+                {marcadores.map(({ row, p, fila }, i) => (
                   <span
                     key={row.competitor.slug}
                     className="cena-marcador"
-                    style={
-                      {
-                        left: `calc(1.25rem + (100% - 2.5rem) * ${p.toFixed(1)} / 100)`,
-                        bottom: `${6.5 + fila * 1.625}rem`,
-                        '--de': `calc((100cqw - 2.5rem) * ${(50 - p).toFixed(1)} / 100)`,
-                      } as CSSProperties
-                    }
+                    style={{
+                      left: `calc(1.25rem + (100% - 2.5rem) * ${p.toFixed(1)} / 100)`,
+                      bottom: `${6.5 + fila * 1.625}rem`,
+                    }}
                   >
-                    <Logo competitor={row.competitor} className="size-5" />
+                    <Logo
+                      competitor={row.competitor}
+                      className={`size-5 cena-entra-${(i % 4) + 1}`}
+                    />
                   </span>
                 ))}
                 <span className="absolute bottom-[3.75rem] left-5 text-xs text-muted">0</span>
