@@ -161,6 +161,10 @@ for (const screen of SCREENS) {
           await expect.poll(() => look(page)).toEqual(expected(name.toLowerCase(), dark));
           // a folha aberta cobre a página: o axe mede a página inteira, com a folha fechada
           await page.keyboard.press('Escape');
+          // e com as cenas da landing paradas no estilo de base, como no axe do layout.spec.ts (o meio do esmaecer não é o contraste delas)
+          await page.addStyleTag({
+            content: '.cena *, .cena *::before, .cena *::after { animation: none !important; }',
+          });
           const { violations } = await new AxeBuilder({ page }).analyze();
           expect(
             violations,

@@ -17,6 +17,13 @@ async function loaded(page: Page) {
   });
 }
 
+// O axe mede as cenas do método da landing paradas, no estilo de base (o mesmo do movimento reduzido: cada peça inteira). Elas esmaecem
+// texto em laço, e o contraste de um quadro no meio do esmaecer é de passagem, não o delas. Só as cenas param; o resto da página não muda.
+const pararCenas = (page: Page) =>
+  page.addStyleTag({
+    content: '.cena *, .cena *::before, .cena *::after { animation: none !important; }',
+  });
+
 for (const route of ROUTES) {
   test.describe(`tela ${route}`, () => {
     test(
@@ -115,6 +122,7 @@ for (const route of ROUTES) {
       async ({ page }) => {
         await page.goto(route);
         await loaded(page);
+        await pararCenas(page);
         const { violations } = await new AxeBuilder({ page }).analyze();
         const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
         expect(
@@ -142,6 +150,7 @@ for (const route of ROUTES) {
         await page.setViewportSize({ width: 360, height: 800 });
         await page.goto(route);
         await loaded(page);
+        await pararCenas(page);
         const { violations } = await new AxeBuilder({ page }).analyze();
         expect(
           violations,
