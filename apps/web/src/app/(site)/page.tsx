@@ -22,7 +22,8 @@ import { withApiDown } from '../../lib/with-api-down';
 // na faixa escura; o rodapé é da casca do site (components/site-chrome.tsx). O conteúdo inteiro da arena (o gráfico que se lê pelo teclado,
 // o feed, os ciclos, a temporada e a faixa de cotações) mora na /arena.
 // As leituras (d.10, o LCP do celular: o TTFB entra nele): a temporada atual, as últimas decisões, as barras do BOVA11 e a fita saem juntas;
-// o ranking e o patrimônio, depois, juntos e só com ciclo (sem ciclo não há liquidação). Nada do Monte Carlo. Tudo pelo cache de dados do site
+// o ranking, o patrimônio e as carteiras sorteadas (o Monte Carlo, uma tabela pronta: a régua e a faixa das referências, no método), depois,
+// juntos e só com ciclo (sem ciclo não há liquidação), numa ida só à api. Tudo pelo cache de dados do site
 // (src/lib/api.ts); a página é dinâmica, porque o `next build` da imagem não tem api para chamar. O BOVA11 não vem da API pública (ela não
 // entrega cotação bruta): sai da rota interna, com o segredo do servidor (src/lib/quotes.ts; docs/API.md, seção 6), e é o portão do segredo
 // das cotações (sem ele, a tela de erro); a fita também, da rota interna do universo da semana.
@@ -45,10 +46,14 @@ export default withApiDown(async function Landing() {
     }),
   ]);
   const { season, lastCycle, macro } = current;
-  const [board, equity] =
+  const [board, equity, baseline] =
     season && lastCycle
-      ? await Promise.all([api.leaderboard(season.slug), api.equity(season.slug)])
-      : [null, null];
+      ? await Promise.all([
+          api.leaderboard(season.slug),
+          api.equity(season.slug),
+          api.randomBaseline(season.slug),
+        ])
+      : [null, null, null];
 
   const ranked = (board?.rows ?? []).filter(
     (row) => row.competitor.type === 'MODEL' || row.competitor.type === 'RANDOM',
@@ -69,6 +74,17 @@ export default withApiDown(async function Landing() {
   const competidores = serie(['MODEL', 'RANDOM']);
   const referencias = serie(['CDI', 'BOVA11', 'EQUAL_WEIGHT']);
   const liquidados = equity?.dates.length ?? 0;
+  // as carteiras sorteadas por pregão: na régua, as do pregão do ranking; atrás das referências, a faixa p5 a p95 de cada pregão do
+  // patrimônio (sem um deles, a faixa fica de fora)
+  const sorteadas = new Map((baseline?.rows ?? []).map((row) => [row.date, row]));
+  const dias = (equity?.dates ?? []).map((date) => sorteadas.get(date));
+  const faixa =
+    dias.length > 0 && dias.every((row) => row !== undefined)
+      ? {
+          p5: dias.map((row) => row.equityCents.p5),
+          p95: dias.map((row) => row.equityCents.p95),
+        }
+      : null;
 
   // o último fechamento do BOVA11 e o anterior (a rota interna dá as barras da mais antiga à mais nova)
   const latest = bars.at(-1);
@@ -106,7 +122,10 @@ export default withApiDown(async function Landing() {
         decision={decision}
         cast={modelos}
         ranked={ranked}
+        sorteadas={board?.asOf ? (sorteadas.get(board.asOf) ?? null) : null}
         referencias={referencias}
+        faixa={faixa}
+        ate={equity?.dates.at(-1) ?? null}
         universo={universe.rows.length}
       />
       {decision ? (

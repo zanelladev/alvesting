@@ -1,7 +1,19 @@
 import type { ReactNode } from 'react';
-import type { FeedDecision, LastCycle, LeaderboardRow, SeasonSummary } from '@alvesting/contracts';
+import type {
+  FeedDecision,
+  LastCycle,
+  LeaderboardRow,
+  RandomBaseline,
+  SeasonSummary,
+} from '@alvesting/contracts';
 import { serieDe } from '../../lib/chart';
-import { formatConfidence, formatDate, formatReais } from '../../lib/format';
+import {
+  formatBps,
+  formatConfidence,
+  formatDate,
+  formatReais,
+  formatShortDate,
+} from '../../lib/format';
 import { Logo, NomeCurto } from '../competidor';
 import { Chamadas } from '../hero';
 import {
@@ -15,7 +27,7 @@ import {
 } from '../icones';
 import { LeaderboardTable } from '../tables';
 import { Empty, LINK, NavLink } from '../ui';
-import { GraficoMini, type SerieMini } from './grafico-mini';
+import { type FaixaMini, GraficoMini, type SerieMini } from './grafico-mini';
 
 // As faixas do meio da landing (ADR 0041; docs/TELAS.md, seção 10), na página regrada: os números da temporada, o método (seis cenas, uma
 // por passo do pregão), a justificativa de um modelo em destaque, o placar com o gráfico, a carteira e o convite do fim, na faixa escura.
@@ -74,6 +86,12 @@ export function CabSecao({
   );
 }
 
+// o capital em milhares de reais quando é redondo ("R$ 100 mil": os números e a cena das referências, como no desenho); senão, inteiro
+const capitalCurto = (cents: number) =>
+  cents % 100_000 === 0
+    ? `R$ ${(cents / 100_000).toLocaleString('pt-BR')} mil`
+    : `R$ ${formatReais(cents)}`;
+
 // Os números da temporada: o capital de cada modelo, o tamanho do universo e os pregões liquidados, depois da célula em branco que abre a
 // faixa (o `::before` de `.numeros`). As carteiras do sorteio saíram daqui (18/11/2026): o método as explica na cena delas. Só com
 // temporada; cada número só aparece quando há dado para ele.
@@ -86,14 +104,8 @@ export function Numeros({
   universo: number;
   liquidados: number;
 }) {
-  // o capital em milhares de reais quando é redondo ("R$ 100 mil"), que cabe na célula; senão, inteiro
-  const reais = season.params.capitalCents / 100;
-  const capital =
-    reais % 1000 === 0
-      ? `R$ ${(reais / 1000).toLocaleString('pt-BR')} mil`
-      : `R$ ${formatReais(season.params.capitalCents)}`;
   const itens = [
-    [capital, 'fictícios para cada modelo no início da temporada'],
+    [capitalCurto(season.params.capitalCents), 'fictícios para cada modelo no início da temporada'],
     ...(universo > 0 ? [[String(universo), 'papéis da B3, os mesmos para todos os modelos']] : []),
     [`${liquidados} de ${season.params.sessions}`, `pregões liquidados na ${season.name}`],
   ] as const;
@@ -137,12 +149,21 @@ export interface MetodoProps {
   decision: FeedDecision | null;
   // os modelos do elenco, para os logos da cena do prompt
   cast: readonly SerieMini['competitor'][];
-  // os competidores com percentil, para a régua do Monte Carlo
-  ranked: readonly Pick<LeaderboardRow, 'competitor' | 'percentileBps'>[];
-  // as séries das referências (o CDI, o BOVA11 e o igual-peso), para a cena delas
+  // os competidores do placar (os modelos e o Sorteio), com o retorno, para a régua do Monte Carlo
+  ranked: readonly Pick<LeaderboardRow, 'competitor' | 'returnBps'>[];
+  // as carteiras sorteadas no pregão do ranking (os percentis do retorno), para a régua; nulo antes da primeira liquidação
+  sorteadas: Pick<RandomBaseline['rows'][number], 'date' | 'returnBps'> | null;
+  // as séries das referências (o CDI, o BOVA11 e o igual-peso) até o pregão `ate`, com a faixa p5 a p95 das carteiras sorteadas atrás
   referencias: readonly SerieMini[];
+  faixa: FaixaMini | null;
+  ate: string | null;
   universo: number;
 }
+
+// a posição na régua do Monte Carlo (de 0 a 100, em % da largura entre as margens de 20 px), como no desenho
+const naRegua = (x: number) => `calc(1.25rem + (100% - 2.5rem) * ${x.toFixed(1)} / 100)`;
+const larguraNaRegua = (de: number, ate: number) =>
+  `calc((100% - 2.5rem) * ${(ate - de).toFixed(1)} / 100)`;
 
 export function Metodo({
   season,
@@ -150,30 +171,47 @@ export function Metodo({
   decision,
   cast,
   ranked,
+  sorteadas,
   referencias,
+  faixa,
+  ate,
   universo,
 }: MetodoProps) {
   const hora = season?.params.decisionTimeBrt ?? '08:00';
   const prazo = season?.params.deadlineTimeBrt ?? '09:30';
   const custo = season ? (season.params.tradeCostBps / 100).toString().replace('.', ',') : null;
-  const sorteadas = (season?.params.monteCarloRuns ?? 1000).toLocaleString('pt-BR');
+  // "mil carteiras", como no desenho; outro tamanho de Monte Carlo sai em algarismos
+  const runs = season?.params.monteCarloRuns ?? 1000;
+  const quantas = runs === 1000 ? 'mil' : runs.toLocaleString('pt-BR');
   const ordens = decision?.items.slice(0, 3) ?? [];
   const aExecutar = decision?.items.find((item) => item.action !== 'HOLD') ?? null;
   const modelos = cast.slice(0, 6);
 
-  // a régua do percentil: cada competidor na posição dele, de 0 a 100; quem fica a menos de 9 pontos de outro sobe uma fila. Os logos
-  // entram do maior percentil ao menor, com as quatro entradas em rodízio, como no desenho
+  // A régua do Monte Carlo, como no desenho: o retorno das carteiras sorteadas no pregão do ranking (a faixa p5 a p95, o miolo p25 a p75
+  // e a mediana) e um logo por competidor no retorno dele. A escala põe a mediana no meio e vai até 1,2 vez o ponto mais longe dela (o p5,
+  // o p95 ou um competidor). Quem fica a menos de 7% da régua de outro sobe uma fila, até a sexta (a última que cabe na cena); os logos
+  // entram do maior retorno ao menor, com as quatro entradas em rodízio.
+  const q = sorteadas?.returnBps ?? null;
+  const raio = q
+    ? 1.2 *
+      Math.max(
+        1,
+        ...[q.p5, q.p95, ...ranked.map((row) => row.returnBps)].map((v) => Math.abs(v - q.p50)),
+      )
+    : 1;
+  const pos = (bps: number) => (q ? 50 + ((bps - q.p50) / raio) * 50 : 50);
   const filas: number[][] = [];
-  const marcadores = ranked
-    .filter((row) => row.percentileBps !== null)
-    .map((row) => ({ row, p: row.percentileBps! / 100 }))
-    .sort((a, b) => b.p - a.p)
-    .map(({ row, p }) => {
-      let fila = filas.findIndex((ps) => ps.every((q) => Math.abs(q - p) >= 9));
-      if (fila < 0) fila = filas.push([]) - 1;
-      filas[fila]!.push(p);
-      return { row, p, fila };
-    });
+  const marcadores = q
+    ? ranked
+        .map((row) => ({ row, x: pos(row.returnBps) }))
+        .sort((a, b) => b.x - a.x)
+        .map(({ row, x }) => {
+          let fila = filas.findIndex((xs) => xs.every((o) => Math.abs(o - x) >= 7));
+          if (fila < 0) fila = filas.length < 6 ? filas.push([]) - 1 : 5;
+          filas[fila]!.push(x);
+          return { row, x, fila };
+        })
+    : [];
 
   return (
     <section aria-labelledby="metodo-titulo" className="folha">
@@ -382,16 +420,34 @@ export function Metodo({
             </li>
             <li>
               <div aria-hidden="true" className="cena">
+                {q ? (
+                  <>
+                    <div
+                      className="cena-faixa"
+                      style={{
+                        left: naRegua(pos(q.p5)),
+                        width: larguraNaRegua(pos(q.p5), pos(q.p95)),
+                      }}
+                    />
+                    <div
+                      className="cena-faixa cena-miolo"
+                      style={{
+                        left: naRegua(pos(q.p25)),
+                        width: larguraNaRegua(pos(q.p25), pos(q.p75)),
+                      }}
+                    />
+                    <div
+                      className="absolute bottom-24 h-[2.375rem] w-px bg-muted"
+                      style={{ left: naRegua(pos(q.p50)) }}
+                    />
+                  </>
+                ) : null}
                 <div className="cena-regua" />
-                <div className="absolute bottom-[5.5rem] left-1/2 h-9 w-px bg-muted" />
-                {marcadores.map(({ row, p, fila }, i) => (
+                {marcadores.map(({ row, x, fila }, i) => (
                   <span
                     key={row.competitor.slug}
                     className="cena-marcador"
-                    style={{
-                      left: `calc(1.25rem + (100% - 2.5rem) * ${p.toFixed(1)} / 100)`,
-                      bottom: `${6.5 + fila * 1.625}rem`,
-                    }}
+                    style={{ left: naRegua(x), bottom: `${8.75 + fila * 1.5}rem` }}
                   >
                     <Logo
                       competitor={row.competitor}
@@ -399,31 +455,40 @@ export function Metodo({
                     />
                   </span>
                 ))}
-                <span className="absolute bottom-[3.75rem] left-5 text-xs text-muted">0</span>
-                <span className="absolute bottom-[3.75rem] left-1/2 -translate-x-1/2 text-xs text-muted">
-                  mediana
-                </span>
-                <span className="absolute right-5 bottom-[3.75rem] text-xs text-muted">100</span>
-                <span className="absolute inset-x-5 bottom-6 text-center text-xs text-muted">
-                  Percentil de cada um contra as {sorteadas} carteiras sorteadas
+                {q ? (
+                  <>
+                    <span className="absolute bottom-[3.75rem] left-5 text-xs text-muted">
+                      {`p5 ${formatBps(q.p5)}`}
+                    </span>
+                    <span className="absolute bottom-[3.75rem] left-1/2 -translate-x-1/2 text-xs text-muted">
+                      {`mediana ${formatBps(q.p50)}`}
+                    </span>
+                    <span className="absolute right-5 bottom-[3.75rem] text-xs text-muted">
+                      {`p95 ${formatBps(q.p95)}`}
+                    </span>
+                  </>
+                ) : null}
+                <span className="absolute inset-x-5 bottom-[1.625rem] text-center text-xs text-muted">
+                  {`Retorno das ${quantas} carteiras sorteadas${sorteadas ? ` no pregão de ${formatDate(sorteadas.date)}` : ''}`}
                 </span>
               </div>
               <div className="cena-texto">
                 <h3 className="text-[1.0625rem] font-semibold">Sorte ou habilidade?</h3>
                 <p className="text-15 leading-relaxed text-pretty text-body">
-                  {sorteadas} carteiras sorteadas com as mesmas regras formam a régua: o percentil
-                  diz quantas delas cada modelo deixou para trás.
+                  {`${quantas === 'mil' ? 'Mil' : quantas} carteiras sorteadas com as mesmas regras formam a régua: o percentil diz quantas delas cada modelo deixou para trás.`}
                 </p>
               </div>
             </li>
             <li>
               <div aria-hidden="true" className="cena px-6 pt-9 pr-36 pb-14">
                 {referencias.length > 0 ? (
-                  <GraficoMini series={referencias} altura={150} rotulos desenha />
+                  <GraficoMini series={referencias} altura={150} rotulos desenha faixa={faixa} />
                 ) : null}
                 <span className="absolute bottom-5 left-6 text-xs text-muted">
-                  {season?.startDate ? `Desde ${formatDate(season.startDate)}, ` : ''}
-                  {season ? `R$ ${formatReais(season.params.capitalCents)}` : ''} no início
+                  {season?.startDate && ate
+                    ? `${formatShortDate(season.startDate)} a ${formatDate(ate)}, `
+                    : ''}
+                  {season ? capitalCurto(season.params.capitalCents) : ''} no início
                 </span>
               </div>
               <div className="cena-texto">
@@ -441,14 +506,28 @@ export function Metodo({
   );
 }
 
-// A justificativa de um modelo em destaque: o resumo da decisão mais nova, a primeira frase (o contexto) no apoio e o resto (a decisão) na
-// tinta, e quem disse na célula ao lado, com o link para o feed. Sem decisão, nada.
+// O trecho da justificativa que a citação mostra, como no desenho: a primeira frase (o contexto), "[…]" e a última (a decisão), até
+// CITACAO_MAX caracteres, umas cinco linhas no desktop (a justificativa inteira passa de 500 e está no feed). A decisão fica sempre: o
+// contexto sai quando não cabe, e a decisão maior que o teto termina na última palavra que cabe, com "…". `corte`: alguma frase ficou de fora.
+// ponytail: o teto é em caracteres, não na altura desenhada; medido nas 138 justificativas da temporada (19/11/2026), corta a decisão de uma.
+export const CITACAO_MAX = 280;
+export function trechoCitacao(summary: string) {
+  const frases = summary.trim().split(/(?<=[.!?])\s+/);
+  const ultima = frases.at(-1)!;
+  const fim = ultima.lastIndexOf(' ', CITACAO_MAX - 1);
+  const decisao =
+    ultima.length > CITACAO_MAX ? `${ultima.slice(0, fim > 0 ? fim : CITACAO_MAX - 1)}…` : ultima;
+  const contexto =
+    frases.length > 1 && frases[0]!.length + decisao.length + 5 <= CITACAO_MAX ? frases[0]! : null;
+  return { contexto, corte: frases.length > (contexto ? 2 : 1), decisao };
+}
+
+// A justificativa de um modelo em destaque: o trecho do resumo da decisão mais nova (o contexto e o "[…]" no apoio, a decisão na tinta) e
+// quem disse na célula ao lado, com o link para o feed. Sem decisão, nada.
 export function Citacao({ decision }: { decision: FeedDecision | null }) {
   const summary = decision?.summary;
   if (!decision || !summary) return null;
-  const corte = summary.search(/[.!?]\s/);
-  const contexto = corte < 0 ? '' : summary.slice(0, corte + 1);
-  const resto = corte < 0 ? summary : summary.slice(corte + 2);
+  const { contexto, corte, decisao } = trechoCitacao(summary);
   const primeira = decision.items.find((item) => item.action !== 'HOLD') ?? decision.items[0];
   return (
     <div className="linha">
@@ -456,7 +535,8 @@ export function Citacao({ decision }: { decision: FeedDecision | null }) {
         <figure className="citacao m-0">
           <blockquote>
             {contexto ? `${contexto} ` : null}
-            <strong>{resto}</strong>
+            {corte ? '[…] ' : null}
+            <strong>{decisao}</strong>
           </blockquote>
           <figcaption>
             <span className="flex items-center gap-3 text-base font-semibold text-ink">

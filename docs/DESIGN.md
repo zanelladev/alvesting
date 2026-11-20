@@ -489,7 +489,8 @@ adaptada do Theme Toggle da beUI); o teclado e o movimento reduzido trocam na ho
   é embaixo, no apoio.
 - **As cenas do método** (`.cena`): três células por linha a partir de 1024 px, cada uma com a cena em cima (300 px, o segundo plano, os
   cartões flutuando) e o título e o texto embaixo; a cena é decorativa (`aria-hidden`), e o texto diz o mesmo.
-- **A citação** (`.citacao`): a justificativa de um modelo em 31 px, o contexto no apoio e a decisão na tinta, e quem disse ao lado.
+- **A citação** (`.citacao`): um trecho da justificativa de um modelo (a primeira frase, "[…]" e a última, até 280 caracteres) em 26 px
+  (21 no celular), o contexto e o "[…]" no apoio e a decisão na tinta, e quem disse ao lado.
 - **O FAQ** (`.faq`): o título numa célula e as perguntas na outra, cada uma um `details` do navegador, com o "+" que vira "×".
 
 ### Motion
@@ -500,7 +501,7 @@ repete (o toque, o hover, a cor), 200 ms no que muda de lugar (a escolha do sele
 (`cubic-bezier(0.16, 1, 0.3, 1)`); as molas do Motion sem quique (`bounce: 0`). Na landing, só CSS: as cenas do método em laço de 8 s, com o
 movimento do desenho (as linhas do briefing que entram uma a uma, de desfocadas a nítidas, com o visto e o SHA-256 que se digita; o
 tracejado que leva cada laboratório ao prompt; o "decidindo" que dá lugar às ordens; a barra do pregão que enche até a ordem executar; os
-logos que chegam à régua do percentil; as linhas das referências que se desenham; e, no fim do laço, tudo some e recomeça), o ponto da temporada em andamento que pulsa a cada 2,6 s, o serrilhado dos números que anda
+logos que chegam à régua do Monte Carlo; as linhas das referências que se desenham; e, no fim do laço, tudo some e recomeça), o ponto da temporada em andamento que pulsa a cada 2,6 s, o serrilhado dos números que anda
 um dente a cada 30 s, a seta que anda 2 px e o "+" do FAQ que gira em 250 ms. Com `prefers-reduced-motion`, nada se desloca: a regra global zera animação e transição, e cada peça
 fica no quadro de partida. A série que a legenda mostra de novo se desenha da esquerda para a direita, num recorte que cresce em 250 ms
 (`.linha-desenha`). O esmaecer da borda das tabelas e do placar que rolam é uma animação ligada à rolagem, e não ao tempo.

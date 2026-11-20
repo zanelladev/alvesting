@@ -4,6 +4,7 @@ import {
   decisionsPageSchema,
   equitySchema,
   leaderboardSchema,
+  randomBaselineSchema,
 } from '@alvesting/contracts';
 import { SEASON, SIMULATED, dmy, fetchApi, pct, pctl } from './data';
 
@@ -184,7 +185,7 @@ test('a janela da arena fica ao lado do título a partir de 1024 px e embaixo do
   }
 });
 
-test('o método mostra o dado do último ciclo: o briefing, a versão do prompt (nunca o texto), a decisão mais nova e a régua do percentil', async ({
+test('o método mostra o dado do último ciclo: o briefing, a versão do prompt (nunca o texto), a decisão mais nova, a régua do Monte Carlo e as referências', async ({
   page,
   request,
 }) => {
@@ -192,6 +193,13 @@ test('o método mostra o dado do último ciclo: o briefing, a versão do prompt 
   const last = current.lastCycle!;
   const decision = (await fetchApi(request, '/decisions?limit=1', decisionsPageSchema)).rows[0]!;
   const rows = await ranked(request);
+  const board = await fetchApi(request, `/seasons/${SEASON}/leaderboard`, leaderboardSchema);
+  const equity = await fetchApi(request, `/seasons/${SEASON}/equity`, equitySchema);
+  const baseline = await fetchApi(
+    request,
+    `/seasons/${SEASON}/random-baseline`,
+    randomBaselineSchema,
+  );
   await page.goto('/');
   const method = region(page, 'Todo pregão, a mesma pergunta para todos os modelos.');
   // seis cenas, uma por passo do pregão, cada uma com o título e o texto embaixo: a cena é decorativa, e o texto diz o mesmo
@@ -218,9 +226,40 @@ test('o método mostra o dado do último ciclo: o briefing, a versão do prompt 
   for (const { ticker } of decision.items.slice(0, 3)) {
     await expect(scenes.nth(2)).toContainText(ticker);
   }
-  // a régua do Monte Carlo: um logo por competidor com percentil
-  await expect(scenes.nth(4).locator('.cena-marcador')).toHaveCount(
-    rows.filter((row) => row.percentileBps !== null).length,
+  // a régua do Monte Carlo, como no desenho: o retorno das carteiras sorteadas no pregão do ranking (o p5, a mediana e o p95, com as duas
+  // faixas) e um logo por competidor do placar, no retorno dele
+  const sorteadas = baseline.rows.find((row) => row.date === board.asOf)!;
+  const regua = scenes.nth(4);
+  await expect(regua.locator('.cena-faixa')).toHaveCount(2);
+  await expect(regua.locator('.cena-marcador')).toHaveCount(rows.length);
+  for (const text of [
+    `p5 ${pct(sorteadas.returnBps.p5)}`,
+    `mediana ${pct(sorteadas.returnBps.p50)}`,
+    `p95 ${pct(sorteadas.returnBps.p95)}`,
+    `carteiras sorteadas no pregão de ${dmy(sorteadas.date)}`,
+  ]) {
+    await expect(regua).toContainText(text);
+  }
+  // a escala põe a mediana no meio da régua e cabe todo mundo: cada logo fica dentro dela
+  const escala = await regua.evaluate((cena) => {
+    const linha = cena.querySelector('.cena-regua')!.getBoundingClientRect();
+    const mediana = cena.querySelector('.w-px')!.getBoundingClientRect();
+    return {
+      mediana: mediana.left - (linha.left + linha.width / 2),
+      dentro: [...cena.querySelectorAll('.cena-marcador')].every((marcador) => {
+        const r = marcador.getBoundingClientRect();
+        return r.left + r.width / 2 >= linha.left && r.left + r.width / 2 <= linha.right;
+      }),
+    };
+  });
+  expect(Math.abs(escala.mediana)).toBeLessThanOrEqual(1);
+  expect(escala.dentro).toBe(true);
+  // as referências: a faixa p5 a p95 das carteiras sorteadas atrás das linhas, e o período desde o início da temporada
+  await expect(scenes.nth(5).locator('path.banda')).toHaveCount(1);
+  await expect(scenes.nth(5)).toContainText(
+    new RegExp(
+      `${dmy(current.season!.startDate!).slice(0, 5)} a ${dmy(equity.dates.at(-1)!)}, R\\$ \\d.* no início`,
+    ),
   );
 });
 

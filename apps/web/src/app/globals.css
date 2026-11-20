@@ -1380,15 +1380,24 @@ html[data-tema-revelar]::view-transition-new(root) {
   .cena-executa {
     animation: cena-executa 8s var(--ease-out-quint) infinite;
   }
-  /* a régua do percentil: de 0 a 100, com a mediana no meio e um logo por competidor, empilhado onde se encontram */
+  /* a régua do Monte Carlo, como no desenho: o eixo do retorno, a faixa p5 a p95 das carteiras sorteadas e o miolo p25 a p75 num tom
+     acima (a tinta a 6% e a 11%), a mediana no meio e um logo por competidor, empilhado onde se encontram */
   .cena-regua {
-    @apply absolute inset-x-5 bottom-24 h-px bg-hairline-strong;
+    @apply absolute inset-x-5 bottom-23 h-px bg-hairline-strong;
+  }
+  .cena-faixa {
+    @apply absolute bottom-[6.375rem] h-[1.625rem] rounded-[5px];
+    background: color-mix(in oklab, var(--color-ink) 6%, transparent);
+  }
+  .cena-miolo {
+    background: color-mix(in oklab, var(--color-ink) 11%, transparent);
   }
   .cena-marcador {
     @apply absolute -translate-x-1/2;
   }
-  /* as linhas das referências, que se desenham uma depois da outra (o atraso de cada uma vem do GraficoMini) e somem no fim do laço */
-  .cena-grafico path:not(.grade) {
+  /* as linhas das referências, que se desenham uma depois da outra (o atraso de cada uma vem do GraficoMini) e somem no fim do laço; a
+     faixa das carteiras sorteadas atrás delas fica parada */
+  .cena-grafico path:not(.grade, .banda) {
     fill: none;
     stroke-width: 1.75;
     vector-effect: non-scaling-stroke;
@@ -1449,6 +1458,11 @@ html[data-tema-revelar]::view-transition-new(root) {
     stroke: var(--color-hairline);
     stroke-width: 1;
     stroke-dasharray: 3 4;
+  }
+  /* a faixa p5 a p95 das carteiras sorteadas (a cena das referências): a tinta a 5%, sem traço, como no desenho */
+  .grafico-mini .banda {
+    fill: color-mix(in oklab, var(--color-ink) 5%, transparent);
+    stroke: none;
   }
   .grafico-mini .tracejada {
     stroke-dasharray: 4 3;
